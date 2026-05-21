@@ -1,5 +1,7 @@
-FROM lscr.io/linuxserver/obsidian:latest
+FROM ghcr.io/sytone/obsidian-remote:latest
 
-RUN printf '#!/bin/bash\necho "nameserver 8.8.8.8" > /etc/resolv.conf\necho "nameserver 1.1.1.1" >> /etc/resolv.conf\n' \
-    > /etc/cont-init.d/01-dns.sh && \
-    chmod +x /etc/cont-init.d/01-dns.sh
+USER root
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+
+USER abc
