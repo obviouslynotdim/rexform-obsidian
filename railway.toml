@@ -1,7 +1,52 @@
+# ============================================================
+# Railway Configuration — Obsidian Remote
+# Docs: https://docs.railway.app/reference/config-as-code
+# ============================================================
+
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+startCommand = ""
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
+
+[[services]]
+name = "obsidian-remote"
+
+[services.build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[services.deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[[services.variables]]
+name = "PUID"
+value = "1000"
+
+[[services.variables]]
+name = "PGID"
+value = "1000"
+
+[[services.variables]]
+name = "TZ"
+value = "Asia/Phnom_Penh"
+
+[[services.variables]]
+name = "PIXELFLUX_WAYLAND"
+value = "true"
+
+[[services.variables]]
+name = "NO_DECOR"
+value = "true"
+
+[[services.variables]]
+name = "NO_GAMEPAD"
+value = "true"
+
+# Set these in Railway dashboard — do not hardcode credentials here
+# CUSTOM_USER = set in Railway Variables
+# PASSWORD    = set in Railway Variables
