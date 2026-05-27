@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY docs/package*.json ./docs/
-RUN cd docs && npm ci
+RUN cd docs && npm install --prefer-offline
 
 # Copy vault content (markdown + VitePress config)
 COPY . .
