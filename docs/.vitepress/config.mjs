@@ -18,6 +18,12 @@ export default defineConfig({
     '.trash/**',
   ],
 
+  // Disable raw HTML rendering — prompt files use <placeholder> syntax
+  // that Vue's compiler would misparse as HTML tags
+  markdown: {
+    html: false,
+  },
+
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
