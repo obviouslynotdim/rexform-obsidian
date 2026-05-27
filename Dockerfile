@@ -23,5 +23,13 @@ FROM nginx:alpine
 
 COPY --from=builder /app/docs/.vitepress/dist /usr/share/nginx/html
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# Use a config template — Railway injects $PORT at runtime (not always 80)
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+
+# envsubst replaces ${PORT} then nginx starts
+EXPOSE 8080
+CMD ["/bin/sh", "-c", \
+  "export PORT=${PORT:-8080} && \
+   envsubst '${PORT}' < /etc/nginx/templates/default.conf.template \
+     > /etc/nginx/conf.d/default.conf && \
+   nginx -g 'daemon off;'"]
