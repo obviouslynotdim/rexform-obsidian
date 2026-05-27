@@ -1,0 +1,12 @@
+# VitePress build output & cache
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# Obsidian internals (not needed for VitePress build)
+.obsidian/
+.smart-env/
+.trash/
+
+# Legacy root artifacts (cleaned up)
+node_modules/
