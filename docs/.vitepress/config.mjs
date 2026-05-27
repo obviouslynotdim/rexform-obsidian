@@ -9,20 +9,30 @@ export default defineConfig({
   outDir: './.vitepress/dist',
   cacheDir: './.vitepress/cache',
 
-  // Exclude non-content folders from being processed as pages
+  // Exclude non-content folders and raw AI prompt files
+  // (prompt files contain <placeholder> template syntax that breaks Vue's compiler)
   srcExclude: [
     'docs/**',
     'node_modules/**',
     '.obsidian/**',
     '.smart-env/**',
     '.trash/**',
+    '03-AI-Prompts/Clip Web Page.md',
+    '03-AI-Prompts/Clip YouTube Transcript.md',
+    '03-AI-Prompts/Emojify.md',
+    '03-AI-Prompts/Explain like I am 5.md',
+    '03-AI-Prompts/Fix grammar and spelling.md',
+    '03-AI-Prompts/Generate glossary.md',
+    '03-AI-Prompts/Generate table of contents.md',
+    '03-AI-Prompts/Make longer.md',
+    '03-AI-Prompts/Make shorter.md',
+    '03-AI-Prompts/Remove URLs.md',
+    '03-AI-Prompts/Rewrite as tweet thread.md',
+    '03-AI-Prompts/Rewrite as tweet.md',
+    '03-AI-Prompts/Simplify.md',
+    '03-AI-Prompts/Summarize.md',
+    '03-AI-Prompts/Translate to Chinese.md',
   ],
-
-  // Disable raw HTML rendering — prompt files use <placeholder> syntax
-  // that Vue's compiler would misparse as HTML tags
-  markdown: {
-    html: false,
-  },
 
   themeConfig: {
     nav: [
@@ -69,21 +79,7 @@ export default defineConfig({
         {
           text: '🤖 AI Prompts',
           items: [
-            { text: 'Clip Web Page',           link: '/03-AI-Prompts/Clip Web Page' },
-            { text: 'Clip YouTube Transcript', link: '/03-AI-Prompts/Clip YouTube Transcript' },
-            { text: 'Emojify',                 link: '/03-AI-Prompts/Emojify' },
-            { text: 'Explain Like I Am 5',     link: '/03-AI-Prompts/Explain like I am 5' },
-            { text: 'Fix Grammar & Spelling',  link: '/03-AI-Prompts/Fix grammar and spelling' },
-            { text: 'Generate Glossary',       link: '/03-AI-Prompts/Generate glossary' },
-            { text: 'Generate Table of Contents', link: '/03-AI-Prompts/Generate table of contents' },
-            { text: 'Make Longer',             link: '/03-AI-Prompts/Make longer' },
-            { text: 'Make Shorter',            link: '/03-AI-Prompts/Make shorter' },
-            { text: 'Remove URLs',             link: '/03-AI-Prompts/Remove URLs' },
-            { text: 'Rewrite as Tweet Thread', link: '/03-AI-Prompts/Rewrite as tweet thread' },
-            { text: 'Rewrite as Tweet',        link: '/03-AI-Prompts/Rewrite as tweet' },
-            { text: 'Simplify',                link: '/03-AI-Prompts/Simplify' },
-            { text: 'Summarize',               link: '/03-AI-Prompts/Summarize' },
-            { text: 'Translate to Chinese',    link: '/03-AI-Prompts/Translate to Chinese' },
+            { text: 'Prompt Library', link: '/03-AI-Prompts/' },
           ],
         },
       ],
