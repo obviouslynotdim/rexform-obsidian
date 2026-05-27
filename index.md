@@ -25,5 +25,5 @@ features:
   - icon: 🤖
     title: AI Prompts
     details: 15 Copilot custom prompt templates ready to use.
-    link: /03-AI-Prompts/Summarize
+    link: /03-AI-Prompts/
 ---

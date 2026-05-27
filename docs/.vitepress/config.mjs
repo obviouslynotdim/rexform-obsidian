@@ -39,7 +39,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Rexform', link: '/01-Rexform/Onboarding' },
       { text: 'Infrastructure', link: '/02-Infrastructure/MCP-Setup' },
-      { text: 'AI Prompts', link: '/03-AI-Prompts/Summarize' },
+      { text: 'AI Prompts', link: '/03-AI-Prompts/' },
     ],
 
     sidebar: {
