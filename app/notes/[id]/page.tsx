@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import { getNote, assembleNoteContent, extractTitle } from '@/lib/couchdb'
+import { getNote, assembleNoteContent, extractTitle, stripFrontmatter } from '@/lib/couchdb'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import Link from 'next/link'
@@ -20,17 +20,22 @@ export default async function NotePage({ params }: Props) {
   const id = decodeURIComponent(params.id)
   let note: any = null
   let content = ''
+  let frontmatter: Record<string, string> = {}
   let error = ''
 
   try {
     note = await getNote(id)
-    content = await assembleNoteContent(note)
+    const raw = await assembleNoteContent(note)
+    const parsed = stripFrontmatter(raw)
+    content = parsed.content
+    frontmatter = parsed.frontmatter
   } catch (e: any) {
     error = e.message || 'Failed to load note'
   }
 
-  const title = note ? extractTitle(note) : id
+  const title = frontmatter.title || (note ? extractTitle(note) : id)
   const folder = note?.path ? (note.path as string).split('/').slice(0, -1).join('/') : ''
+  const tags = frontmatter.tags ? frontmatter.tags.split(',').map(t => t.trim()).filter(Boolean) : []
 
   return (
     <div className="flex h-[calc(100vh-56px)]" style={{ background: '#1a1a2e' }}>
@@ -58,11 +63,21 @@ export default async function NotePage({ params }: Props) {
                 <p className="text-xs mb-2" style={{ color: '#7F77DD' }}>📁 {folder}</p>
               )}
               <h1 className="text-3xl font-bold capitalize" style={{ color: '#f0f0f0' }}>{title}</h1>
+              {/* Tags */}
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {tags.map(tag => (
+                    <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium" style={{ background: '#2a2a4a', color: '#7F77DD' }}>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               {/* Inline meta */}
               <div className="flex gap-4 mt-3 text-xs" style={{ color: '#4a5568' }}>
+                {frontmatter.date && <span>{frontmatter.date}</span>}
                 {note?.mtime && <span>Modified {formatDate(note.mtime)}</span>}
                 {note?.size && <span>{(note.size / 1024).toFixed(1)} KB</span>}
-                {Array.isArray(note?.children) && <span>{note.children.length} chunks</span>}
               </div>
             </div>
 
