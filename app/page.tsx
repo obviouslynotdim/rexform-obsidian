@@ -57,10 +57,8 @@ export default async function DashboardPage() {
                 <Link
                   key={note._id}
                   href={`/notes/${encodeURIComponent(note._id)}`}
-                  className="block rounded-xl p-5 border transition-all hover:border-opacity-80"
-                  style={{ background: '#16213e', borderColor: '#2a2a4a' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#7F77DD')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2a2a4a')}
+                  className="block rounded-xl p-5 border border-border hover:border-accent transition-colors"
+                  style={{ background: '#16213e' }}
                 >
                   <h3 className="font-medium mb-2 truncate" style={{ color: '#e0e0e0' }}>
                     {note.title || note._id}
