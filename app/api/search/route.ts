@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isPageDoc, extractTitle, buildPreview } from '@/lib/couchdb'
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || ''
@@ -23,20 +24,19 @@ export async function GET(req: NextRequest) {
     const results = (data.rows || [])
       .map((row: any) => row.doc)
       .filter((doc: any) => {
-        if (!doc || doc._id.startsWith('_')) return false
-        const title = (doc.title || doc._id || '').toLowerCase()
-        const body = (doc.body || doc.content || doc.text || '').toLowerCase()
-        return title.includes(lower) || body.includes(lower)
+        if (!isPageDoc(doc)) return false
+        const searchable = [
+          doc.path || '',
+          extractTitle(doc),
+        ].join(' ').toLowerCase()
+        return searchable.includes(lower)
       })
       .slice(0, 50)
-      .map((doc: any) => {
-        const body = doc.body || doc.content || doc.text || ''
-        const idx = body.toLowerCase().indexOf(lower)
-        const snippet = idx >= 0
-          ? '...' + body.slice(Math.max(0, idx - 60), idx + 120) + '...'
-          : body.slice(0, 180)
-        return { _id: doc._id, title: doc.title || doc._id, snippet }
-      })
+      .map((doc: any) => ({
+        _id: doc._id,
+        title: extractTitle(doc),
+        snippet: buildPreview(doc),
+      }))
 
     return NextResponse.json({ results })
   } catch (e: any) {

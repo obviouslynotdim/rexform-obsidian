@@ -10,10 +10,13 @@ export default function NotesPage() {
   const { data, error, isLoading } = useSWR('/api/notes', fetcher)
   const [search, setSearch] = useState('')
 
-  const notes: any[] = data?.rows || []
+  const notes: any[] = (data?.rows || []).filter((n: any) => {
+    const doc = n.doc
+    return doc && !doc._deleted && !doc._id.startsWith('_design/') && !doc._id.startsWith('h:') && !!doc.path
+  })
   const filtered = notes.filter((n: any) => {
-    const title = (n.doc?.title || n.id || '').toLowerCase()
-    return title.includes(search.toLowerCase())
+    const path = (n.doc?.path || n.id || '').toLowerCase()
+    return path.includes(search.toLowerCase())
   })
 
   return (
@@ -42,18 +45,18 @@ export default function NotesPage() {
           )}
           {filtered.map((note: any) => {
             const id = note.id || note._id
-            const title = note.doc?.title || id
+            const doc = note.doc
+            const filename = (doc?.path || id).split('/').pop()?.replace(/\.md$/i, '').replace(/[-_]/g, ' ') || id
+            const folder = doc?.path ? (doc.path as string).split('/').slice(0, -1).join('/') : ''
             return (
               <Link
                 key={id}
                 href={`/notes/${encodeURIComponent(id)}`}
-                className="block px-4 py-3 border-b hover:bg-opacity-50 transition-colors"
+                className="block px-4 py-3 border-b transition-colors hover:bg-bg"
                 style={{ borderColor: '#2a2a4a' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#1a1a2e')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <p className="text-sm font-medium truncate" style={{ color: '#e0e0e0' }}>{title}</p>
-                <p className="text-xs mt-0.5 truncate" style={{ color: '#4a5568' }}>{id}</p>
+                <p className="text-sm font-medium truncate capitalize" style={{ color: '#e0e0e0' }}>{filename}</p>
+                {folder && <p className="text-xs mt-0.5 truncate" style={{ color: '#7F77DD' }}>📁 {folder}</p>}
               </Link>
             )
           })}

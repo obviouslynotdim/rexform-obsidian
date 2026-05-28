@@ -11,7 +11,10 @@ interface Props {
 
 export default function NotesSidebar({ currentId }: Props) {
   const { data, isLoading } = useSWR('/api/notes', fetcher)
-  const notes: any[] = data?.rows || []
+  const notes: any[] = (data?.rows || []).filter((n: any) => {
+    const doc = n.doc
+    return doc && !doc._deleted && !doc._id.startsWith('_design/') && !doc._id.startsWith('h:') && !!doc.path
+  })
 
   return (
     <div className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden" style={{ background: '#16213e', borderColor: '#2a2a4a' }}>
@@ -25,7 +28,9 @@ export default function NotesSidebar({ currentId }: Props) {
         )}
         {notes.map((note: any) => {
           const id = note.id || note._id
-          const title = note.doc?.title || note.doc?.path || id
+          const doc = note.doc
+          const filename = (doc?.path || id).split('/').pop()?.replace(/\.md$/i, '').replace(/[-_]/g, ' ') || id
+          const folder = doc?.path ? (doc.path as string).split('/').slice(0, -1).join('/') : ''
           const isActive = id === currentId
           return (
             <Link
@@ -38,7 +43,8 @@ export default function NotesSidebar({ currentId }: Props) {
                 background: isActive ? '#1a1a2e' : 'transparent',
               }}
             >
-              <p className="truncate">{title}</p>
+              <p className="truncate capitalize">{filename}</p>
+              {folder && <p className="text-xs truncate mt-0.5" style={{ color: isActive ? '#9b96e8' : '#4a5568' }}>📁 {folder}</p>}
             </Link>
           )
         })}
