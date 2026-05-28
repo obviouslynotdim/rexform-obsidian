@@ -57,6 +57,29 @@ export async function getNote(id: string) {
   return res.json()
 }
 
+export async function assembleNoteContent(doc: any): Promise<string> {
+  const children: string[] = Array.isArray(doc.children) ? doc.children : []
+  if (children.length === 0) return doc.body || doc.content || doc.text || ''
+
+  const chunks = await Promise.all(
+    children.map(async (chunkId: string) => {
+      try {
+        const res = await fetch(`${BASE}/${DB}/${encodeURIComponent(chunkId)}`, {
+          headers: { Authorization: authHeader() },
+          cache: 'no-store',
+        })
+        if (!res.ok) return ''
+        const chunk = await res.json()
+        return chunk.data || ''
+      } catch {
+        return ''
+      }
+    })
+  )
+
+  return chunks.join('')
+}
+
 export async function getDashboardData() {
   const data = await getAllNotes()
   const rows = data.rows || []
