@@ -28,3 +28,6 @@ docs/.vitepress/dist/
 
 # ── Claude Code ─────────────────────────────────────
 .claude/settings.local.json
+
+# ── Test vaults ──────────────────────────────────────
+rexform-testing/
