@@ -1,0 +1,4 @@
+# Obsidian internals
+.obsidian/
+.smart-env/
+.trash/

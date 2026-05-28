@@ -1,0 +1,30 @@
+# ── OS ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Secrets ─────────────────────────────────────────
+.env
+.env.local
+.env*.local
+*.pem
+
+# ── Logs ────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# ── Node (global catch-all) ─────────────────────────
+node_modules/
+
+# ── docs/ (VitePress) ───────────────────────────────
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# ── vault (Obsidian) ─────────────────────────────────
+.obsidian/
+.smart-env/
+.trash/
+
+# ── Claude Code ─────────────────────────────────────
+.claude/settings.local.json
