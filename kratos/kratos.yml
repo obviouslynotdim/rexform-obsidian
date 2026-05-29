@@ -1,0 +1,87 @@
+version: v1.2.0
+
+dsn: $DSN
+
+serve:
+  public:
+    base_url: $KRATOS_PUBLIC_URL
+    cors:
+      enabled: true
+      allowed_origins:
+        - $FRONTEND_URL
+      allowed_methods:
+        - POST
+        - GET
+        - PUT
+        - PATCH
+        - DELETE
+      allowed_headers:
+        - Authorization
+        - Content-Type
+        - X-Session-Token
+      exposed_headers:
+        - Content-Type
+  admin:
+    base_url: $KRATOS_ADMIN_URL
+
+selfservice:
+  default_browser_return_url: $FRONTEND_URL
+  allowed_return_urls:
+    - $FRONTEND_URL
+
+  methods:
+    password:
+      enabled: true
+      config:
+        min_password_length: 8
+
+  flows:
+    login:
+      ui_url: $FRONTEND_URL/login
+      lifespan: 10m
+
+    registration:
+      ui_url: $FRONTEND_URL/register
+      lifespan: 10m
+      after:
+        password:
+          hooks:
+            - hook: web_hook
+              config:
+                url: $FRONTEND_URL/api/hooks/kratos/after-register
+                method: POST
+                body: base64://ewogICJpZGVudGl0eSI6IHsuaWQsIC50cmFpdHN9Cn0=
+
+    verification:
+      use: code
+      ui_url: $FRONTEND_URL/verification
+      enabled: true
+
+    recovery:
+      use: code
+      ui_url: $FRONTEND_URL/recovery
+      enabled: true
+
+    logout:
+      after:
+        default_browser_return_url: $FRONTEND_URL/login
+
+    settings:
+      ui_url: $FRONTEND_URL/settings
+
+log:
+  level: info
+  format: text
+  leak_sensitive_values: false
+
+identity:
+  default_schema_id: user
+  schemas:
+    - id: user
+      url: file:///etc/config/kratos/identity-schemas/user.schema.json
+
+courier:
+  smtp:
+    connection_uri: $SMTP_CONNECTION_URI
+    from_address: $SMTP_FROM_ADDRESS
+    from_name: REXFORM Notes
