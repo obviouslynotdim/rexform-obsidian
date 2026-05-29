@@ -55,7 +55,7 @@ selfservice:
               config:
                 url: https://rexform-notes-production.up.railway.app/api/hooks/kratos/after-register
                 method: POST
-                body: base64://eyAiaWRlbnRpdHkiOiB7ICJpZCI6IHt7IC5JZGVudGl0eS5JZCB9fSwgInRyYWl0cyI6IHt7IHRvanNvbiAuSWRlbnRpdHkuVHJhaXRzIH19IH0gfQ==
+                body: base64://ZnVuY3Rpb24oY3R4KSB7CiAgaWRlbnRpdHk6IHsKICAgIGlkOiBjdHguaWRlbnRpdHkuaWQsCiAgICB0cmFpdHM6IGN0eC5pZGVudGl0eS50cmFpdHMsCiAgfSwKfQ==
 
     verification:
       use: code
