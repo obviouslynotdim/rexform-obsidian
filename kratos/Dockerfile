@@ -6,4 +6,4 @@ COPY identity-schemas /etc/config/kratos/identity-schemas
 EXPOSE 4433 4434
 
 ENTRYPOINT ["kratos"]
-CMD ["serve", "--config", "/etc/config/kratos/kratos.yml", "--dev", "--watch-courier"]
+CMD ["serve", "--config", "/etc/config/kratos/kratos.yml", "--watch-courier"]

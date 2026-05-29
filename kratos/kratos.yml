@@ -1,14 +1,17 @@
 version: v1.2.0
 
-dsn: $DSN
+# DSN is injected at runtime via the DSN environment variable.
+# Kratos reads DSN directly without YAML substitution.
+dsn: memory
 
 serve:
   public:
-    base_url: $KRATOS_PUBLIC_URL
+    base_url: https://rexform-kratos-production.up.railway.app
     cors:
       enabled: true
       allowed_origins:
-        - $FRONTEND_URL
+        - https://rexform-notes-production.up.railway.app
+        - http://localhost:3000
       allowed_methods:
         - POST
         - GET
@@ -19,15 +22,17 @@ serve:
         - Authorization
         - Content-Type
         - X-Session-Token
+        - X-CSRF-Token
       exposed_headers:
         - Content-Type
   admin:
-    base_url: $KRATOS_ADMIN_URL
+    base_url: http://0.0.0.0:4434
 
 selfservice:
-  default_browser_return_url: $FRONTEND_URL
+  default_browser_return_url: https://rexform-notes-production.up.railway.app
   allowed_return_urls:
-    - $FRONTEND_URL
+    - https://rexform-notes-production.up.railway.app
+    - http://localhost:3000
 
   methods:
     password:
@@ -37,37 +42,39 @@ selfservice:
 
   flows:
     login:
-      ui_url: $FRONTEND_URL/login
+      ui_url: https://rexform-notes-production.up.railway.app/login
       lifespan: 10m
 
     registration:
-      ui_url: $FRONTEND_URL/register
+      ui_url: https://rexform-notes-production.up.railway.app/register
       lifespan: 10m
       after:
         password:
           hooks:
             - hook: web_hook
               config:
-                url: $FRONTEND_URL/api/hooks/kratos/after-register
+                url: https://rexform-notes-production.up.railway.app/api/hooks/kratos/after-register
                 method: POST
-                body: base64://ewogICJpZGVudGl0eSI6IHsuaWQsIC50cmFpdHN9Cn0=
+                body: base64://eyAiaWRlbnRpdHkiOiB7ICJpZCI6IHt7IC5JZGVudGl0eS5JZCB9fSwgInRyYWl0cyI6IHt7IHRvanNvbiAuSWRlbnRpdHkuVHJhaXRzIH19IH0gfQ==
 
     verification:
       use: code
-      ui_url: $FRONTEND_URL/verification
+      ui_url: https://rexform-notes-production.up.railway.app/verification
       enabled: true
+      lifespan: 15m
 
     recovery:
       use: code
-      ui_url: $FRONTEND_URL/recovery
+      ui_url: https://rexform-notes-production.up.railway.app/recovery
       enabled: true
+      lifespan: 15m
 
     logout:
       after:
-        default_browser_return_url: $FRONTEND_URL/login
+        default_browser_return_url: https://rexform-notes-production.up.railway.app/login
 
     settings:
-      ui_url: $FRONTEND_URL/settings
+      ui_url: https://rexform-notes-production.up.railway.app/settings
 
 log:
   level: info
@@ -82,6 +89,6 @@ identity:
 
 courier:
   smtp:
-    connection_uri: $SMTP_CONNECTION_URI
-    from_address: $SMTP_FROM_ADDRESS
+    connection_uri: smtp://test:test@localhost:1025/?disable_starttls=true
+    from_address: noreply@rexform.io
     from_name: REXFORM Notes
