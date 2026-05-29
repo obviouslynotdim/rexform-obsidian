@@ -10,14 +10,12 @@ export default function NotesPage() {
   const { data, error, isLoading } = useSWR('/api/notes', fetcher)
   const [search, setSearch] = useState('')
 
-  const notes: any[] = (data?.rows || []).filter((n: any) => {
-    const doc = n.doc
-    return doc && !doc._deleted && !doc._id.startsWith('_design/') && !doc._id.startsWith('h:') && !!doc.path
-  })
-  const filtered = notes.filter((n: any) => {
-    const path = (n.doc?.path || n.id || '').toLowerCase()
-    return path.includes(search.toLowerCase())
-  })
+  const notes: any[] = (data?.rows || []).filter((n: any) =>
+    n && !n._deleted && n._id && !n._id.startsWith('_design/') && !!n.path
+  )
+  const filtered = notes.filter((n: any) =>
+    (n.path || n._id || '').toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <div className="flex h-[calc(100vh-56px)]" style={{ background: '#1a1a2e' }}>
@@ -44,10 +42,9 @@ export default function NotesPage() {
             <div className="p-4 text-sm text-red-400">Failed to load notes</div>
           )}
           {filtered.map((note: any) => {
-            const id = note.id || note._id
-            const doc = note.doc
-            const filename = (doc?.path || id).split('/').pop()?.replace(/\.md$/i, '').replace(/[-_]/g, ' ') || id
-            const folder = doc?.path ? (doc.path as string).split('/').slice(0, -1).join('/') : ''
+            const id = note._id
+            const filename = (note.path || id).split('/').pop()?.replace(/\.md$/i, '').replace(/[-_]/g, ' ') || id
+            const folder = note.path ? (note.path as string).split('/').slice(0, -1).join('/') : ''
             return (
               <Link
                 key={id}
