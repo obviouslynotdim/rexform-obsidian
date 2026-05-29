@@ -30,7 +30,7 @@ export async function GET() {
     const notes = (data.rows as { doc: { _id: string; type?: string; path?: string } }[])
       .map((row) => row.doc)
       .filter(isVaultNote)
-    return NextResponse.json({ ...data, rows: notes, total_rows: notes.length })
+    return NextResponse.json({ ...data, rows: notes, total_rows: notes.length }, { headers: { 'X-Notes-Count': String(notes.length) } })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
