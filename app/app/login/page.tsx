@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { signIn, useSession } from 'next-auth/react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 function ProtonIcon() {
@@ -28,12 +28,22 @@ async function initFlow(): Promise<string> {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { status } = useSession();
   const [flowId, setFlowId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
+
+  // Already signed in — go to callbackUrl or dashboard
+  useEffect(() => {
+    if (status === 'authenticated') {
+      const callbackUrl = searchParams.get('callbackUrl') || '/';
+      router.replace(callbackUrl);
+    }
+  }, [status, router, searchParams]);
 
   useEffect(() => {
     initFlow()
@@ -60,7 +70,8 @@ export default function LoginPage() {
         .then(setFlowId)
         .catch(() => {});
     } else {
-      router.push('/');
+      const callbackUrl = searchParams.get('callbackUrl') || '/';
+      router.push(callbackUrl);
       router.refresh();
     }
   }
