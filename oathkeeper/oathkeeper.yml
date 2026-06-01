@@ -11,7 +11,6 @@ serve:
         - PUT
         - DELETE
         - HEAD
-        - OPTIONS
       allowed_headers:
         - Authorization
         - Content-Type
