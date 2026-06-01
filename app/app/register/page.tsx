@@ -237,6 +237,8 @@ export default function RegisterPage() {
             </label>
             <input
               type="email"
+              name="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -261,6 +263,8 @@ export default function RegisterPage() {
             </label>
             <input
               type="password"
+              name="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
