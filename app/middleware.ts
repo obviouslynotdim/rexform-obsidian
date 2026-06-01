@@ -8,6 +8,12 @@ export default withAuth(
     }
   },
   {
+    secret: process.env.NEXTAUTH_SECRET,
+    callbacks: {
+      authorized({ token }) {
+        return !!token;
+      },
+    },
     pages: { signIn: '/login' },
   }
 );

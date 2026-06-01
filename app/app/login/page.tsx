@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 function ProtonIcon() {
@@ -35,7 +34,6 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const { status } = useSession();
   const [flowId, setFlowId] = useState('');
   const [email, setEmail] = useState('');
@@ -44,12 +42,12 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
 
-  // Already signed in — always go to /dashboard to avoid callbackUrl loops
+  // Already signed in — full reload so middleware re-reads the session cookie
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace('/dashboard');
+      window.location.href = '/dashboard';
     }
-  }, [status, router]);
+  }, [status]);
 
   useEffect(() => {
     initFlow()
@@ -76,7 +74,7 @@ function LoginForm() {
         .then(setFlowId)
         .catch(() => {});
     } else {
-      router.replace('/dashboard');
+      window.location.href = '/dashboard';
     }
   }
 
