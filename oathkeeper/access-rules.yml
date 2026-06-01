@@ -20,7 +20,7 @@
     url: "${COUCHDB_ADMIN_URL}"
     preserve_host: false
   authenticators:
-    - handler: unauthorized
+    - handler: anonymous
   authorizer:
     handler: allow
   mutators:

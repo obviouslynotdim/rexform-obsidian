@@ -66,8 +66,8 @@ authenticators:
       subject_from: "identity.id"
       extra_from: "@this"
 
-  # Used for public endpoints that require no auth
-  unauthorized:
+  # Used for public endpoints that require no auth (subject becomes "anonymous")
+  anonymous:
     enabled: true
 
 authorizers:
