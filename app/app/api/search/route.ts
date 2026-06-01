@@ -1,34 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isPageDoc, extractTitle, buildPreview } from '@/lib/couchdb'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { getAllNotes, isPageDoc, extractTitle, buildPreview, AuthHeaders } from '@/lib/couchdb'
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || ''
-  const base = process.env.COUCHDB_URL
-  const user = process.env.COUCHDB_USERNAME
-  const pass = process.env.COUCHDB_PASSWORD
-  const db = process.env.COUCHDB_DATABASE || 'obsidian'
-
-  const auth = Buffer.from(`${user}:${pass}`).toString('base64')
+  const session = await getServerSession(authOptions)
+  const auth: AuthHeaders | undefined = session?.kratosSessionToken
+    ? { authorization: `Bearer ${session.kratosSessionToken}` }
+    : undefined
 
   try {
-    const res = await fetch(
-      `${base}/${db}/_all_docs?include_docs=true`,
-      { headers: { Authorization: `Basic ${auth}` }, cache: 'no-store' }
-    )
-    if (!res.ok) {
-      return NextResponse.json({ results: [] }, { status: res.status })
-    }
-    const data = await res.json()
+    const data = await getAllNotes(auth)
     const lower = q.toLowerCase()
 
     const results = (data.rows || [])
       .map((row: any) => row.doc)
       .filter((doc: any) => {
         if (!isPageDoc(doc)) return false
-        const searchable = [
-          doc.path || '',
-          extractTitle(doc),
-        ].join(' ').toLowerCase()
+        const searchable = [doc.path || '', extractTitle(doc)].join(' ').toLowerCase()
         return searchable.includes(lower)
       })
       .slice(0, 50)

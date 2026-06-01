@@ -1,12 +1,19 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { getDashboardData } from '@/lib/couchdb'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { getDashboardData, AuthHeaders } from '@/lib/couchdb'
 
 export default async function DashboardPage() {
+  const session = await getServerSession(authOptions)
+  const auth: AuthHeaders | undefined = session?.kratosSessionToken
+    ? { authorization: `Bearer ${session.kratosSessionToken}` }
+    : undefined
+
   let data = { total: 0, recentNotes: [] as any[] }
   try {
-    data = await getDashboardData()
+    data = await getDashboardData(auth)
   } catch (e) {
     console.error('Dashboard fetch error:', e)
   }

@@ -1,0 +1,48 @@
+# Access rules for Oathkeeper → CouchDB proxy.
+#
+# ${OATHKEEPER_PUBLIC_URL} and ${COUCHDB_ADMIN_URL} are substituted at container
+# startup by envsubst (see Dockerfile). Set them as Railway env vars:
+#   OATHKEEPER_PUBLIC_URL=https://rexform-oathkeeper-production.up.railway.app
+#   COUCHDB_ADMIN_URL=http://admin:YOUR_PASSWORD@couch-db.railway.internal:5984
+
+# Rule 1: Public health check — no auth required.
+# Used by Railway's health probe. Proxies to CouchDB's own /_up endpoint.
+- id: couchdb-public-health
+  match:
+    url: "${OATHKEEPER_PUBLIC_URL}/_up"
+    methods:
+      - GET
+      - HEAD
+  upstream:
+    url: "${COUCHDB_ADMIN_URL}"
+    preserve_host: false
+  authenticators:
+    - handler: unauthorized
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+
+# Rule 2: Authenticated CouchDB access — restricted to the obsidian database.
+# Tries bearer_token first (Phase 2 kratosSessionToken), then cookie_session
+# (ory_kratos_session browser cookie for future browser-flow support).
+- id: couchdb-authenticated
+  match:
+    url: "${OATHKEEPER_PUBLIC_URL}/obsidian/<**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - HEAD
+      - OPTIONS
+  upstream:
+    url: "${COUCHDB_ADMIN_URL}"
+    preserve_host: false
+  authenticators:
+    - handler: bearer_token
+    - handler: cookie_session
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop

@@ -1,0 +1,90 @@
+serve:
+  proxy:
+    port: 4455
+    cors:
+      enabled: true
+      allowed_origins:
+        - "*"
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - HEAD
+        - OPTIONS
+      allowed_headers:
+        - Authorization
+        - Content-Type
+        - Cookie
+      exposed_headers:
+        - Content-Type
+  api:
+    port: 4456
+
+access_rules:
+  matching_strategy: glob
+  repositories:
+    - file:///etc/config/oathkeeper/access-rules.yml
+
+errors:
+  fallback:
+    - json
+  handlers:
+    redirect:
+      enabled: true
+      config:
+        to: ${NEXTJS_URL}/login
+        when:
+          - error:
+              - unauthorized
+              - forbidden
+            request:
+              header:
+                accept:
+                  - text/html
+    json:
+      enabled: true
+      config:
+        verbose: true
+
+authenticators:
+  # Primary: validates Kratos session token passed as Bearer (Phase 2 API auth flow)
+  bearer_token:
+    enabled: true
+    config:
+      check_session_url: ${KRATOS_PUBLIC_URL}/sessions/whoami
+      token_from:
+        header: Authorization
+      subject_from: "identity.id"
+      extra_from: "@this"
+
+  # Fallback: validates ory_kratos_session browser cookie (future browser flow)
+  cookie_session:
+    enabled: true
+    config:
+      check_session_url: ${KRATOS_PUBLIC_URL}/sessions/whoami
+      preserve_path: true
+      subject_from: "identity.id"
+      extra_from: "@this"
+
+  # Used for public endpoints that require no auth
+  unauthorized:
+    enabled: true
+
+authorizers:
+  allow:
+    enabled: true
+
+mutators:
+  noop:
+    enabled: true
+  # id_token mutator: enable when you need to sign user identity as JWT for upstream services.
+  # Requires a JWKS URL — generate keys with: oathkeeper credentials generate --alg RS256 > jwks.json
+  # id_token:
+  #   enabled: true
+  #   config:
+  #     issuer_url: ${OATHKEEPER_PUBLIC_URL}
+  #     jwks_url: file:///etc/config/oathkeeper/jwks.json
+  #     ttl: 60s
+  #     claims: |
+  #       { "sub": "{{ print .Subject }}" }

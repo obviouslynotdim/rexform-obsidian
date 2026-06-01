@@ -1,10 +1,51 @@
-const BASE = process.env.COUCHDB_URL
-const USER = process.env.COUCHDB_USERNAME
-const PASS = process.env.COUCHDB_PASSWORD
+const PROXY_URL = process.env.COUCHDB_PROXY_URL
+const DIRECT_URL = process.env.COUCHDB_URL
+const DIRECT_USER = process.env.COUCHDB_USERNAME
+const DIRECT_PASS = process.env.COUCHDB_PASSWORD
 const DB = process.env.COUCHDB_DATABASE || 'obsidian'
 
-function authHeader() {
-  return 'Basic ' + Buffer.from(`${USER}:${PASS}`).toString('base64')
+function directAuthHeader() {
+  return 'Basic ' + Buffer.from(`${DIRECT_USER}:${DIRECT_PASS}`).toString('base64')
+}
+
+export type AuthHeaders = { authorization?: string; cookie?: string }
+
+/**
+ * Fetch from CouchDB via Oathkeeper proxy (production) or directly (local dev).
+ *
+ * In production, pass `auth` from the caller's NextAuth session:
+ *   { authorization: `Bearer ${session.kratosSessionToken}` }
+ * Oathkeeper validates the Kratos session token, then forwards to CouchDB
+ * with admin credentials embedded in the internal upstream URL.
+ *
+ * When COUCHDB_PROXY_URL is unset, falls back to direct Basic Auth so local
+ * development works without running Oathkeeper.
+ */
+export async function fetchFromVault(
+  dbRelativePath: string,
+  options?: RequestInit,
+  auth?: AuthHeaders,
+): Promise<Response> {
+  if (PROXY_URL) {
+    const headers: Record<string, string> = {}
+    if (auth?.authorization) headers['Authorization'] = auth.authorization
+    if (auth?.cookie) headers['Cookie'] = auth.cookie
+    return fetch(`${PROXY_URL}/${DB}/${dbRelativePath}`, {
+      ...options,
+      headers: { ...headers, ...(options?.headers as Record<string, string>) },
+      cache: 'no-store',
+    })
+  }
+
+  // Local dev: direct Basic Auth (no Oathkeeper required)
+  return fetch(`${DIRECT_URL}/${DB}/${dbRelativePath}`, {
+    ...options,
+    headers: {
+      Authorization: directAuthHeader(),
+      ...(options?.headers as Record<string, string>),
+    },
+    cache: 'no-store',
+  })
 }
 
 export function stripFrontmatter(markdown: string): { content: string; frontmatter: Record<string, string> } {
@@ -22,7 +63,6 @@ export function stripFrontmatter(markdown: string): { content: string; frontmatt
   return { content: match[2].trim(), frontmatter }
 }
 
-// Page docs have a `path` field; block docs use `h:` prefixed IDs
 export function isPageDoc(doc: any): boolean {
   return (
     doc &&
@@ -54,35 +94,26 @@ export function buildPreview(doc: any): string {
     .join(' · ')
 }
 
-export async function getAllNotes() {
-  const res = await fetch(`${BASE}/${DB}/_all_docs?include_docs=true&limit=200`, {
-    headers: { Authorization: authHeader() },
-    cache: 'no-store',
-  })
+export async function getAllNotes(auth?: AuthHeaders) {
+  const res = await fetchFromVault('_all_docs?include_docs=true&limit=200', {}, auth)
   if (!res.ok) throw new Error(`CouchDB error: ${res.status}`)
   return res.json()
 }
 
-export async function getNote(id: string) {
-  const res = await fetch(`${BASE}/${DB}/${encodeURIComponent(id)}`, {
-    headers: { Authorization: authHeader() },
-    cache: 'no-store',
-  })
+export async function getNote(id: string, auth?: AuthHeaders) {
+  const res = await fetchFromVault(encodeURIComponent(id), {}, auth)
   if (!res.ok) throw new Error(`Note not found: ${res.status}`)
   return res.json()
 }
 
-export async function assembleNoteContent(doc: any): Promise<string> {
+export async function assembleNoteContent(doc: any, auth?: AuthHeaders): Promise<string> {
   const children: string[] = Array.isArray(doc.children) ? doc.children : []
   if (children.length === 0) return doc.body || doc.content || doc.text || ''
 
   const chunks = await Promise.all(
     children.map(async (chunkId: string) => {
       try {
-        const res = await fetch(`${BASE}/${DB}/${encodeURIComponent(chunkId)}`, {
-          headers: { Authorization: authHeader() },
-          cache: 'no-store',
-        })
+        const res = await fetchFromVault(encodeURIComponent(chunkId), {}, auth)
         if (!res.ok) return ''
         const chunk = await res.json()
         return chunk.data || ''
@@ -95,14 +126,11 @@ export async function assembleNoteContent(doc: any): Promise<string> {
   return chunks.join('')
 }
 
-async function getContentPreview(doc: any): Promise<string> {
+async function getContentPreview(doc: any, auth?: AuthHeaders): Promise<string> {
   const children: string[] = Array.isArray(doc.children) ? doc.children : []
   if (children.length === 0) return ''
   try {
-    const res = await fetch(`${BASE}/${DB}/${encodeURIComponent(children[0])}`, {
-      headers: { Authorization: authHeader() },
-      cache: 'no-store',
-    })
+    const res = await fetchFromVault(encodeURIComponent(children[0]), {}, auth)
     if (!res.ok) return ''
     const chunk = await res.json()
     const { content } = stripFrontmatter(chunk.data || '')
@@ -112,8 +140,8 @@ async function getContentPreview(doc: any): Promise<string> {
   }
 }
 
-export async function getDashboardData() {
-  const data = await getAllNotes()
+export async function getDashboardData(auth?: AuthHeaders) {
+  const data = await getAllNotes(auth)
   const rows = data.rows || []
   const pageDocs = rows.map((r: any) => r.doc).filter(isPageDoc)
 
@@ -121,7 +149,7 @@ export async function getDashboardData() {
     pageDocs.slice(0, 8).map(async (doc: any) => ({
       _id: doc._id,
       title: extractTitle(doc),
-      preview: await getContentPreview(doc),
+      preview: await getContentPreview(doc, auth),
     }))
   )
 

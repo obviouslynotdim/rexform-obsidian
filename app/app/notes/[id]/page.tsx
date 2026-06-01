@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic'
 
-import { getNote, assembleNoteContent, extractTitle, stripFrontmatter } from '@/lib/couchdb'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { getNote, assembleNoteContent, extractTitle, stripFrontmatter, AuthHeaders } from '@/lib/couchdb'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import Link from 'next/link'
@@ -17,6 +19,11 @@ function formatDate(ts: number) {
 }
 
 export default async function NotePage({ params }: Props) {
+  const session = await getServerSession(authOptions)
+  const auth: AuthHeaders | undefined = session?.kratosSessionToken
+    ? { authorization: `Bearer ${session.kratosSessionToken}` }
+    : undefined
+
   const id = decodeURIComponent(params.id)
   let note: any = null
   let content = ''
@@ -24,8 +31,8 @@ export default async function NotePage({ params }: Props) {
   let error = ''
 
   try {
-    note = await getNote(id)
-    const raw = await assembleNoteContent(note)
+    note = await getNote(id, auth)
+    const raw = await assembleNoteContent(note, auth)
     const parsed = stripFrontmatter(raw)
     content = parsed.content
     frontmatter = parsed.frontmatter
