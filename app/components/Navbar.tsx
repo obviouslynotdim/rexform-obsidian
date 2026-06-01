@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
-import Link from 'next/link'
-import { useSession, signOut } from 'next-auth/react'
+import Link from 'next/link';
+import { useSession, signOut } from 'next-auth/react';
 
 export default function Navbar() {
-  const { data: session, status } = useSession()
-  const loading = status === 'loading'
+  const { data: session, status } = useSession();
+  const loading = status === 'loading';
 
   return (
     <nav
@@ -13,7 +13,7 @@ export default function Navbar() {
       style={{ background: '#16213e', borderColor: '#2a2a4a' }}
     >
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 font-bold text-lg">
+      <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg">
         <span
           className="w-7 h-7 rounded flex items-center justify-center text-white text-xs font-bold"
           style={{ background: '#7F77DD' }}
@@ -28,7 +28,7 @@ export default function Navbar() {
       {session && (
         <div className="flex items-center gap-1">
           <Link
-            href="/"
+            href="/dashboard"
             className="px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5"
             style={{ color: '#8892a4' }}
           >
@@ -46,9 +46,16 @@ export default function Navbar() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5"
             style={{ color: '#8892a4' }}
           >
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35"/>
+            <svg
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
             </svg>
             Search
           </Link>
@@ -58,12 +65,21 @@ export default function Navbar() {
       {/* Right side — auth state */}
       <div className="flex items-center gap-2">
         {loading ? (
-          <span className="text-xs" style={{ color: '#4a5568' }}>...</span>
+          <span className="text-xs" style={{ color: '#4a5568' }}>
+            ...
+          </span>
         ) : session ? (
           <>
             <span
               className="text-xs px-2 py-1 rounded-md border hidden sm:block"
-              style={{ color: '#8892a4', borderColor: '#2a2a4a', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              style={{
+                color: '#8892a4',
+                borderColor: '#2a2a4a',
+                maxWidth: '180px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
             >
               {session.user?.email}
             </span>
@@ -95,5 +111,5 @@ export default function Navbar() {
         )}
       </div>
     </nav>
-  )
+  );
 }

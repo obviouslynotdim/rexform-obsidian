@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 function ProtonIcon() {
@@ -36,7 +36,6 @@ export default function LoginPage() {
 
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { status } = useSession();
   const [flowId, setFlowId] = useState('');
   const [email, setEmail] = useState('');
@@ -45,13 +44,12 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
 
-  // Already signed in — go to callbackUrl or dashboard
+  // Already signed in — always go to /dashboard to avoid callbackUrl loops
   useEffect(() => {
     if (status === 'authenticated') {
-      const callbackUrl = searchParams.get('callbackUrl') || '/';
-      router.replace(callbackUrl);
+      router.replace('/dashboard');
     }
-  }, [status, router, searchParams]);
+  }, [status, router]);
 
   useEffect(() => {
     initFlow()
@@ -78,9 +76,7 @@ function LoginForm() {
         .then(setFlowId)
         .catch(() => {});
     } else {
-      const callbackUrl = searchParams.get('callbackUrl') || '/';
-      router.push(callbackUrl);
-      router.refresh();
+      router.replace('/dashboard');
     }
   }
 

@@ -41,7 +41,7 @@ export default function RegisterPage() {
   const { status } = useSession();
 
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/');
+    if (status === 'authenticated') router.replace('/dashboard');
   }, [status, router]);
   const [flowId, setFlowId] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -109,7 +109,7 @@ export default function RegisterPage() {
         setGlobalError('Registered! But auto sign-in failed — please log in manually.');
         router.push('/login');
       } else {
-        router.push('/');
+        router.replace('/dashboard');
         router.refresh();
       }
     } catch {
