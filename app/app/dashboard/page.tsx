@@ -3,17 +3,18 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDashboardData, AuthHeaders } from '@/lib/couchdb';
+import { getDashboardData, getUserVault, AuthHeaders } from '@/lib/couchdb';
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
+  const db = getUserVault(session);
 
   let data = { total: 0, recentNotes: [] as any[] };
   try {
-    data = await getDashboardData(auth);
+    data = await getDashboardData(auth, db);
   } catch (e) {
     console.error('Dashboard fetch error:', e);
   }
@@ -34,8 +35,8 @@ export default async function DashboardPage() {
             <p className="text-4xl font-bold" style={{ color: '#7F77DD' }}>{data.total}</p>
           </div>
           <div className="rounded-xl p-6 border" style={{ background: '#16213e', borderColor: '#2a2a4a' }}>
-            <p className="text-sm font-medium mb-1" style={{ color: '#8892a4' }}>Database</p>
-            <p className="text-lg font-semibold" style={{ color: '#e0e0e0' }}>obsidian</p>
+            <p className="text-sm font-medium mb-1" style={{ color: '#8892a4' }}>Vault</p>
+            <p className="text-lg font-semibold truncate" style={{ color: '#e0e0e0' }}>{db}</p>
           </div>
           <div className="rounded-xl p-6 border" style={{ background: '#16213e', borderColor: '#2a2a4a' }}>
             <p className="text-sm font-medium mb-1" style={{ color: '#8892a4' }}>Status</p>

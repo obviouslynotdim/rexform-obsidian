@@ -1,48 +1,63 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { getNote, assembleNoteContent, extractTitle, stripFrontmatter, AuthHeaders } from '@/lib/couchdb'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import Link from 'next/link'
-import NotesSidebar from '@/components/NotesSidebar'
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import {
+  getNote,
+  assembleNoteContent,
+  extractTitle,
+  stripFrontmatter,
+  getUserVault,
+  AuthHeaders,
+} from '@/lib/couchdb';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import Link from 'next/link';
+import NotesSidebar from '@/components/NotesSidebar';
 
 interface Props {
-  params: { id: string }
+  params: { id: string };
 }
 
 function formatDate(ts: number) {
   return new Date(ts).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric',
-  })
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 export default async function NotePage({ params }: Props) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession(authOptions);
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
-    : undefined
+    : undefined;
+  const db = getUserVault(session);
 
-  const id = decodeURIComponent(params.id)
-  let note: any = null
-  let content = ''
-  let frontmatter: Record<string, string> = {}
-  let error = ''
+  const id = decodeURIComponent(params.id);
+  let note: any = null;
+  let content = '';
+  let frontmatter: Record<string, string> = {};
+  let error = '';
 
   try {
-    note = await getNote(id, auth)
-    const raw = await assembleNoteContent(note, auth)
-    const parsed = stripFrontmatter(raw)
-    content = parsed.content
-    frontmatter = parsed.frontmatter
+    note = await getNote(id, auth, db);
+    const raw = await assembleNoteContent(note, auth, db);
+    const parsed = stripFrontmatter(raw);
+    content = parsed.content;
+    frontmatter = parsed.frontmatter;
   } catch (e: any) {
-    error = e.message || 'Failed to load note'
+    error = e.message || 'Failed to load note';
   }
 
-  const title = frontmatter.title || (note ? extractTitle(note) : id)
-  const folder = note?.path ? (note.path as string).split('/').slice(0, -1).join('/') : ''
-  const tags = frontmatter.tags ? frontmatter.tags.split(',').map(t => t.trim()).filter(Boolean) : []
+  const title = frontmatter.title || (note ? extractTitle(note) : id);
+  const folder = note?.path ? (note.path as string).split('/').slice(0, -1).join('/') : '';
+  const tags = frontmatter.tags
+    ? frontmatter.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
 
   return (
     <div className="flex h-[calc(100vh-56px)]" style={{ background: '#1a1a2e' }}>
@@ -63,18 +78,30 @@ export default async function NotePage({ params }: Props) {
           <div className="max-w-4xl mx-auto px-8 py-10">
             {/* Header */}
             <div className="mb-8 pb-6 border-b" style={{ borderColor: '#2a2a4a' }}>
-              <Link href="/notes" className="text-xs mb-3 inline-block hover:underline" style={{ color: '#7F77DD' }}>
+              <Link
+                href="/notes"
+                className="text-xs mb-3 inline-block hover:underline"
+                style={{ color: '#7F77DD' }}
+              >
                 ← All Notes
               </Link>
               {folder && (
-                <p className="text-xs mb-2" style={{ color: '#7F77DD' }}>📁 {folder}</p>
+                <p className="text-xs mb-2" style={{ color: '#7F77DD' }}>
+                  📁 {folder}
+                </p>
               )}
-              <h1 className="text-3xl font-bold capitalize" style={{ color: '#f0f0f0' }}>{title}</h1>
+              <h1 className="text-3xl font-bold capitalize" style={{ color: '#f0f0f0' }}>
+                {title}
+              </h1>
               {/* Tags */}
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  {tags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium" style={{ background: '#2a2a4a', color: '#7F77DD' }}>
+                  {tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-0.5 rounded text-xs font-medium"
+                      style={{ background: '#2a2a4a', color: '#7F77DD' }}
+                    >
                       #{tag}
                     </span>
                   ))}
@@ -94,7 +121,10 @@ export default async function NotePage({ params }: Props) {
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
               </div>
             ) : (
-              <div className="rounded-xl p-6 border text-center" style={{ borderColor: '#2a2a4a', background: '#16213e' }}>
+              <div
+                className="rounded-xl p-6 border text-center"
+                style={{ borderColor: '#2a2a4a', background: '#16213e' }}
+              >
                 <p style={{ color: '#8892a4' }}>No content found for this note.</p>
               </div>
             )}
@@ -102,5 +132,5 @@ export default async function NotePage({ params }: Props) {
         )}
       </div>
     </div>
-  )
+  );
 }
