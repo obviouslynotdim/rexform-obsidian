@@ -7,7 +7,8 @@ const DIRECT_USER = process.env.COUCHDB_USERNAME;
 const DIRECT_PASS = process.env.COUCHDB_PASSWORD;
 const DB = process.env.COUCHDB_DATABASE || 'obsidian';
 
-const INTERNAL_URL = process.env.COUCHDB_INTERNAL_URL || DIRECT_URL;
+// Prefer public URL for admin operations — Railway internal hostname rejects Basic auth.
+const INTERNAL_URL = DIRECT_URL || process.env.COUCHDB_INTERNAL_URL;
 const ADMIN_USER = process.env.COUCHDB_ADMIN_USER || DIRECT_USER;
 const ADMIN_PASS = process.env.COUCHDB_ADMIN_PASSWORD || DIRECT_PASS;
 

@@ -1,7 +1,9 @@
 import { getStarterNotes } from './starter-notes';
 
+// Use public CouchDB URL for admin operations — the Railway internal hostname
+// rejects Basic auth; the public domain is proven to work with admin credentials.
 const COUCHDB_INTERNAL_URL =
-  process.env.COUCHDB_INTERNAL_URL || process.env.COUCHDB_URL || 'http://localhost:5984';
+  process.env.COUCHDB_URL || process.env.COUCHDB_INTERNAL_URL || 'http://localhost:5984';
 const COUCHDB_ADMIN_USER =
   process.env.COUCHDB_ADMIN_USER || process.env.COUCHDB_USERNAME || 'admin';
 const COUCHDB_ADMIN_PASSWORD =
