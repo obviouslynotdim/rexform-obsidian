@@ -43,10 +43,8 @@ export default function Navbar() {
       {session && (
         <div className="flex items-center gap-1">
           {navLink('/dashboard', 'Dashboard')}
-          {navLink(
-            '/notes',
-            'Notes'
-          )}
+          {navLink('/notes', 'Notes')}
+          {session.user?.isAdmin && navLink('/admin', 'Admin')}
           {navLink(
             '/search',
             <span className="flex items-center gap-1.5">

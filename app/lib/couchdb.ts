@@ -1,5 +1,5 @@
 import type { Session } from 'next-auth';
-import { isAdminUser, getUserVaultName, getAdminVaultName } from './vault';
+import { isAdminUser, getUserVaultName, getAdminVaultName, createUserVault } from './vault';
 
 const PROXY_URL = process.env.COUCHDB_PROXY_URL;
 const DIRECT_URL = process.env.COUCHDB_URL;
@@ -52,14 +52,30 @@ export async function fetchFromVault(
 
   // User vaults bypass Oathkeeper — use internal admin credentials
   if (database && database !== DB) {
-    return fetch(`${INTERNAL_URL}/${db}/${dbRelativePath}`, {
+    const url = `${INTERNAL_URL}/${db}/${dbRelativePath}`;
+    const opts: RequestInit = {
       ...options,
       headers: {
         Authorization: adminAuthHeader(),
         ...(options?.headers as Record<string, string>),
       },
       cache: 'no-store',
-    });
+    };
+    const res = await fetch(url, opts);
+
+    // Auto-provision missing vault on first access (e.g. users who registered
+    // before vault creation was working, or edge-case failures).
+    if (res.status === 404) {
+      const body = await res.clone().json().catch(() => ({}));
+      if (body.reason === 'Database does not exist.') {
+        const userId = database.replace(/^vault-/, '');
+        console.log(`[couchdb] auto-provisioning missing vault for user ${userId}`);
+        await createUserVault(userId);
+        return fetch(url, opts);
+      }
+    }
+
+    return res;
   }
 
   // Admin vault in production: route through Oathkeeper with the caller's session token
