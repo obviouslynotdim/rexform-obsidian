@@ -1,14 +1,17 @@
-'use client'
-import Link from 'next/link'
+'use client';
+import Link from 'next/link';
 
 interface Props {
-  notes: any[]
-  currentId?: string
+  notes: any[];
+  currentId?: string;
 }
 
 export default function Sidebar({ notes, currentId }: Props) {
   return (
-    <div className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden" style={{ background: '#16213e', borderColor: '#2a2a4a' }}>
+    <div
+      className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden"
+      style={{ background: '#16213e', borderColor: '#2a2a4a' }}
+    >
       <div className="p-4 border-b" style={{ borderColor: '#2a2a4a' }}>
         <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8892a4' }}>
           Notes
@@ -16,9 +19,9 @@ export default function Sidebar({ notes, currentId }: Props) {
       </div>
       <div className="flex-1 overflow-y-auto">
         {notes.map((note: any) => {
-          const id = note.id || note._id
-          const title = note.doc?.title || note.doc?.path || id
-          const isActive = id === currentId
+          const id = note.id || note._id;
+          const title = note.doc?.title || note.doc?.path || id;
+          const isActive = id === currentId;
           return (
             <Link
               key={id}
@@ -32,9 +35,9 @@ export default function Sidebar({ notes, currentId }: Props) {
             >
               {title}
             </Link>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

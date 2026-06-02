@@ -1,26 +1,26 @@
-'use client'
-import { useState } from 'react'
-import Link from 'next/link'
+'use client';
+import { useState } from 'react';
+import Link from 'next/link';
 
 export default function SearchPage() {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
 
   async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!query.trim()) return
-    setLoading(true)
-    setSearched(true)
+    e.preventDefault();
+    if (!query.trim()) return;
+    setLoading(true);
+    setSearched(true);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
-      const data = await res.json()
-      setResults(data.results || [])
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setResults(data.results || []);
     } catch {
-      setResults([])
+      setResults([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -35,12 +35,12 @@ export default function SearchPage() {
           <input
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title or content..."
             className="flex-1 px-4 py-3 rounded-xl border outline-none text-sm"
             style={{ background: '#16213e', borderColor: '#2a2a4a', color: '#e0e0e0' }}
-            onFocus={e => (e.target.style.borderColor = '#7F77DD')}
-            onBlur={e => (e.target.style.borderColor = '#2a2a4a')}
+            onFocus={(e) => (e.target.style.borderColor = '#7F77DD')}
+            onBlur={(e) => (e.target.style.borderColor = '#2a2a4a')}
             autoFocus
           />
           <button
@@ -54,7 +54,9 @@ export default function SearchPage() {
         </form>
 
         {loading && (
-          <div className="text-center py-10" style={{ color: '#8892a4' }}>Searching...</div>
+          <div className="text-center py-10" style={{ color: '#8892a4' }}>
+            Searching...
+          </div>
         )}
 
         {!loading && searched && results.length === 0 && (
@@ -75,8 +77,8 @@ export default function SearchPage() {
                   href={`/notes/${encodeURIComponent(note._id)}`}
                   className="block rounded-xl p-5 border transition-colors"
                   style={{ background: '#16213e', borderColor: '#2a2a4a' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#7F77DD')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#2a2a4a')}
+                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#7F77DD')}
+                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2a2a4a')}
                 >
                   <h3 className="font-medium mb-1" style={{ color: '#e0e0e0' }}>
                     {note.title || note._id}
@@ -86,7 +88,9 @@ export default function SearchPage() {
                       {note.snippet}
                     </p>
                   )}
-                  <p className="text-xs mt-2" style={{ color: '#4a5568' }}>{note._id}</p>
+                  <p className="text-xs mt-2" style={{ color: '#4a5568' }}>
+                    {note._id}
+                  </p>
                 </Link>
               ))}
             </div>
@@ -101,5 +105,5 @@ export default function SearchPage() {
         )}
       </div>
     </div>
-  )
+  );
 }

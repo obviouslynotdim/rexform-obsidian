@@ -17,9 +17,9 @@ yarn-debug.log*
 # ── Node (global catch-all) ─────────────────────────
 node_modules/
 
-# ── docs/ (VitePress) ───────────────────────────────
-docs/.vitepress/cache/
-docs/.vitepress/dist/
+# ── site/ (VitePress) ───────────────────────────────
+site/.vitepress/cache/
+site/.vitepress/dist/
 
 # ── vault (Obsidian) ─────────────────────────────────
 .obsidian/

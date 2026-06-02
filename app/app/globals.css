@@ -7,7 +7,7 @@
 :root {
   --bg: #1a1a2e;
   --sidebar: #16213e;
-  --accent: #7F77DD;
+  --accent: #7f77dd;
   --text: #e0e0e0;
   --border: #2a2a4a;
   --muted: #8892a4;
@@ -46,17 +46,34 @@ body {
   color: #e0e0e0;
   max-width: none;
 }
-.prose h1, .prose h2, .prose h3, .prose h4 {
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
   color: #f0f0f0;
   font-weight: 600;
   margin-top: 1.5em;
   margin-bottom: 0.5em;
 }
-.prose h1 { font-size: 2em; }
-.prose h2 { font-size: 1.5em; border-bottom: 1px solid #2a2a4a; padding-bottom: 0.3em; }
-.prose h3 { font-size: 1.25em; }
-.prose p { margin-bottom: 1em; line-height: 1.75; }
-.prose a { color: #7F77DD; text-decoration: underline; }
+.prose h1 {
+  font-size: 2em;
+}
+.prose h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid #2a2a4a;
+  padding-bottom: 0.3em;
+}
+.prose h3 {
+  font-size: 1.25em;
+}
+.prose p {
+  margin-bottom: 1em;
+  line-height: 1.75;
+}
+.prose a {
+  color: #7f77dd;
+  text-decoration: underline;
+}
 .prose code {
   background: #0f1628;
   padding: 0.15em 0.4em;
@@ -79,21 +96,48 @@ body {
   font-size: 0.875em;
 }
 .prose blockquote {
-  border-left: 3px solid #7F77DD;
+  border-left: 3px solid #7f77dd;
   padding-left: 1rem;
   color: #8892a4;
   margin: 1em 0;
 }
-.prose ul, .prose ol {
+.prose ul,
+.prose ol {
   padding-left: 1.5rem;
   margin-bottom: 1em;
 }
-.prose li { margin-bottom: 0.25em; line-height: 1.75; }
-.prose ul li { list-style-type: disc; }
-.prose ol li { list-style-type: decimal; }
-.prose strong { color: #f0f0f0; font-weight: 600; }
-.prose em { color: #c8d4e8; }
-.prose hr { border-color: #2a2a4a; margin: 2em 0; }
-.prose table { width: 100%; border-collapse: collapse; margin: 1em 0; }
-.prose th, .prose td { border: 1px solid #2a2a4a; padding: 0.5rem 0.75rem; }
-.prose th { background: #16213e; font-weight: 600; }
+.prose li {
+  margin-bottom: 0.25em;
+  line-height: 1.75;
+}
+.prose ul li {
+  list-style-type: disc;
+}
+.prose ol li {
+  list-style-type: decimal;
+}
+.prose strong {
+  color: #f0f0f0;
+  font-weight: 600;
+}
+.prose em {
+  color: #c8d4e8;
+}
+.prose hr {
+  border-color: #2a2a4a;
+  margin: 2em 0;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+.prose th,
+.prose td {
+  border: 1px solid #2a2a4a;
+  padding: 0.5rem 0.75rem;
+}
+.prose th {
+  background: #16213e;
+  font-weight: 600;
+}
