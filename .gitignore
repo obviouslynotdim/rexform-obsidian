@@ -31,3 +31,6 @@ site/.vitepress/dist/
 
 # ── Test vaults ──────────────────────────────────────
 rexform-testing/
+
+# ── vault/docs (old duplicate, superseded by site/) ──
+vault/docs/
