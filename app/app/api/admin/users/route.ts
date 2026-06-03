@@ -19,12 +19,14 @@ async function getVaultInfo(userId: string) {
       headers: { Authorization: couchAuth() },
       cache: 'no-store',
     });
-    if (res.status === 404) return { exists: false, docCount: 0, dbName };
-    if (!res.ok) return { exists: false, docCount: 0, dbName };
+    if (res.status === 404) return { exists: false, docCount: 0, dbName, sizeBytes: 0 };
+    if (!res.ok) return { exists: false, docCount: 0, dbName, sizeBytes: 0 };
     const info = await res.json();
-    return { exists: true, docCount: info.doc_count ?? 0, dbName };
+    // sizes.active is the live data size; fall back to disk_size for older CouchDB versions
+    const sizeBytes: number = info.sizes?.active ?? info.disk_size ?? 0;
+    return { exists: true, docCount: info.doc_count ?? 0, dbName, sizeBytes };
   } catch {
-    return { exists: false, docCount: 0, dbName };
+    return { exists: false, docCount: 0, dbName, sizeBytes: 0 };
   }
 }
 
