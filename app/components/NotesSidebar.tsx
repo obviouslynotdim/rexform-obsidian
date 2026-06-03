@@ -18,14 +18,14 @@ interface Props {
 
 function SkeletonItem({ width }: { width: string }) {
   return (
-    <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a4a' }}>
+    <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
       <div
         className="h-3 rounded mb-1.5 animate-pulse"
-        style={{ background: '#2a2a4a', width }}
+        style={{ background: 'var(--border)', width }}
       />
       <div
         className="h-2 rounded animate-pulse"
-        style={{ background: '#1e2440', width: '38%' }}
+        style={{ background: 'var(--bg-elevated)', width: '38%' }}
       />
     </div>
   );
@@ -51,18 +51,18 @@ export default function NotesSidebar({ currentId }: Props) {
   return (
     <div
       className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden"
-      style={{ background: '#16213e', borderColor: '#2a2a4a' }}
+      style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 border-b flex-shrink-0" style={{ borderColor: '#2a2a4a' }}>
+      <div className="px-4 pt-4 pb-3 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8892a4' }}>
+          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
             All Notes
           </h2>
           <Link
             href="/notes/new"
             className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
-            style={{ background: '#7F77DD', color: '#fff' }}
+            style={{ background: 'var(--accent)', color: '#fff' }}
           >
             + New
           </Link>
@@ -73,7 +73,7 @@ export default function NotesSidebar({ currentId }: Props) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-3 py-1.5 rounded-lg text-xs outline-none border"
-          style={{ background: '#1a1a2e', borderColor: '#2a2a4a', color: '#e0e0e0' }}
+          style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
         />
       </div>
 
@@ -88,7 +88,7 @@ export default function NotesSidebar({ currentId }: Props) {
             <SkeletonItem width="70%" />
           </>
         ) : filtered.length === 0 ? (
-          <p className="p-4 text-xs" style={{ color: '#4a5568' }}>
+          <p className="p-4 text-xs" style={{ color: 'var(--text-muted)' }}>
             {search ? 'No matches' : 'No notes yet'}
           </p>
         ) : (
@@ -107,19 +107,19 @@ export default function NotesSidebar({ currentId }: Props) {
                 href={`/notes/${encodeURIComponent(id)}`}
                 className="block px-4 py-2.5 border-b text-sm transition-colors"
                 style={{
-                  borderColor: '#2a2a4a',
-                  background: isActive ? '#1a1a2e' : 'transparent',
-                  borderLeft: isActive ? '2px solid #7F77DD' : '2px solid transparent',
+                  borderColor: 'var(--border)',
+                  background: isActive ? 'var(--bg-base)' : 'transparent',
+                  borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
                 }}
               >
                 <p
                   className="truncate capitalize font-medium"
-                  style={{ color: isActive ? '#9b96e8' : '#c8d4e8' }}
+                  style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
                 >
                   {filename}
                 </p>
                 {folder && (
-                  <p className="text-xs truncate mt-0.5" style={{ color: isActive ? '#7a75c4' : '#4a5568' }}>
+                  <p className="text-xs truncate mt-0.5" style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}>
                     📁 {folder}
                   </p>
                 )}
@@ -133,7 +133,7 @@ export default function NotesSidebar({ currentId }: Props) {
       {!isLoading && (
         <div
           className="px-4 py-2 border-t text-xs flex-shrink-0"
-          style={{ borderColor: '#2a2a4a', color: '#4a5568' }}
+          style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
         >
           {filtered.length} {filtered.length === 1 ? 'note' : 'notes'}
           {search && notes.length !== filtered.length && ` of ${notes.length}`}

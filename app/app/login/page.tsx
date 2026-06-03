@@ -3,6 +3,9 @@
 import { Suspense, useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import Link from 'next/link';
+import Logo from '@/components/ui/Logo';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 
 function ProtonIcon() {
   return (
@@ -42,7 +45,6 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
 
-  // Already signed in — full reload so middleware re-reads the session cookie
   useEffect(() => {
     if (status === 'authenticated') {
       window.location.href = '/dashboard';
@@ -70,43 +72,27 @@ function LoginForm() {
     setLoading(false);
     if (result?.error) {
       setError(result.error);
-      initFlow()
-        .then(setFlowId)
-        .catch(() => {});
+      initFlow().then(setFlowId).catch(() => {});
     } else {
       window.location.href = '/dashboard';
     }
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: '#1a1a2e' }}
-    >
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-base)' }}>
       <div
         className="w-full max-w-md rounded-2xl border p-8"
-        style={{ background: '#16213e', borderColor: '#2a2a4a' }}
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-2 mb-8">
-          <span
-            className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold"
-            style={{ background: '#7F77DD' }}
-          >
-            R
-          </span>
-          <span className="font-bold text-lg" style={{ color: '#e0e0e0' }}>
-            REXFORM
-          </span>
-          <span className="font-bold text-lg" style={{ color: '#7F77DD' }}>
-            · Notes
-          </span>
+          <Logo />
         </div>
 
-        <h1 className="text-2xl font-bold mb-1" style={{ color: '#e0e0e0' }}>
+        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
           Welcome back
         </h1>
-        <p className="text-sm mb-6" style={{ color: '#8892a4' }}>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
           Sign in to your workspace
         </p>
 
@@ -116,18 +102,18 @@ function LoginForm() {
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium mb-5 transition-colors hover:border-[#6D4AFF]/60"
-          style={{ background: '#1a1a2e', borderColor: '#3a3560', color: '#c8c4f0' }}
+          style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
         >
           <ProtonIcon />
           Continue with Proton
         </a>
 
         <div className="flex items-center gap-3 mb-5">
-          <div className="flex-1 h-px" style={{ background: '#2a2a4a' }} />
-          <span className="text-xs" style={{ color: '#4a5568' }}>
+          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             or sign in with email
           </span>
-          <div className="flex-1 h-px" style={{ background: '#2a2a4a' }} />
+          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
         </div>
 
         {error && (
@@ -140,55 +126,39 @@ function LoginForm() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@example.com"
-              className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all"
-              style={{ background: '#1a1a2e', borderColor: '#2a2a4a', color: '#e0e0e0' }}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-              Password
-            </label>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-              className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none transition-all"
-              style={{ background: '#1a1a2e', borderColor: '#2a2a4a', color: '#e0e0e0' }}
-            />
-          </div>
-          <button
+          <Input
+            label="Email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="you@example.com"
+          />
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            placeholder="••••••••"
+          />
+          <Button
             type="submit"
-            disabled={loading || flowLoading}
-            className="w-full py-2.5 rounded-lg font-medium text-sm transition-opacity disabled:opacity-50"
-            style={{ background: '#7F77DD', color: '#fff' }}
+            disabled={flowLoading}
+            loading={loading}
+            className="w-full"
           >
             {loading ? 'Signing in…' : 'Sign in'}
-          </button>
+          </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm" style={{ color: '#8892a4' }}>
+        <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
           Don&apos;t have an account?{' '}
-          <Link
-            href="/register"
-            className="font-medium hover:underline"
-            style={{ color: '#7F77DD' }}
-          >
+          <Link href="/register" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
             Create one
           </Link>
         </p>

@@ -14,12 +14,12 @@ interface NoteEditorProps {
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const TOOLBAR = [
-  { label: 'B',   title: 'Bold',        before: '**',  after: '**' },
-  { label: 'I',   title: 'Italic',      before: '*',   after: '*'  },
-  { label: 'H2',  title: 'Heading',     before: '## ', after: ''   },
-  { label: '•',   title: 'Bullet list', before: '- ',  after: ''   },
+  { label: 'B',    title: 'Bold',        before: '**',    after: '**' },
+  { label: 'I',    title: 'Italic',      before: '*',     after: '*'  },
+  { label: 'H2',   title: 'Heading',     before: '## ',   after: ''   },
+  { label: '•',    title: 'Bullet list', before: '- ',    after: ''   },
   { label: '</>',  title: 'Code block',  before: '```\n', after: '\n```' },
-  { label: '🔗',  title: 'Link',        before: '[',   after: '](url)' },
+  { label: '🔗',   title: 'Link',        before: '[',     after: '](url)' },
 ];
 
 export default function NoteEditor({ noteId, initialContent, onChange, onSave }: NoteEditorProps) {
@@ -98,15 +98,15 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
     idle: '', saving: 'Saving…', saved: 'Saved ✓', error: 'Error saving',
   };
   const statusColor: Record<SaveStatus, string> = {
-    idle: '', saving: '#8892a4', saved: '#4ade80', error: '#f87171',
+    idle: '', saving: 'var(--text-secondary)', saved: '#4ade80', error: '#f87171',
   };
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#1a1a2e' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--bg-base)' }}>
       {/* Toolbar */}
       <div
         className="flex items-center gap-1 px-3 py-2 border-b flex-shrink-0"
-        style={{ background: '#16213e', borderColor: '#2a2a4a' }}
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         {TOOLBAR.map((btn) => (
           <button
@@ -114,7 +114,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
             title={btn.title}
             onClick={() => insertMarkdown(btn.before, btn.after)}
             className="px-2 py-1 rounded text-xs font-medium hover:opacity-80 transition-opacity"
-            style={{ background: '#2a2a4a', color: '#e0e0e0', minWidth: 28 }}
+            style={{ background: 'var(--border)', color: 'var(--text-primary)', minWidth: 28 }}
           >
             {btn.label}
           </button>
@@ -125,7 +125,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
         <button
           onClick={() => setPreview((p) => !p)}
           className="px-3 py-1 rounded text-xs font-medium border"
-          style={{ borderColor: '#7F77DD', color: '#7F77DD' }}
+          style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
         >
           {preview ? 'Edit' : 'Preview'}
         </button>
@@ -135,7 +135,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
             <button
               onClick={handleManualSave}
               className="px-3 py-1 rounded text-xs font-medium"
-              style={{ background: '#7F77DD', color: '#fff' }}
+              style={{ background: 'var(--accent)', color: '#fff' }}
             >
               Save
             </button>
@@ -159,7 +159,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
       {preview ? (
         <div
           className="flex-1 overflow-y-auto px-6 py-4 prose"
-          style={{ color: '#e0e0e0' }}
+          style={{ color: 'var(--text-primary)' }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         </div>
@@ -169,7 +169,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
           value={content}
           onChange={(e) => handleChange(e.target.value)}
           className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
-          style={{ background: '#1a1a2e', color: '#e0e0e0', caretColor: '#7F77DD' }}
+          style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
           placeholder="Start writing in Markdown…"
           spellCheck={false}
         />

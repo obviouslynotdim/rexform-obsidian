@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import NoteEditor from '@/components/NoteEditor';
 import Link from 'next/link';
+import Button from '@/components/ui/Button';
 
 export default function NewNotePage() {
   const [title, setTitle] = useState('');
@@ -35,7 +36,7 @@ export default function NewNotePage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-56px)]" style={{ background: '#1a1a2e' }}>
+    <div className="flex h-[calc(100vh-56px)]" style={{ background: 'var(--bg-base)' }}>
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-8 py-10">
           {/* Title input */}
@@ -47,7 +48,7 @@ export default function NewNotePage() {
               onChange={(e) => { setTitle(e.target.value); setError(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
               className="w-full text-3xl font-bold bg-transparent outline-none border-b pb-3"
-              style={{ color: '#f0f0f0', borderColor: '#2a2a4a', caretColor: '#7F77DD' }}
+              style={{ color: 'var(--text-primary)', borderColor: 'var(--border)', caretColor: 'var(--accent)' }}
               autoFocus
             />
             {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
@@ -56,7 +57,7 @@ export default function NewNotePage() {
           {/* Editor */}
           <div
             className="rounded-xl overflow-hidden border"
-            style={{ height: '55vh', borderColor: '#2a2a4a' }}
+            style={{ height: '55vh', borderColor: 'var(--border)' }}
           >
             <NoteEditor
               noteId="new"
@@ -67,18 +68,13 @@ export default function NewNotePage() {
 
           {/* Actions */}
           <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleCreate}
-              disabled={saving}
-              className="px-6 py-2 rounded-lg font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-              style={{ background: '#7F77DD', color: '#fff' }}
-            >
+            <Button onClick={handleCreate} loading={saving}>
               {saving ? 'Creating…' : 'Create Note'}
-            </button>
+            </Button>
             <Link
               href="/notes"
-              className="px-6 py-2 rounded-lg font-medium border"
-              style={{ borderColor: '#2a2a4a', color: '#8892a4' }}
+              className="px-6 py-2 rounded-lg font-medium border text-sm"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
             >
               Cancel
             </Link>

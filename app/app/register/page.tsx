@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Logo from '@/components/ui/Logo';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 
 function passwordStrength(pw: string): number {
   if (!pw) return 0;
@@ -43,6 +46,7 @@ export default function RegisterPage() {
   useEffect(() => {
     if (status === 'authenticated') router.replace('/dashboard');
   }, [status, router]);
+
   const [flowId, setFlowId] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -88,14 +92,11 @@ export default function RegisterPage() {
         } else {
           setGlobalError(globalMsg);
         }
-        initFlow()
-          .then(setFlowId)
-          .catch(() => {});
+        initFlow().then(setFlowId).catch(() => {});
         setLoading(false);
         return;
       }
 
-      // Auto sign-in after successful registration
       const loginFlowRes = await fetch('/api/auth/kratos/flow?type=login');
       const loginFlow = await loginFlowRes.json();
       const result = await signIn('credentials', {
@@ -123,32 +124,21 @@ export default function RegisterPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-10"
-      style={{ background: '#1a1a2e' }}
+      style={{ background: 'var(--bg-base)' }}
     >
       <div
         className="w-full max-w-md rounded-2xl border p-8"
-        style={{ background: '#16213e', borderColor: '#2a2a4a' }}
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-2 mb-8">
-          <span
-            className="w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold"
-            style={{ background: '#7F77DD' }}
-          >
-            R
-          </span>
-          <span className="font-bold text-lg" style={{ color: '#e0e0e0' }}>
-            REXFORM
-          </span>
-          <span className="font-bold text-lg" style={{ color: '#7F77DD' }}>
-            · Notes
-          </span>
+          <Logo />
         </div>
 
-        <h1 className="text-2xl font-bold mb-1" style={{ color: '#e0e0e0' }}>
+        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
           Create your account
         </h1>
-        <p className="text-sm mb-6" style={{ color: '#8892a4' }}>
+        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
           Your personal knowledge base awaits
         </p>
 
@@ -158,18 +148,18 @@ export default function RegisterPage() {
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium mb-5 transition-colors hover:border-[#6D4AFF]/60"
-          style={{ background: '#1a1a2e', borderColor: '#3a3560', color: '#c8c4f0' }}
+          style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
         >
           <ProtonIcon />
           Sign up with Proton
         </a>
 
         <div className="flex items-center gap-3 mb-5">
-          <div className="flex-1 h-px" style={{ background: '#2a2a4a' }} />
-          <span className="text-xs" style={{ color: '#4a5568' }}>
+          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
             or register with email
           </span>
-          <div className="flex-1 h-px" style={{ background: '#2a2a4a' }} />
+          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
         </div>
 
         {globalError && (
@@ -183,85 +173,41 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-                First name
-              </label>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-                placeholder="John"
-                className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none"
-                style={{
-                  background: '#1a1a2e',
-                  borderColor: errors['traits.name.first'] ? '#ef4444' : '#2a2a4a',
-                  color: '#e0e0e0',
-                }}
-              />
-              {errors['traits.name.first'] && (
-                <p className="text-xs mt-1" style={{ color: '#f87171' }}>
-                  {errors['traits.name.first']}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-                Last name
-              </label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                required
-                placeholder="Doe"
-                className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none"
-                style={{
-                  background: '#1a1a2e',
-                  borderColor: errors['traits.name.last'] ? '#ef4444' : '#2a2a4a',
-                  color: '#e0e0e0',
-                }}
-              />
-              {errors['traits.name.last'] && (
-                <p className="text-xs mt-1" style={{ color: '#f87171' }}>
-                  {errors['traits.name.last']}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+            <Input
+              label="First name"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               required
-              placeholder="you@example.com"
-              className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none"
-              style={{
-                background: '#1a1a2e',
-                borderColor: errors['traits.email'] ? '#ef4444' : '#2a2a4a',
-                color: '#e0e0e0',
-              }}
+              placeholder="John"
+              error={errors['traits.name.first']}
             />
-            {errors['traits.email'] && (
-              <p className="text-xs mt-1" style={{ color: '#f87171' }}>
-                {errors['traits.email']}
-              </p>
-            )}
+            <Input
+              label="Last name"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+              placeholder="Doe"
+              error={errors['traits.name.last']}
+            />
           </div>
 
+          <Input
+            label="Email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="you@example.com"
+            error={errors['traits.email']}
+          />
+
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: '#8892a4' }}>
-              Password
-            </label>
-            <input
+            <Input
+              label="Password"
               type="password"
               name="password"
               autoComplete="new-password"
@@ -269,42 +215,32 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               placeholder="••••••••"
-              className="w-full px-4 py-2.5 rounded-lg border text-sm outline-none"
-              style={{
-                background: '#1a1a2e',
-                borderColor: errors['password'] ? '#ef4444' : '#2a2a4a',
-                color: '#e0e0e0',
-              }}
+              error={errors['password']}
             />
             <div className="flex gap-1 mt-2">
               {[1, 2, 3, 4].map((seg) => (
                 <div
                   key={seg}
                   className="h-1 flex-1 rounded-full transition-all duration-300"
-                  style={{ background: strength >= seg ? '#7F77DD' : '#2a2a4a' }}
+                  style={{ background: strength >= seg ? 'var(--accent)' : 'var(--border)' }}
                 />
               ))}
             </div>
-            {errors['password'] && (
-              <p className="text-xs mt-1" style={{ color: '#f87171' }}>
-                {errors['password']}
-              </p>
-            )}
           </div>
 
-          <button
+          <Button
             type="submit"
-            disabled={loading || !flowId}
-            className="w-full py-2.5 rounded-lg font-medium text-sm transition-opacity disabled:opacity-50 mt-2"
-            style={{ background: '#7F77DD', color: '#fff' }}
+            disabled={!flowId}
+            loading={loading}
+            className="w-full mt-2"
           >
             {loading ? 'Creating account…' : 'Create account'}
-          </button>
+          </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm" style={{ color: '#8892a4' }}>
+        <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
           Already have an account?{' '}
-          <Link href="/login" className="font-medium hover:underline" style={{ color: '#7F77DD' }}>
+          <Link href="/login" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
             Sign in
           </Link>
         </p>

@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
 
 interface VaultInfo {
   exists: boolean;
@@ -100,33 +102,29 @@ export default function AdminPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#1a1a2e' }}>
-        <div className="text-sm animate-pulse" style={{ color: '#8892a4' }}>Loading admin panel…</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading admin panel…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-8" style={{ background: '#1a1a2e' }}>
+    <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
       <div className="max-w-5xl mx-auto">
 
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold mb-1" style={{ color: '#e0e0e0' }}>
+            <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
               Admin Panel
             </h1>
-            <p className="text-sm" style={{ color: '#8892a4' }}>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               {users.length} registered {users.length === 1 ? 'user' : 'users'}
             </p>
           </div>
-          <button
-            onClick={load}
-            className="px-4 py-2 rounded-lg text-sm border transition-colors hover:bg-white/5"
-            style={{ borderColor: '#2a2a4a', color: '#8892a4' }}
-          >
+          <Button variant="ghost" size="sm" onClick={load}>
             ↻ Refresh
-          </button>
+          </Button>
         </div>
 
         {error && (
@@ -142,27 +140,23 @@ export default function AdminPage() {
             { label: 'Active Vaults', value: users.filter((u) => u.vault.exists).length },
             { label: 'Missing Vaults', value: users.filter((u) => !u.vault.exists && !u.isAdmin).length },
           ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-xl p-5 border"
-              style={{ background: '#16213e', borderColor: '#2a2a4a' }}
-            >
-              <p className="text-xs mb-1" style={{ color: '#8892a4' }}>{stat.label}</p>
-              <p className="text-3xl font-bold" style={{ color: '#7F77DD' }}>{stat.value}</p>
-            </div>
+            <Card key={stat.label} className="p-5">
+              <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{stat.label}</p>
+              <p className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{stat.value}</p>
+            </Card>
           ))}
         </div>
 
         {/* User table */}
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#2a2a4a' }}>
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: '#16213e', borderBottom: '1px solid #2a2a4a' }}>
+              <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
                 {['Email', 'Registered', 'Vault', 'Notes', 'Actions'].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: '#8892a4' }}
+                    style={{ color: 'var(--text-secondary)' }}
                   >
                     {h}
                   </th>
@@ -181,20 +175,20 @@ export default function AdminPage() {
                   <tr
                     key={user.id}
                     style={{
-                      background: i % 2 === 0 ? '#1a1a2e' : '#16213e',
-                      borderBottom: '1px solid #2a2a4a',
+                      background: i % 2 === 0 ? 'var(--bg-base)' : 'var(--bg-surface)',
+                      borderBottom: '1px solid var(--border)',
                     }}
                   >
                     {/* Email */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <span style={{ color: '#e0e0e0' }}>{user.email}</span>
-                        {user.isAdmin && <Badge color="#7F77DD">admin</Badge>}
+                        <span style={{ color: 'var(--text-primary)' }}>{user.email}</span>
+                        {user.isAdmin && <Badge color="var(--accent)">admin</Badge>}
                         {user.state !== 'active' && (
                           <Badge color="#f87171">{user.state}</Badge>
                         )}
                       </div>
-                      <p className="text-xs mt-0.5 font-mono" style={{ color: '#4a5568' }}>
+                      <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
                         {user.id.slice(0, 8)}…
                       </p>
                       {rowErr && (
@@ -203,14 +197,14 @@ export default function AdminPage() {
                     </td>
 
                     {/* Registered */}
-                    <td className="px-4 py-3" style={{ color: '#8892a4' }}>
+                    <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>
                       {formatDate(user.createdAt)}
                     </td>
 
                     {/* Vault status */}
                     <td className="px-4 py-3">
                       {user.isAdmin ? (
-                        <Badge color="#7F77DD">obsidian</Badge>
+                        <Badge color="var(--accent)">obsidian</Badge>
                       ) : user.vault.exists ? (
                         <Badge color="#4ade80">✓ active</Badge>
                       ) : (
@@ -219,7 +213,7 @@ export default function AdminPage() {
                     </td>
 
                     {/* Note count */}
-                    <td className="px-4 py-3" style={{ color: '#8892a4' }}>
+                    <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>
                       {user.isAdmin ? '—' : user.vault.exists ? user.vault.docCount : '—'}
                     </td>
 
@@ -227,26 +221,25 @@ export default function AdminPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {!user.isAdmin && !user.vault.exists && (
-                          <button
+                          <Button
+                            size="sm"
+                            loading={provState === 'loading'}
                             onClick={() => provision(user.id)}
-                            disabled={provState === 'loading'}
-                            className="px-3 py-1 rounded text-xs font-medium disabled:opacity-50 transition-opacity hover:opacity-80"
-                            style={{ background: '#7F77DD', color: '#fff' }}
                           >
                             {provState === 'loading' ? 'Creating…' : 'Provision'}
-                          </button>
+                          </Button>
                         )}
                         {!user.isAdmin && user.vault.exists && (
-                          <button
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={delState === 'loading'}
                             onClick={() => deleteVault(user.id, user.email)}
-                            disabled={delState === 'loading'}
-                            className="px-3 py-1 rounded text-xs font-medium disabled:opacity-50 transition-opacity hover:opacity-80"
-                            style={{ background: '#2d1a1a', color: '#f87171' }}
                           >
                             {delState === 'loading' ? 'Deleting…' : 'Delete Vault'}
-                          </button>
+                          </Button>
                         )}
-                        {!user.isAdmin && !user.vault.exists && user.vault.exists === false && provState === 'done' && (
+                        {!user.isAdmin && !user.vault.exists && provState === 'done' && (
                           <span className="text-xs" style={{ color: '#4ade80' }}>✓ created</span>
                         )}
                       </div>
@@ -258,13 +251,13 @@ export default function AdminPage() {
           </table>
 
           {users.length === 0 && !loading && (
-            <div className="p-8 text-center text-sm" style={{ color: '#4a5568' }}>
+            <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
               No users found
             </div>
           )}
         </div>
 
-        <p className="mt-4 text-xs" style={{ color: '#4a5568' }}>
+        <p className="mt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
           Note count includes all CouchDB documents (parent + chunks). Actual notes = roughly half.
         </p>
       </div>

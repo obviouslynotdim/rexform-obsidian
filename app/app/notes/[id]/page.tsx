@@ -48,7 +48,7 @@ export default async function NotePage({ params }: Props) {
     : [];
 
   return (
-    <div className="flex h-[calc(100vh-56px)]" style={{ background: '#1a1a2e' }}>
+    <div className="flex h-[calc(100vh-56px)]" style={{ background: 'var(--bg-base)' }}>
       <NotesSidebar currentId={id} />
 
       <div className="flex-1 overflow-y-auto">
@@ -58,7 +58,7 @@ export default async function NotePage({ params }: Props) {
               <p className="text-red-400 font-medium">Error loading note</p>
               <p className="text-red-300/70 text-sm mt-1">{error}</p>
             </div>
-            <Link href="/notes" className="mt-4 inline-block text-sm" style={{ color: '#7F77DD' }}>
+            <Link href="/notes" className="mt-4 inline-block text-sm" style={{ color: 'var(--accent)' }}>
               ← Back to notes
             </Link>
           </div>

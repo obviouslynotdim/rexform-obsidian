@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
@@ -25,9 +27,9 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="min-h-screen p-8" style={{ background: '#1a1a2e' }}>
+    <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6" style={{ color: '#e0e0e0' }}>
+        <h1 className="text-2xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>
           Search Notes
         </h1>
 
@@ -37,60 +39,50 @@ export default function SearchPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title or content..."
-            className="flex-1 px-4 py-3 rounded-xl border outline-none text-sm"
-            style={{ background: '#16213e', borderColor: '#2a2a4a', color: '#e0e0e0' }}
-            onFocus={(e) => (e.target.style.borderColor = '#7F77DD')}
-            onBlur={(e) => (e.target.style.borderColor = '#2a2a4a')}
+            className="flex-1 px-4 py-3 rounded-xl border outline-none text-sm transition-all"
+            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+            onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+            onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
             autoFocus
           />
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-6 py-3 rounded-xl font-medium text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ background: '#7F77DD', color: '#fff' }}
-          >
+          <Button type="submit" loading={loading} size="lg" className="rounded-xl">
             {loading ? 'Searching...' : 'Search'}
-          </button>
+          </Button>
         </form>
 
         {loading && (
-          <div className="text-center py-10" style={{ color: '#8892a4' }}>
+          <div className="text-center py-10" style={{ color: 'var(--text-secondary)' }}>
             Searching...
           </div>
         )}
 
         {!loading && searched && results.length === 0 && (
-          <div className="text-center py-10" style={{ color: '#8892a4' }}>
+          <div className="text-center py-10" style={{ color: 'var(--text-secondary)' }}>
             No results found for &quot;{query}&quot;
           </div>
         )}
 
         {!loading && results.length > 0 && (
           <div>
-            <p className="text-sm mb-4" style={{ color: '#8892a4' }}>
+            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
               {results.length} result{results.length !== 1 ? 's' : ''} for &quot;{query}&quot;
             </p>
             <div className="space-y-3">
               {results.map((note: any) => (
-                <Link
-                  key={note._id}
-                  href={`/notes/${encodeURIComponent(note._id)}`}
-                  className="block rounded-xl p-5 border transition-colors"
-                  style={{ background: '#16213e', borderColor: '#2a2a4a' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#7F77DD')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#2a2a4a')}
-                >
-                  <h3 className="font-medium mb-1" style={{ color: '#e0e0e0' }}>
-                    {note.title || note._id}
-                  </h3>
-                  {note.snippet && (
-                    <p className="text-sm line-clamp-3" style={{ color: '#8892a4' }}>
-                      {note.snippet}
+                <Link key={note._id} href={`/notes/${encodeURIComponent(note._id)}`} className="block">
+                  <Card hover className="p-5">
+                    <h3 className="font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+                      {note.title || note._id}
+                    </h3>
+                    {note.snippet && (
+                      <p className="text-sm line-clamp-3" style={{ color: 'var(--text-secondary)' }}>
+                        {note.snippet}
+                      </p>
+                    )}
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                      {note._id}
                     </p>
-                  )}
-                  <p className="text-xs mt-2" style={{ color: '#4a5568' }}>
-                    {note._id}
-                  </p>
+                  </Card>
                 </Link>
               ))}
             </div>
@@ -100,7 +92,7 @@ export default function SearchPage() {
         {!searched && (
           <div className="text-center py-16">
             <div className="text-5xl mb-4">🔍</div>
-            <p style={{ color: '#8892a4' }}>Enter a query to search your notes</p>
+            <p style={{ color: 'var(--text-secondary)' }}>Enter a query to search your notes</p>
           </div>
         )}
       </div>
