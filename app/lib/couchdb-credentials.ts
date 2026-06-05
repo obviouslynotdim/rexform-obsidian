@@ -21,11 +21,27 @@ export interface CouchDbCredentials {
   password: string;
 }
 
+async function ensureUsersDb(): Promise<void> {
+  const auth = adminAuthHeader();
+  const res = await fetch(`${COUCHDB_INTERNAL_URL}/_users`, {
+    method: 'PUT',
+    headers: { Authorization: auth },
+  });
+  // 201 = created, 412 = already exists — both are fine
+  if (!res.ok && res.status !== 412) {
+    const text = await res.text();
+    console.warn(`[credentials] could not ensure _users db: ${res.status} ${text}`);
+  }
+}
+
 export async function provisionUserCredentials(userId: string): Promise<CouchDbCredentials> {
   const password = generatePassword();
   const docId = `org.couchdb.user:${userId}`;
   const url = `${COUCHDB_INTERNAL_URL}/_users/${encodeURIComponent(docId)}`;
   const auth = adminAuthHeader();
+
+  // Ensure the _users system database exists (CouchDB may not have been initialized with it)
+  await ensureUsersDb();
 
   // Get existing doc rev if user already exists
   let rev: string | undefined;
