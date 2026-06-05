@@ -5,4 +5,4 @@ COPY keto.yml /etc/config/keto/keto.yml
 EXPOSE 4466 4467
 
 ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["keto migrate up --config /etc/config/keto/keto.yml && keto serve --config /etc/config/keto/keto.yml"]
+CMD ["echo y | keto migrate up --config /etc/config/keto/keto.yml && keto serve --config /etc/config/keto/keto.yml"]
