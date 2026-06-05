@@ -21,6 +21,40 @@ export interface CouchDbCredentials {
   password: string;
 }
 
+async function setConfig(section: string, key: string, value: string): Promise<void> {
+  const auth = adminAuthHeader();
+  // Try /_node/nonode@nohost/_config first (CouchDB 3.x), fall back to /_config
+  for (const base of ['/_node/nonode@nohost/_config', '/_config']) {
+    const res = await fetch(`${COUCHDB_INTERNAL_URL}${base}/${section}/${key}`, {
+      method: 'PUT',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+    });
+    if (res.ok) return;
+    if (res.status !== 404) {
+      console.warn(`[credentials] config ${base}/${section}/${key}: ${res.status}`);
+      return;
+    }
+  }
+}
+
+/**
+ * Configures CouchDB CORS so Obsidian LiveSync (browser/mobile) can connect.
+ * Safe to call repeatedly — CouchDB returns 200 if value is already set.
+ */
+export async function configureCouchDbCors(): Promise<void> {
+  try {
+    await setConfig('httpd', 'enable_cors', 'true');
+    await setConfig('cors', 'origins', '*');
+    await setConfig('cors', 'credentials', 'true');
+    await setConfig('cors', 'headers', 'accept, authorization, content-type, origin, referer');
+    await setConfig('cors', 'methods', 'GET, PUT, POST, HEAD, DELETE');
+    console.log('[credentials] CouchDB CORS configured');
+  } catch (e) {
+    console.warn('[credentials] CORS configuration failed:', e);
+  }
+}
+
 async function ensureUsersDb(): Promise<void> {
   const auth = adminAuthHeader();
   const res = await fetch(`${COUCHDB_INTERNAL_URL}/_users`, {
@@ -32,6 +66,26 @@ async function ensureUsersDb(): Promise<void> {
     const text = await res.text();
     console.warn(`[credentials] could not ensure _users db: ${res.status} ${text}`);
   }
+  // Configure CORS at the same time — idempotent
+  await configureCouchDbCors();
+}
+
+async function ensureVaultAccess(userId: string): Promise<void> {
+  const auth = adminAuthHeader();
+  const vaultName = `vault-${userId}`;
+  const secRes = await fetch(`${COUCHDB_INTERNAL_URL}/${vaultName}/_security`, {
+    method: 'PUT',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      admins: { names: ['admin'], roles: ['_admin'] },
+      members: { names: [userId], roles: [] },
+    }),
+  });
+  if (!secRes.ok) {
+    const text = await secRes.text();
+    console.error(`[credentials] _security update failed for ${vaultName}: ${secRes.status} ${text}`);
+    throw new Error(`Could not grant vault access: ${secRes.status}`);
+  }
 }
 
 export async function provisionUserCredentials(userId: string): Promise<CouchDbCredentials> {
@@ -40,7 +94,7 @@ export async function provisionUserCredentials(userId: string): Promise<CouchDbC
   const url = `${COUCHDB_INTERNAL_URL}/_users/${encodeURIComponent(docId)}`;
   const auth = adminAuthHeader();
 
-  // Ensure the _users system database exists (CouchDB may not have been initialized with it)
+  // Ensure _users db exists and CORS is configured
   await ensureUsersDb();
 
   // Get existing doc rev if user already exists
@@ -57,7 +111,7 @@ export async function provisionUserCredentials(userId: string): Promise<CouchDbC
     password,
     roles: [],
     type: 'user',
-    livesync_password: password, // stored for later retrieval since CouchDB hashes the password field
+    livesync_password: password,
   };
   if (rev) body._rev = rev;
 
@@ -72,19 +126,8 @@ export async function provisionUserCredentials(userId: string): Promise<CouchDbC
     throw new Error(`Failed to provision CouchDB user: ${res.status} ${text}`);
   }
 
-  // Grant this user direct access to their vault (for Obsidian LiveSync)
-  const vaultName = `vault-${userId}`;
-  const secRes = await fetch(`${COUCHDB_INTERNAL_URL}/${vaultName}/_security`, {
-    method: 'PUT',
-    headers: { Authorization: auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      admins: { names: ['admin'], roles: ['_admin'] },
-      members: { names: [userId], roles: [] },
-    }),
-  });
-  if (!secRes.ok) {
-    console.warn(`[credentials] could not update _security for ${vaultName}: ${secRes.status}`);
-  }
+  // Grant vault access — throws if it fails so the caller knows
+  await ensureVaultAccess(userId);
 
   return { username: userId, password };
 }
@@ -111,7 +154,6 @@ export async function regenerateCredentials(userId: string): Promise<CouchDbCred
 
   const existing = await fetch(url, { headers: { Authorization: auth } });
   if (!existing.ok) {
-    // User doesn't exist yet — provision fresh
     return provisionUserCredentials(userId);
   }
 
@@ -127,6 +169,11 @@ export async function regenerateCredentials(userId: string): Promise<CouchDbCred
     const text = await res.text();
     throw new Error(`Failed to regenerate credentials: ${res.status} ${text}`);
   }
+
+  // Re-confirm vault access on regeneration too
+  await ensureVaultAccess(userId).catch((e) =>
+    console.warn('[credentials] vault access re-check failed:', e.message)
+  );
 
   return { username: userId, password };
 }

@@ -63,6 +63,7 @@ export default function SettingsPage() {
   const [creds, setCreds] = useState<Credentials | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState('');
 
   const loadCreds = useCallback(async () => {
@@ -102,6 +103,24 @@ export default function SettingsPage() {
       setError(e.message);
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const repairConnection = async () => {
+    setRepairing(true);
+    setError('');
+    try {
+      // Re-provision triggers CORS config + vault access grant
+      const res = await fetch('/api/user/credentials', { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Repair failed');
+      }
+      setCreds(await res.json());
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -170,18 +189,41 @@ export default function SettingsPage() {
               <CredentialRow label="Password" value={creds.password} secret />
             </div>
 
-            <div className="flex items-center justify-between">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Regenerating creates a new password — update it in Obsidian to keep syncing.
+            <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--bg-base)', border: '1px solid var(--border)' }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                LiveSync plugin settings
               </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={regenerating}
-                onClick={regenerate}
-              >
-                Regenerate Password
-              </Button>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                In Obsidian → Self-hosted LiveSync → Remote Database Configuration, set:
+                <br />• <strong>URI</strong>: the Server URL above
+                <br />• <strong>Username / Password</strong>: as shown
+                <br />• <strong>Database name</strong>: the Database value above
+                <br />• Leave <strong>Passphrase</strong> empty unless you want end-to-end encryption
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                If Obsidian shows "access forbidden", click Repair to re-configure CouchDB access.
+              </p>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={repairing}
+                  onClick={repairConnection}
+                >
+                  {repairing ? 'Repairing…' : 'Repair Connection'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={regenerating}
+                  onClick={regenerate}
+                >
+                  Regenerate Password
+                </Button>
+              </div>
             </div>
           </Card>
         )}

@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getUserCredentials, provisionUserCredentials, regenerateCredentials } from '@/lib/couchdb-credentials';
+import {
+  getUserCredentials,
+  provisionUserCredentials,
+  regenerateCredentials,
+  configureCouchDbCors,
+} from '@/lib/couchdb-credentials';
 import { isAdminUser } from '@/lib/vault';
 
 export async function GET() {
@@ -23,6 +28,9 @@ export async function GET() {
       console.error('[credentials] auto-provision failed:', e.message);
       return NextResponse.json({ error: `Failed to provision credentials: ${e.message}` }, { status: 500 });
     }
+  } else {
+    // Ensure CORS is configured every time settings are opened — idempotent, cheap
+    configureCouchDbCors().catch(() => {});
   }
 
   const couchDbUrl = process.env.COUCHDB_URL || '';
