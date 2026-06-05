@@ -90,6 +90,10 @@ export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
+  const [userTotal, setUserTotal] = useState(0);
+  const [userTotalPages, setUserTotalPages] = useState(1);
+  const [adminPage, setAdminPage] = useState(1);
+  const USER_PAGE_LIMIT = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actions, setActions] = useState<Record<string, ActionState>>({});
@@ -109,21 +113,24 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (page = adminPage) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch(`/api/admin/users?page=${page}&limit=${USER_PAGE_LIMIT}`);
       if (res.status === 403) { router.replace('/dashboard'); return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load');
       setUsers(data.users);
+      setUserTotal(data.total ?? 0);
+      setUserTotalPages(data.totalPages ?? 1);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, adminPage]);
 
   const loadSharedVaults = useCallback(async () => {
     setSharedVaultsLoading(true);
@@ -179,13 +186,21 @@ export default function AdminPage() {
     }
   };
 
-  const deleteVault = async (userId: string, email: string) => {
-    if (!confirm(`Delete vault for ${email}? All their notes will be permanently erased.`)) return;
+  const deleteUser = async (userId: string, email: string) => {
+    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault database, and CouchDB credentials. This cannot be undone.`)) return;
     setActions((p) => ({ ...p, [`del-${userId}`]: 'loading' }));
     try {
       const res = await fetch(`/api/admin/users/${userId}/vault`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!data.success) {
+        const failed = Object.entries(data.results as Record<string, string>)
+          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
+          .map(([k]) => k).join(', ');
+        showToast(`Partial delete — failed steps: ${failed}`, 'error');
+      } else {
+        showToast('User deleted', 'success');
+      }
       setActions((p) => ({ ...p, [`del-${userId}`]: 'done' }));
       await load();
     } catch (e: any) {
@@ -254,10 +269,10 @@ export default function AdminPage() {
               Admin Panel
             </h1>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {users.length} registered {users.length === 1 ? 'user' : 'users'}
+              {userTotal} registered {userTotal === 1 ? 'user' : 'users'}
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => load()}>
             ↻ Refresh
           </Button>
         </div>
@@ -439,18 +454,18 @@ export default function AdminPage() {
                             {provState === 'loading' ? 'Creating…' : 'Provision'}
                           </Button>
                         )}
-                        {!user.isAdmin && user.vault.exists && (
+                        {!user.isAdmin && (
                           <Button
                             size="sm"
                             variant="danger"
                             loading={delState === 'loading'}
-                            onClick={() => deleteVault(user.id, user.email)}
+                            onClick={() => deleteUser(user.id, user.email)}
                           >
-                            {delState === 'loading' ? 'Deleting…' : 'Delete Vault'}
+                            {delState === 'loading' ? 'Deleting…' : 'Delete User'}
                           </Button>
                         )}
                         {!user.isAdmin && !user.vault.exists && provState === 'done' && (
-                          <span className="text-xs" style={{ color: '#4ade80' }}>✓ created</span>
+                          <span className="text-xs" style={{ color: '#4ade80' }}>✓ provisioned</span>
                         )}
                       </div>
                     </td>
@@ -466,6 +481,30 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+        {/* Pagination controls */}
+        {userTotalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Showing {(adminPage - 1) * USER_PAGE_LIMIT + 1}–{Math.min(adminPage * USER_PAGE_LIMIT, userTotal)} of {userTotal} users
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost" size="sm"
+                onClick={() => { setAdminPage((p) => p - 1); load(adminPage - 1); }}
+                disabled={adminPage <= 1}
+              >← Prev</Button>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Page {adminPage} of {userTotalPages}
+              </span>
+              <Button
+                variant="ghost" size="sm"
+                onClick={() => { setAdminPage((p) => p + 1); load(adminPage + 1); }}
+                disabled={adminPage >= userTotalPages}
+              >Next →</Button>
+            </div>
+          </div>
+        )}
 
         <p className="mt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
           Doc count includes parent + chunk documents. Actual notes ≈ half. Vault size = CouchDB active data size.

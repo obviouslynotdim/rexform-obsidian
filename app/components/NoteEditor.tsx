@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useRouter } from 'next/navigation';
+import { mutate } from 'swr';
 
 interface NoteEditorProps {
   noteId: string;
@@ -44,6 +45,8 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
       if (!res.ok) throw new Error('Save failed');
       setSaveStatus('saved');
       onSave?.(text);
+      // Invalidate all paginated notes keys so the sidebar refreshes
+      mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
       setSaveStatus('error');
@@ -87,6 +90,8 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
     try {
       const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/delete`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
+      // Invalidate all paginated notes keys before navigating
+      await mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       router.push('/notes');
       router.refresh();
     } catch {

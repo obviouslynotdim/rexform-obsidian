@@ -37,11 +37,13 @@ export function getUserVault(session: Session | null): string {
 /**
  * Fetch from CouchDB.
  *
- * For the admin vault (obsidian): routes through Oathkeeper in production (validates
- * the Kratos session token), falls back to direct Basic Auth in local dev.
+ * Write operations (PUT/POST/DELETE/PATCH) always bypass Oathkeeper and use
+ * admin credentials directly — session auth is already validated at the Next.js
+ * API layer, and Kratos bearer tokens can expire without invalidating the
+ * NextAuth session (which would silently break all writes via Oathkeeper).
  *
- * For user vaults (vault-<userId>): always uses the internal Railway URL with admin
- * credentials — the Next.js session is already validated server-side before this call.
+ * Read operations on user vaults: direct admin credentials (bypass Oathkeeper).
+ * Read operations on the admin vault: proxied through Oathkeeper in production.
  */
 export async function fetchFromVault(
   dbRelativePath: string,
@@ -50,9 +52,11 @@ export async function fetchFromVault(
   database?: string
 ): Promise<Response> {
   const db = database || DB;
+  const method = ((options?.method as string) ?? 'GET').toUpperCase();
+  const isWrite = ['PUT', 'POST', 'DELETE', 'PATCH'].includes(method);
 
-  // User vaults bypass Oathkeeper — use internal admin credentials
-  if (database && database !== DB) {
+  // Writes + user vaults: bypass Oathkeeper, use admin credentials directly
+  if (isWrite || (database && database !== DB)) {
     const url = `${INTERNAL_URL}/${db}/${dbRelativePath}`;
     const opts: RequestInit = {
       ...options,
@@ -64,9 +68,8 @@ export async function fetchFromVault(
     };
     const res = await fetch(url, opts);
 
-    // Auto-provision missing vault on first access (e.g. users who registered
-    // before vault creation was working, or edge-case failures).
-    if (res.status === 404) {
+    // Auto-provision missing user vault on first access
+    if (res.status === 404 && database && database !== DB) {
       const body = await res.clone().json().catch(() => ({}));
       if (body.reason === 'Database does not exist.') {
         const userId = database.replace(/^vault-/, '');
@@ -79,7 +82,7 @@ export async function fetchFromVault(
     return res;
   }
 
-  // Admin vault in production: route through Oathkeeper with the caller's session token
+  // Read requests to admin vault in production: route through Oathkeeper
   if (PROXY_URL) {
     const headers: Record<string, string> = {};
     if (auth?.authorization) headers['Authorization'] = auth.authorization;
@@ -159,7 +162,7 @@ export function buildPreview(doc: any): string {
 }
 
 export async function getAllNotes(auth?: AuthHeaders, database?: string) {
-  const res = await fetchFromVault('_all_docs?include_docs=true&limit=200', {}, auth, database);
+  const res = await fetchFromVault('_all_docs?include_docs=true&limit=1000', {}, auth, database);
   if (!res.ok) throw new Error(`CouchDB error: ${res.status}`);
   return res.json();
 }

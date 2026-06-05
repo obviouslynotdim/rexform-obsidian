@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminUser } from '@/lib/vault';
@@ -22,7 +22,6 @@ async function getVaultInfo(userId: string) {
     if (res.status === 404) return { exists: false, docCount: 0, dbName, sizeBytes: 0 };
     if (!res.ok) return { exists: false, docCount: 0, dbName, sizeBytes: 0 };
     const info = await res.json();
-    // sizes.active is the live data size; fall back to disk_size for older CouchDB versions
     const sizeBytes: number = info.sizes?.active ?? info.disk_size ?? 0;
     return { exists: true, docCount: info.doc_count ?? 0, dbName, sizeBytes };
   } catch {
@@ -30,16 +29,19 @@ async function getVaultInfo(userId: string) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !isAdminUser(session.user.id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)));
+
   try {
     const { data: identities } = await kratosAdmin.listIdentities({ perPage: 500 });
 
-    const users = await Promise.all(
+    const allUsers = await Promise.all(
       identities.map(async (identity) => {
         const vault = await getVaultInfo(identity.id);
         return {
@@ -53,14 +55,19 @@ export async function GET() {
       })
     );
 
-    // Admin user first, then by creation date desc
-    users.sort((a, b) => {
+    allUsers.sort((a, b) => {
       if (a.isAdmin) return -1;
       if (b.isAdmin) return 1;
       return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     });
 
-    return NextResponse.json({ users });
+    const total = allUsers.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const skip = (safePage - 1) * limit;
+    const users = allUsers.slice(skip, skip + limit);
+
+    return NextResponse.json({ users, total, page: safePage, totalPages });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

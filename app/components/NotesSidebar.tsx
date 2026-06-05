@@ -6,11 +6,7 @@ import { usePathname } from 'next/navigation';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-const SWR_CONFIG = {
-  revalidateOnFocus: false,
-  revalidateOnReconnect: false,
-  dedupingInterval: 30_000,
-} as const;
+const LIMIT = 20;
 
 interface Props {
   currentId?: string;
@@ -19,34 +15,40 @@ interface Props {
 function SkeletonItem({ width }: { width: string }) {
   return (
     <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-      <div
-        className="h-3 rounded mb-1.5 animate-pulse"
-        style={{ background: 'var(--border)', width }}
-      />
-      <div
-        className="h-2 rounded animate-pulse"
-        style={{ background: 'var(--bg-elevated)', width: '38%' }}
-      />
+      <div className="h-3 rounded mb-1.5 animate-pulse" style={{ background: 'var(--border)', width }} />
+      <div className="h-2 rounded animate-pulse" style={{ background: 'var(--bg-elevated)', width: '38%' }} />
     </div>
   );
 }
 
 export default function NotesSidebar({ currentId }: Props) {
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const pathname = usePathname();
-  const { data, isLoading } = useSWR('/api/notes', fetcher, SWR_CONFIG);
+
+  const { data, isLoading } = useSWR(
+    `/api/notes?page=${page}&limit=${LIMIT}`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 0 }
+  );
 
   const notes: any[] = (data?.rows || [])
-    .filter((n: any) => n && !n._deleted && n._id && !n._id.startsWith('_design/') && !!n.path)
-    .sort((a: any, b: any) => (b.mtime ?? 0) - (a.mtime ?? 0));
+    .filter((n: any) => n && !n._deleted && n._id && !n._id.startsWith('_design/') && !!n.path);
 
   const filtered = search.trim()
-    ? notes.filter((n: any) =>
-        (n.path || n._id || '').toLowerCase().includes(search.toLowerCase())
-      )
+    ? notes.filter((n: any) => (n.path || n._id || '').toLowerCase().includes(search.toLowerCase()))
     : notes;
 
+  const total: number = data?.total ?? 0;
+  const totalPages: number = data?.totalPages ?? 1;
+  const hasNext: boolean = data?.hasNext ?? false;
+  const hasPrev: boolean = data?.hasPrev ?? false;
+  const pageStart = (page - 1) * LIMIT + 1;
+  const pageEnd = Math.min(page * LIMIT, total);
+
   const activeId = currentId ?? decodeURIComponent(pathname.replace('/notes/', ''));
+
+  const btnBase = 'px-2 py-1 rounded text-xs font-medium transition-opacity disabled:opacity-30';
 
   return (
     <div
@@ -69,7 +71,7 @@ export default function NotesSidebar({ currentId }: Props) {
         </div>
         <input
           type="text"
-          placeholder="Filter…"
+          placeholder="Filter this page…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full px-3 py-1.5 rounded-lg text-xs outline-none border"
@@ -96,9 +98,7 @@ export default function NotesSidebar({ currentId }: Props) {
             const id = note._id;
             const filename =
               (note.path || id).split('/').pop()?.replace(/\.md$/i, '').replace(/[-_]/g, ' ') || id;
-            const folder = note.path
-              ? (note.path as string).split('/').slice(0, -1).join('/')
-              : '';
+            const folder = note.path ? (note.path as string).split('/').slice(0, -1).join('/') : '';
             const isActive = id === activeId;
 
             return (
@@ -129,14 +129,40 @@ export default function NotesSidebar({ currentId }: Props) {
         )}
       </div>
 
-      {/* Footer */}
-      {!isLoading && (
+      {/* Footer: count + pagination */}
+      {!isLoading && total > 0 && (
         <div
-          className="px-4 py-2 border-t text-xs flex-shrink-0"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          className="px-3 py-2 border-t flex-shrink-0"
+          style={{ borderColor: 'var(--border)' }}
         >
-          {filtered.length} {filtered.length === 1 ? 'note' : 'notes'}
-          {search && notes.length !== filtered.length && ` of ${notes.length}`}
+          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+            {search
+              ? `${filtered.length} match${filtered.length !== 1 ? 'es' : ''} on page`
+              : `Showing ${pageStart}–${pageEnd} of ${total}`}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={!hasPrev}
+                className={btnBase}
+                style={{ background: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                ← Prev
+              </button>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={!hasNext}
+                className={btnBase}
+                style={{ background: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

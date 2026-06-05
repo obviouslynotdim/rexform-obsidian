@@ -28,8 +28,8 @@ export default function NewNotePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create note');
-      // Invalidate sidebar cache so the new note appears immediately
-      await mutate('/api/notes');
+      // Invalidate all paginated notes keys so the sidebar refreshes
+      await mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       router.push(`/notes/${encodeURIComponent(data.id)}`);
       router.refresh();
     } catch (e: any) {
