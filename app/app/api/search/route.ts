@@ -10,11 +10,12 @@ export async function GET(req: NextRequest) {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
 
   try {
+    const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
     const data = await getAllNotes(auth, db);
     const lower = q.toLowerCase();
+
     const results = (data.rows || [])
       .map((row: any) => row.doc)
       .filter((doc: any) => {

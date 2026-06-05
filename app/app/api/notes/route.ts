@@ -19,9 +19,9 @@ export async function GET(req: NextRequest) {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
 
   try {
+    const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
     const data = await getAllNotes(auth, db);
     const notes = (data.rows as { doc: { _id: string; type?: string; path?: string } }[])
       .map((row) => row.doc)

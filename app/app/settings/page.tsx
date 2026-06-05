@@ -74,7 +74,10 @@ export default function SettingsPage() {
         setError('Settings are not available for the admin account.');
         return;
       }
-      if (!res.ok) throw new Error('Failed to load credentials');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load credentials');
+      }
       setCreds(await res.json());
     } catch (e: any) {
       setError(e.message);

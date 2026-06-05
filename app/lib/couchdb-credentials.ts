@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 
+// Use public URL first — Railway internal hostname rejects Basic auth (same as vault.ts)
 const COUCHDB_INTERNAL_URL =
-  process.env.COUCHDB_INTERNAL_URL || process.env.COUCHDB_URL || 'http://localhost:5984';
+  process.env.COUCHDB_URL || process.env.COUCHDB_INTERNAL_URL || 'http://localhost:5984';
 const COUCHDB_ADMIN_USER =
   process.env.COUCHDB_ADMIN_USER || process.env.COUCHDB_USERNAME || 'admin';
 const COUCHDB_ADMIN_PASSWORD =
@@ -51,6 +52,7 @@ export async function provisionUserCredentials(userId: string): Promise<CouchDbC
   });
   if (!res.ok) {
     const text = await res.text();
+    console.error(`[credentials] PUT _users failed for ${userId}: ${res.status} ${text}`);
     throw new Error(`Failed to provision CouchDB user: ${res.status} ${text}`);
   }
 
@@ -75,7 +77,12 @@ export async function getUserCredentials(userId: string): Promise<CouchDbCredent
   const docId = `org.couchdb.user:${userId}`;
   const url = `${COUCHDB_INTERNAL_URL}/_users/${encodeURIComponent(docId)}`;
   const res = await fetch(url, { headers: { Authorization: adminAuthHeader() } });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status !== 404) {
+      console.error(`[credentials] GET _users failed for ${userId}: ${res.status}`);
+    }
+    return null;
+  }
   const data = await res.json();
   if (!data.livesync_password) return null;
   return { username: userId, password: data.livesync_password };

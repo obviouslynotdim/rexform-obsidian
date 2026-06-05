@@ -51,6 +51,20 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
   );
 }
 
+function CopyIdButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(id); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="flex-shrink-0 px-1.5 py-0.5 rounded text-xs transition-colors hover:bg-white/5"
+      style={{ color: copied ? '#4ade80' : 'var(--text-muted)', border: '1px solid var(--border)' }}
+      title="Copy user ID"
+    >
+      {copied ? '✓' : 'Copy'}
+    </button>
+  );
+}
+
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   return (
     <div
@@ -368,9 +382,12 @@ export default function AdminPage() {
                           </button>
                         )}
                       </div>
-                      <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
-                        {user.id.slice(0, 8)}…
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <p className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)', maxWidth: 260 }}>
+                          {user.id}
+                        </p>
+                        <CopyIdButton id={user.id} />
+                      </div>
                       {rowErr && (
                         <p className="text-xs mt-1" style={{ color: '#f87171' }}>{rowErr}</p>
                       )}

@@ -17,8 +17,12 @@ export async function GET() {
 
   let creds = await getUserCredentials(userId);
   if (!creds) {
-    // Auto-provision on first request
-    creds = await provisionUserCredentials(userId);
+    try {
+      creds = await provisionUserCredentials(userId);
+    } catch (e: any) {
+      console.error('[credentials] auto-provision failed:', e.message);
+      return NextResponse.json({ error: `Failed to provision credentials: ${e.message}` }, { status: 500 });
+    }
   }
 
   const couchDbUrl = process.env.COUCHDB_URL || '';

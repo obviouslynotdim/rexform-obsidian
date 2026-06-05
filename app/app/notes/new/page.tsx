@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { mutate } from 'swr';
 import NoteEditor from '@/components/NoteEditor';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
@@ -27,6 +28,8 @@ export default function NewNotePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create note');
+      // Invalidate sidebar cache so the new note appears immediately
+      await mutate('/api/notes');
       router.push(`/notes/${encodeURIComponent(data.id)}`);
       router.refresh();
     } catch (e: any) {
