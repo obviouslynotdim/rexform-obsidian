@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { fetchFromVault, getUserVault, AuthHeaders } from '@/lib/couchdb';
+import { fetchFromVault, AuthHeaders } from '@/lib/couchdb';
+import { getActiveVault } from '@/lib/active-vault';
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
   const auth: AuthHeaders | undefined = session.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getUserVault(session);
+  const db = getActiveVault(session);
 
   let title: string, content: string;
   try {

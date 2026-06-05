@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import Logo from '@/components/ui/Logo';
+import VaultSwitcher from '@/components/VaultSwitcher';
 
 export default function Navbar() {
   const { data: session, status } = useSession();
@@ -51,6 +52,9 @@ export default function Navbar() {
           )}
         </div>
       )}
+
+      {/* Vault switcher */}
+      {session && <VaultSwitcher />}
 
       {/* Right — auth state */}
       <div className="flex items-center gap-2 flex-shrink-0">

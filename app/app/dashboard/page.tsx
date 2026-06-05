@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getDashboardData, getUserVault, AuthHeaders } from '@/lib/couchdb';
+import { getDashboardData, AuthHeaders } from '@/lib/couchdb';
+import { getActiveVault } from '@/lib/active-vault';
 import Card from '@/components/ui/Card';
 
 export default async function DashboardPage() {
@@ -11,7 +12,7 @@ export default async function DashboardPage() {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getUserVault(session);
+  const db = getActiveVault(session);
 
   let data = { total: 0, recentNotes: [] as any[] };
   try {

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllNotes, getUserVault, AuthHeaders } from '@/lib/couchdb';
+import { getAllNotes, AuthHeaders } from '@/lib/couchdb';
+import { getActiveVault } from '@/lib/active-vault';
 
 function isVaultNote(doc: { _id: string; type?: string; path?: string }): boolean {
   const id = doc._id;
@@ -17,7 +18,7 @@ export async function GET() {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getUserVault(session);
+  const db = getActiveVault(session);
 
   try {
     const data = await getAllNotes(auth, db);
