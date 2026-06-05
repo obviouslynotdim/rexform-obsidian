@@ -1,5 +1,6 @@
 import type { Session } from 'next-auth';
 import { isAdminUser, getUserVaultName, getAdminVaultName, createUserVault } from './vault';
+import { getAvailableVaults, type VaultOption } from './active-vault';
 
 const PROXY_URL = process.env.COUCHDB_PROXY_URL;
 const DIRECT_URL = process.env.COUCHDB_URL;
@@ -229,4 +230,44 @@ export async function getDashboardData(auth?: AuthHeaders, database?: string) {
   );
 
   return { total: pageDocs.length, recentNotes };
+}
+
+async function getSharedVaultDisplayName(vaultId: string): Promise<string> {
+  try {
+    const auth = 'Basic ' + Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64');
+    const res = await fetch(`${INTERNAL_URL}/${vaultId}/rexform-metadata`, {
+      headers: { Authorization: auth },
+      cache: 'no-store',
+    });
+    if (!res.ok) return vaultId;
+    const data = await res.json();
+    return data.vaultName || vaultId;
+  } catch {
+    return vaultId;
+  }
+}
+
+/**
+ * Returns all vaults the session user can access: their personal vault plus any
+ * shared vaults granted via Keto. Falls back gracefully if Keto is not configured.
+ */
+export async function getAccessibleVaults(session: Session | null): Promise<VaultOption[]> {
+  const personal = getAvailableVaults(session);
+  if (!session?.user?.id || !process.env.KETO_READ_URL) return personal;
+
+  try {
+    const { getUserSharedVaults } = await import('./keto');
+    const shared = await getUserSharedVaults(session.user.id);
+    const sharedOptions: VaultOption[] = await Promise.all(
+      shared.map(async ({ vaultId, role }) => ({
+        name: vaultId,
+        label: await getSharedVaultDisplayName(vaultId),
+        role,
+      }))
+    );
+    return [...personal, ...sharedOptions];
+  } catch (e) {
+    console.error('[couchdb] getAccessibleVaults error:', e);
+    return personal;
+  }
 }

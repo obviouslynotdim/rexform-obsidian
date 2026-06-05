@@ -1,0 +1,13 @@
+dsn: ${KETO_DATABASE_URL}
+
+serve:
+  read:
+    port: 4466
+    host: 0.0.0.0
+  write:
+    port: 4467
+    host: 0.0.0.0
+
+namespaces:
+  - id: 0
+    name: vault

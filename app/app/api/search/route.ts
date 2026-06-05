@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getAllNotes, isPageDoc, extractTitle, buildPreview, AuthHeaders } from '@/lib/couchdb';
-import { getActiveVault } from '@/lib/active-vault';
+import { resolveVault } from '@/lib/active-vault';
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || '';
@@ -10,12 +10,11 @@ export async function GET(req: NextRequest) {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getActiveVault(session);
+  const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
 
   try {
     const data = await getAllNotes(auth, db);
     const lower = q.toLowerCase();
-
     const results = (data.rows || [])
       .map((row: any) => row.doc)
       .filter((doc: any) => {

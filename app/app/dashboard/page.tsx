@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getActiveVault(session);
+  const db = await getActiveVault(session);
 
   let data = { total: 0, recentNotes: [] as any[] };
   try {

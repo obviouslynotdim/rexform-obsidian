@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchFromVault, AuthHeaders } from '@/lib/couchdb';
-import { getActiveVault } from '@/lib/active-vault';
+import { resolveVault } from '@/lib/active-vault';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -13,7 +13,10 @@ export async function POST(req: Request) {
   const auth: AuthHeaders | undefined = session.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getActiveVault(session);
+  const { db, canWrite } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
+  if (!canWrite) {
+    return NextResponse.json({ error: 'Read-only access to this vault' }, { status: 403 });
+  }
 
   let title: string, content: string;
   try {
@@ -31,42 +34,27 @@ export async function POST(req: Request) {
   const now = Date.now();
   const body = content ?? `# ${title.trim()}\n\n`;
 
-  // Create chunk first
   const chunkRes = await fetchFromVault(
     encodeURIComponent(chunkId),
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _id: chunkId, data: body }),
-    },
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _id: chunkId, data: body }) },
     auth,
     db
   );
-
   if (!chunkRes.ok) {
     const text = await chunkRes.text();
     return NextResponse.json({ error: `Failed to create chunk: ${text}` }, { status: chunkRes.status });
   }
 
-  // Create parent doc
   const parentRes = await fetchFromVault(
     encodeURIComponent(id),
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        _id: id,
-        path: id,
-        type: 'plain',
-        title: title.trim(),
-        mtime: now,
-        children: [chunkId],
-      }),
+      body: JSON.stringify({ _id: id, path: id, type: 'plain', title: title.trim(), mtime: now, children: [chunkId] }),
     },
     auth,
     db
   );
-
   if (!parentRes.ok) {
     const text = await parentRes.text();
     return NextResponse.json({ error: `Failed to create note: ${text}` }, { status: parentRes.status });

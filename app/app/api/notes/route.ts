@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getAllNotes, AuthHeaders } from '@/lib/couchdb';
-import { getActiveVault } from '@/lib/active-vault';
+import { resolveVault } from '@/lib/active-vault';
 
 function isVaultNote(doc: { _id: string; type?: string; path?: string }): boolean {
   const id = doc._id;
@@ -10,15 +10,16 @@ function isVaultNote(doc: { _id: string; type?: string; path?: string }): boolea
   if (id.startsWith('node_modules/')) return false;
   if (id.startsWith('h:')) return false;
   if (id.startsWith('_')) return false;
+  if (id === 'rexform-metadata') return false;
   return doc.type === 'plain' || (typeof doc.path === 'string' && doc.path.endsWith('.md'));
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getActiveVault(session);
+  const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
 
   try {
     const data = await getAllNotes(auth, db);

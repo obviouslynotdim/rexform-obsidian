@@ -7,6 +7,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption {
   name: string;
   label: string;
+  role?: 'owner' | 'editor' | 'viewer';
 }
 
 interface VaultsData {
@@ -101,8 +102,21 @@ export default function VaultSwitcher() {
                     d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
                   />
                 </svg>
-                <div className="min-w-0">
-                  <p className="font-medium">{vault.label}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium truncate">{vault.label}</p>
+                    {vault.role && vault.role !== 'owner' && (
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+                        style={{
+                          background: vault.role === 'editor' ? 'var(--accent)22' : '#64748b22',
+                          color: vault.role === 'editor' ? 'var(--accent)' : '#94a3b8',
+                        }}
+                      >
+                        {vault.role}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs opacity-50 truncate">{vault.name}</p>
                 </div>
               </button>

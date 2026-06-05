@@ -40,6 +40,7 @@ export default function Navbar() {
           {navLink('/dashboard', 'Dashboard')}
           {navLink('/notes', 'Notes')}
           {session.user?.isAdmin && navLink('/admin', 'Admin')}
+          {navLink('/settings', 'Settings')}
           {navLink(
             '/search',
             <span className="flex items-center gap-1.5">

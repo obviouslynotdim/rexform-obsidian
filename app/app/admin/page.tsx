@@ -2,9 +2,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { formatBytes } from '@/lib/utils';
+
+interface SharedVault {
+  vaultId: string;
+  vaultName: string;
+  createdAt: number | null;
+  docCount: number;
+  sizeBytes: number;
+}
 
 interface VaultInfo {
   exists: boolean;
@@ -75,6 +84,11 @@ export default function AdminPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [vaultFilter, setVaultFilter] = useState<'all' | 'has' | 'none'>('all');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [sharedVaults, setSharedVaults] = useState<SharedVault[]>([]);
+  const [sharedVaultsLoading, setSharedVaultsLoading] = useState(true);
+  const [createVaultOpen, setCreateVaultOpen] = useState(false);
+  const [newVaultName, setNewVaultName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const showToast = useCallback((msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -97,10 +111,44 @@ export default function AdminPage() {
     }
   }, [router]);
 
+  const loadSharedVaults = useCallback(async () => {
+    setSharedVaultsLoading(true);
+    try {
+      const res = await fetch('/api/admin/vaults');
+      if (!res.ok) return;
+      const data = await res.json();
+      setSharedVaults(data.vaults || []);
+    } finally {
+      setSharedVaultsLoading(false);
+    }
+  }, []);
+
+  const createSharedVault = async () => {
+    if (!newVaultName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/admin/vaults', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newVaultName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create');
+      setCreateVaultOpen(false);
+      setNewVaultName('');
+      showToast(`Vault "${data.vaultName}" created`, 'success');
+      await loadSharedVaults();
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') load();
-  }, [status, load, router]);
+    if (status === 'authenticated') { load(); loadSharedVaults(); }
+  }, [status, load, loadSharedVaults, router]);
 
   const provision = async (userId: string) => {
     setActions((p) => ({ ...p, [userId]: 'loading' }));
@@ -405,7 +453,96 @@ export default function AdminPage() {
         <p className="mt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
           Doc count includes parent + chunk documents. Actual notes ≈ half. Vault size = CouchDB active data size.
         </p>
+
+        {/* Shared Vaults section */}
+        <div className="mt-12">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>Shared Vaults</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Collaborative vaults accessible by multiple users
+              </p>
+            </div>
+            <Button size="sm" onClick={() => setCreateVaultOpen(true)}>+ Create Vault</Button>
+          </div>
+
+          {sharedVaultsLoading ? (
+            <div className="p-6 text-center text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>
+              Loading…
+            </div>
+          ) : sharedVaults.length === 0 ? (
+            <div
+              className="p-8 rounded-xl border text-center text-sm"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+            >
+              No shared vaults yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sharedVaults.map((sv) => (
+                <Card key={sv.vaultId} className="p-5">
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                        {sv.vaultName}
+                      </p>
+                      <p className="text-xs font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {sv.vaultId}
+                      </p>
+                    </div>
+                    <Link href={`/admin/vaults/${sv.vaultId}`}>
+                      <Button size="sm" variant="ghost">Manage</Button>
+                    </Link>
+                  </div>
+                  <div className="flex gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    <span>{sv.docCount} docs</span>
+                    {sv.sizeBytes > 0 && <span>{formatBytes(sv.sizeBytes)}</span>}
+                    {sv.createdAt && (
+                      <span>
+                        {new Date(sv.createdAt).toLocaleDateString('en-US', {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                        })}
+                      </span>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Create shared vault modal */}
+      {createVaultOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)' }}
+          onClick={(e) => e.target === e.currentTarget && setCreateVaultOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 shadow-2xl"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+          >
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
+              Create Shared Vault
+            </h3>
+            <input
+              type="text"
+              placeholder="Vault name"
+              value={newVaultName}
+              onChange={(e) => setNewVaultName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && createSharedVault()}
+              autoFocus
+              className="w-full px-3 py-2 rounded-lg border text-sm outline-none mb-4"
+              style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setCreateVaultOpen(false)}>Cancel</Button>
+              <Button size="sm" loading={creating} onClick={createSharedVault}>Create</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

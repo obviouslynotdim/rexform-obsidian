@@ -23,7 +23,7 @@ export default async function NotePage({ params }: Props) {
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
-  const db = getActiveVault(session);
+  const db = await getActiveVault(session);
 
   const id = decodeURIComponent(params.id);
   let note: any = null;
