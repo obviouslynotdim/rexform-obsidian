@@ -12,8 +12,12 @@ export async function GET(_req: Request, { params }: { params: { vaultId: string
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const members = await getVaultMembers(params.vaultId);
-  return NextResponse.json({ members });
+  try {
+    const members = await getVaultMembers(params.vaultId);
+    return NextResponse.json({ members });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { vaultId: string } }) {
@@ -33,6 +37,10 @@ export async function POST(req: NextRequest, { params }: { params: { vaultId: st
     return NextResponse.json({ error: 'userId and valid role required' }, { status: 400 });
   }
 
-  await grantVaultAccess(params.vaultId, userId, role);
-  return NextResponse.json({ success: true });
+  try {
+    await grantVaultAccess(params.vaultId, userId, role);
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
 }

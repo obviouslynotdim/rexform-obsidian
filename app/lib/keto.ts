@@ -72,13 +72,18 @@ export async function getVaultMembers(vaultId: string): Promise<VaultMember[]> {
   for (const role of ['owner', 'editor', 'viewer'] as VaultRole[]) {
     const params = new URLSearchParams({ namespace: NAMESPACE, object: vaultId, relation: role });
     try {
-      const res = await fetch(`${KETO_WRITE_URL}/admin/relation-tuples?${params}`);
-      if (!res.ok) continue;
+      // Use read API (4466) — consistent with getUserSharedVaults
+      const res = await fetch(`${KETO_READ_URL}/relation-tuples?${params}`);
+      if (!res.ok) {
+        console.error(`[keto] getVaultMembers ${role}: ${res.status} ${await res.text().catch(() => '')}`);
+        continue;
+      }
       const data = await res.json();
-      for (const tuple of data.relation_tuples || []) {
+      for (const tuple of (data.relation_tuples || [])) {
         if (tuple.subject_id) members.push({ userId: tuple.subject_id, role });
       }
-    } catch {
+    } catch (e) {
+      console.error(`[keto] getVaultMembers ${role} error:`, e);
       continue;
     }
   }
