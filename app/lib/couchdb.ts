@@ -136,6 +136,17 @@ export function isPageDoc(doc: any): boolean {
   );
 }
 
+export function isVaultNote(doc: any): boolean {
+  if (!doc || doc._deleted) return false;
+  const id: string = doc._id;
+  if (id.startsWith('docs/')) return false;
+  if (id.startsWith('node_modules/')) return false;
+  if (id.startsWith('h:')) return false;
+  if (id.startsWith('_')) return false;
+  if (id === 'rexform-metadata') return false;
+  return doc.type === 'plain' || (typeof doc.path === 'string' && doc.path.endsWith('.md'));
+}
+
 export function extractTitle(doc: any): string {
   if (doc.title) return doc.title;
   const filename = (doc.path as string).split('/').pop() || doc.path;
@@ -222,17 +233,20 @@ async function getContentPreview(
 export async function getDashboardData(auth?: AuthHeaders, database?: string) {
   const data = await getAllNotes(auth, database);
   const rows = data.rows || [];
-  const pageDocs = rows.map((r: any) => r.doc).filter(isPageDoc);
+  const notes = rows
+    .map((r: any) => r.doc)
+    .filter(isVaultNote)
+    .sort((a: any, b: any) => (b.mtime ?? 0) - (a.mtime ?? 0));
 
   const recentNotes = await Promise.all(
-    pageDocs.slice(0, 8).map(async (doc: any) => ({
+    notes.slice(0, 8).map(async (doc: any) => ({
       _id: doc._id,
       title: extractTitle(doc),
       preview: await getContentPreview(doc, auth, database),
     }))
   );
 
-  return { total: pageDocs.length, recentNotes };
+  return { total: notes.length, recentNotes };
 }
 
 async function getSharedVaultDisplayName(vaultId: string): Promise<string> {
