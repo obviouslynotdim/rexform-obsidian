@@ -3,8 +3,19 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminUser, syncVaultSecurity } from '@/lib/vault';
 import { getVaultMembers, grantVaultAccess, revokeVaultAccess, type VaultRole } from '@/lib/keto';
+import { kratosAdmin } from '@/lib/kratos';
 
 const VALID_ROLES: VaultRole[] = ['owner', 'editor', 'viewer'];
+
+async function resolveEmail(userId: string): Promise<string | null> {
+  try {
+    const { data } = await kratosAdmin.getIdentity({ id: userId });
+    const traits = data.traits as Record<string, any>;
+    return traits?.email ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(_req: Request, { params }: { params: { vaultId: string } }) {
   const session = await getServerSession(authOptions);
@@ -14,7 +25,10 @@ export async function GET(_req: Request, { params }: { params: { vaultId: string
 
   try {
     const members = await getVaultMembers(params.vaultId);
-    return NextResponse.json({ members });
+    const enriched = await Promise.all(
+      members.map(async (m) => ({ ...m, email: await resolveEmail(m.userId) }))
+    );
+    return NextResponse.json({ members: enriched });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

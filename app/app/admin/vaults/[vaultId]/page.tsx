@@ -11,6 +11,12 @@ type VaultRole = 'owner' | 'editor' | 'viewer';
 interface Member {
   userId: string;
   role: VaultRole;
+  email: string | null;
+}
+
+interface UserOption {
+  id: string;
+  email: string;
 }
 
 const ROLE_COLORS: Record<VaultRole, string> = {
@@ -39,10 +45,15 @@ export default function VaultDetailPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [newUserId, setNewUserId] = useState('');
+
+  // Add member state
+  const [allUsers, setAllUsers] = useState<UserOption[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [selectedUser, setSelectedUser] = useState<UserOption | null>(null);
   const [newRole, setNewRole] = useState<VaultRole>('viewer');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const loadMembers = useCallback(async () => {
     setLoading(true);
@@ -60,24 +71,46 @@ export default function VaultDetailPage() {
     }
   }, [vaultId, router]);
 
+  const loadAllUsers = useCallback(async () => {
+    try {
+      // Fetch up to 200 users for the search dropdown
+      const res = await fetch('/api/admin/users?page=1&limit=200');
+      if (!res.ok) return;
+      const data = await res.json();
+      setAllUsers((data.users || []).map((u: any) => ({ id: u.id, email: u.email })));
+    } catch {
+      // non-critical — falls back to manual UUID entry
+    }
+  }, []);
+
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') loadMembers();
-  }, [status, loadMembers, router]);
+    if (status === 'authenticated') { loadMembers(); loadAllUsers(); }
+  }, [status, loadMembers, loadAllUsers, router]);
+
+  const filteredUsers = userSearch.trim()
+    ? allUsers.filter((u) =>
+        u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+        u.id.toLowerCase().includes(userSearch.toLowerCase())
+      )
+    : allUsers;
 
   const addMember = async () => {
-    if (!newUserId.trim()) return;
+    const userId = selectedUser?.id || userSearch.trim();
+    if (!userId) return;
     setAdding(true);
     setAddError('');
     try {
       const res = await fetch(`/api/admin/vaults/${vaultId}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: newUserId.trim(), role: newRole }),
+        body: JSON.stringify({ userId, role: newRole }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add');
-      setNewUserId('');
+      setSelectedUser(null);
+      setUserSearch('');
+      setDropdownOpen(false);
       await loadMembers();
     } catch (e: any) {
       setAddError(e.message);
@@ -111,6 +144,12 @@ export default function VaultDetailPage() {
     );
   }
 
+  const selectStyle: React.CSSProperties = {
+    background: 'var(--bg-surface)',
+    borderColor: 'var(--border)',
+    color: 'var(--text-primary)',
+  };
+
   return (
     <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
       <div className="max-w-3xl mx-auto">
@@ -134,20 +173,52 @@ export default function VaultDetailPage() {
         <Card className="p-5 mb-6">
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Add Member</h2>
           <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="User ID (Kratos identity ID)"
-              value={newUserId}
-              onChange={(e) => setNewUserId(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addMember()}
-              className="flex-1 px-3 py-1.5 rounded-lg border text-sm outline-none"
-              style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-            />
+            {/* User search input */}
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder="Search by email or paste UUID…"
+                value={selectedUser ? selectedUser.email : userSearch}
+                onChange={(e) => {
+                  setSelectedUser(null);
+                  setUserSearch(e.target.value);
+                  setDropdownOpen(true);
+                }}
+                onFocus={() => setDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                onKeyDown={(e) => e.key === 'Enter' && addMember()}
+                className="w-full px-3 py-1.5 rounded-lg border text-sm outline-none"
+                style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              />
+              {selectedUser && (
+                <p className="text-xs mt-0.5 font-mono px-1" style={{ color: 'var(--text-muted)' }}>
+                  {selectedUser.id}
+                </p>
+              )}
+              {dropdownOpen && filteredUsers.length > 0 && !selectedUser && (
+                <div
+                  className="absolute left-0 right-0 top-full mt-1 rounded-xl border shadow-lg z-50 overflow-y-auto"
+                  style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', maxHeight: 220 }}
+                >
+                  {filteredUsers.slice(0, 20).map((u) => (
+                    <button
+                      key={u.id}
+                      onMouseDown={() => { setSelectedUser(u); setUserSearch(''); setDropdownOpen(false); }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-white/5 transition-colors"
+                    >
+                      <p style={{ color: 'var(--text-primary)' }}>{u.email}</p>
+                      <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{u.id}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <select
               value={newRole}
               onChange={(e) => setNewRole(e.target.value as VaultRole)}
               className="px-3 py-1.5 rounded-lg border text-sm outline-none"
-              style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              style={selectStyle}
             >
               <option value="viewer">Viewer</option>
               <option value="editor">Editor</option>
@@ -186,9 +257,20 @@ export default function VaultDetailPage() {
                       }}
                     >
                       <td className="px-4 py-3">
-                        <p className="font-mono text-xs truncate" style={{ color: 'var(--text-primary)' }}>
-                          {m.userId}
-                        </p>
+                        {m.email ? (
+                          <>
+                            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
+                              {m.email}
+                            </p>
+                            <p className="font-mono text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                              {m.userId}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+                            {m.userId}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <RoleBadge role={m.role} />

@@ -209,6 +209,52 @@ export default function AdminPage() {
     }
   };
 
+  const deleteVault = async (userId: string, email: string) => {
+    if (!confirm(`Delete vault for ${email}?\n\nThis removes their CouchDB database and credentials but keeps their account. They can re-provision later.`)) return;
+    setActions((p) => ({ ...p, [`delvault-${userId}`]: 'loading' }));
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/vault-db`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!data.success) {
+        const failed = Object.entries(data.results as Record<string, string>)
+          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
+          .map(([k]) => k).join(', ');
+        showToast(`Partial delete — failed steps: ${failed}`, 'error');
+      } else {
+        showToast('Vault deleted', 'success');
+      }
+      setActions((p) => ({ ...p, [`delvault-${userId}`]: 'done' }));
+      await load();
+    } catch (e: any) {
+      setActions((p) => ({ ...p, [`delvault-${userId}`]: 'error' }));
+      setActionErrors((p) => ({ ...p, [`delvault-${userId}`]: e.message }));
+    }
+  };
+
+  const deleteSharedVault = async (vaultId: string, vaultName: string) => {
+    if (!confirm(`Delete shared vault "${vaultName}"?\n\nThis removes the database and all member permissions. This cannot be undone.`)) return;
+    setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'loading' }));
+    try {
+      const res = await fetch(`/api/admin/vaults/${vaultId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!data.success) {
+        const failed = Object.entries(data.results as Record<string, string>)
+          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
+          .map(([k]) => k).join(', ');
+        showToast(`Partial delete — failed steps: ${failed}`, 'error');
+      } else {
+        showToast(`Vault "${vaultName}" deleted`, 'success');
+      }
+      setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'done' }));
+      await loadSharedVaults();
+    } catch (e: any) {
+      setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'error' }));
+      showToast(e.message, 'error');
+    }
+  };
+
   const toggleState = async (userId: string, currentState: string) => {
     const newState = currentState === 'active' ? 'inactive' : 'active';
     const key = `sus-${userId}`;
@@ -354,11 +400,13 @@ export default function AdminPage() {
               {filteredUsers.map((user, i) => {
                 const provKey = user.id;
                 const delKey = `del-${user.id}`;
+                const delVaultKey = `delvault-${user.id}`;
                 const susKey = `sus-${user.id}`;
                 const provState = actions[provKey] ?? 'idle';
                 const delState = actions[delKey] ?? 'idle';
+                const delVaultState = actions[delVaultKey] ?? 'idle';
                 const susState = actions[susKey] ?? 'idle';
-                const rowErr = actionErrors[provKey] || actionErrors[delKey];
+                const rowErr = actionErrors[provKey] || actionErrors[delKey] || actionErrors[delVaultKey];
                 const isSelf = user.id === session?.user?.id;
 
                 return (
@@ -444,7 +492,7 @@ export default function AdminPage() {
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {!user.isAdmin && !user.vault.exists && (
                           <Button
                             size="sm"
@@ -452,6 +500,16 @@ export default function AdminPage() {
                             onClick={() => provision(user.id)}
                           >
                             {provState === 'loading' ? 'Creating…' : 'Provision'}
+                          </Button>
+                        )}
+                        {!user.isAdmin && user.vault.exists && (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            loading={delVaultState === 'loading'}
+                            onClick={() => deleteVault(user.id, user.email)}
+                          >
+                            {delVaultState === 'loading' ? 'Deleting…' : 'Delete Vault'}
                           </Button>
                         )}
                         {!user.isAdmin && (
@@ -535,34 +593,47 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sharedVaults.map((sv) => (
-                <Card key={sv.vaultId} className="p-5">
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                        {sv.vaultName}
-                      </p>
-                      <p className="text-xs font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        {sv.vaultId}
-                      </p>
+              {sharedVaults.map((sv) => {
+                const delSVState = actions[`delsvault-${sv.vaultId}`] ?? 'idle';
+                return (
+                  <Card key={sv.vaultId} className="p-5">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                          {sv.vaultName}
+                        </p>
+                        <p className="text-xs font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          {sv.vaultId}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Link href={`/admin/vaults/${sv.vaultId}`}>
+                          <Button size="sm" variant="ghost">Manage</Button>
+                        </Link>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={delSVState === 'loading'}
+                          onClick={() => deleteSharedVault(sv.vaultId, sv.vaultName)}
+                        >
+                          {delSVState === 'loading' ? 'Deleting…' : 'Delete'}
+                        </Button>
+                      </div>
                     </div>
-                    <Link href={`/admin/vaults/${sv.vaultId}`}>
-                      <Button size="sm" variant="ghost">Manage</Button>
-                    </Link>
-                  </div>
-                  <div className="flex gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    <span>{sv.docCount} docs</span>
-                    {sv.sizeBytes > 0 && <span>{formatBytes(sv.sizeBytes)}</span>}
-                    {sv.createdAt && (
-                      <span>
-                        {new Date(sv.createdAt).toLocaleDateString('en-US', {
-                          year: 'numeric', month: 'short', day: 'numeric',
-                        })}
-                      </span>
-                    )}
-                  </div>
-                </Card>
-              ))}
+                    <div className="flex gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      <span>{sv.docCount} docs</span>
+                      {sv.sizeBytes > 0 && <span>{formatBytes(sv.sizeBytes)}</span>}
+                      {sv.createdAt && (
+                        <span>
+                          {new Date(sv.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric', month: 'short', day: 'numeric',
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
