@@ -1,174 +1,188 @@
-# REXFORM Notes — Architecture & Railway Services
+# Architecture
 
-> Complete reference for the production deployment on Railway project `rexform-obsidian`.
+## Request Flow
 
----
+Full lifecycle from browser to CouchDB for a note API call.
 
-## Service Map
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant MW as Middleware
+    participant AR as API Route
+    participant RV as resolveVault()
+    participant FV as fetchFromVault()
+    participant OA as Oathkeeper :4455
+    participant DB as CouchDB :5984
 
-| Service | Railway ID | Technology | Role |
-|---|---|---|---|
-| `rexform-notes` | `ddde10ba` | Next.js 14 | Main web application |
-| `rexform-kratos` | `e94b177f` | Ory Kratos | Identity & authentication |
-| `kratos-postgres` | `2b49e2de` | PostgreSQL | Kratos database |
-| `couch-db` | `efa078f5` | CouchDB 3 | Notes database & LiveSync target |
-| `oathkeeper` | `d8da4063` | Ory Oathkeeper | CouchDB read proxy |
-| `rexform-keto` | `c2d60c7e` | Ory Keto v0.11 | Shared vault permissions |
-| `Postgres` | `44502fa0` | PostgreSQL | Keto database |
-| `obsidian-remote` | `433b5fb9` | linuxserver/obsidian | Browser-based Obsidian desktop |
-
-All services live in the `production` environment (`d3975300-8402-4f76-906a-7469b3cde4c2`).
-
----
-
-## Service Details
-
-### rexform-notes
-The Next.js 14 App Router application. Every user-facing page and API route lives here.
-
-**Key responsibilities:**
-- Serves the notes UI (sidebar, editor, dashboard, settings, admin panel)
-- Authenticates users via NextAuth → Kratos credentials provider
-- Proxies all CouchDB reads and writes on behalf of the logged-in user
-- Provisions per-user CouchDB vaults and LiveSync credentials on registration
-- Enforces shared vault permissions by querying Keto before every vault resolve
-
-**Relevant env vars:**
-```
-NEXTAUTH_SECRET, NEXTAUTH_URL
-KRATOS_PUBLIC_URL, KRATOS_ADMIN_URL
-COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD
-COUCHDB_PROXY_URL         # Oathkeeper public URL
-KETO_READ_URL, KETO_WRITE_URL
-ADMIN_USER_ID             # UUID of the admin account
+    B->>MW: Request + session cookie
+    MW->>MW: withAuth — decrypt JWT, check token present
+    alt No valid token
+        MW-->>B: 302 Redirect → /login
+    else Valid token
+        MW->>AR: Forward request
+        AR->>AR: getServerSession(authOptions)
+        AR->>RV: resolveVault(session, ?vault)
+        RV-->>AR: { db, canWrite }
+        AR->>FV: fetchFromVault(path, opts, auth, db)
+        alt READ on admin vault (obsidian)
+            FV->>OA: GET /obsidian/... + Authorization: Bearer <kratosToken>
+            OA->>OA: validate via GET /sessions/whoami on Kratos
+            OA->>DB: GET /obsidian/... + admin Basic Auth (injected)
+            DB-->>OA: Document JSON
+            OA-->>FV: Document JSON
+        else WRITE or user/shared vault
+            FV->>DB: PUT/POST/DELETE + admin Basic Auth (direct, bypass Oathkeeper)
+            DB-->>FV: Response
+        end
+        FV-->>AR: Response
+        AR-->>B: JSON response
+    end
 ```
 
 ---
 
-### rexform-kratos
-Ory Kratos handles all identity lifecycle: registration, login, account recovery, and session management.
+## Authentication Flow
 
-**Key responsibilities:**
-- Stores user identities (email + hashed password) in `kratos-postgres`
-- Issues session tokens (`kratosSessionToken`) consumed by NextAuth
-- Fires the after-registration webhook → `POST /api/hooks/kratos/after-register` on `rexform-notes`, which creates the new user's CouchDB vault
-- Admin API used by `rexform-notes` to list/delete identities
+Login and registration lifecycle.
 
-**Flow on login:**
-```
-Browser → POST /api/auth/kratos/flow (rexform-notes)
-        → Kratos credentials API (username + password)
-        → Kratos issues session token
-        → NextAuth stores token in encrypted JWT cookie
-```
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant NJ as Next.js /login
+    participant KR as Kratos Public API
+    participant NA as NextAuth /api/auth
 
----
+    U->>NJ: GET /login
+    NJ->>KR: GET /self-service/login/api
+    KR-->>NJ: { id: flowId, ... }
+    NJ-->>U: Render login form (flowId embedded)
 
-### kratos-postgres
-Standard managed PostgreSQL. Stores Kratos identity records, sessions, and audit events. No application code touches this directly — only Kratos does.
+    U->>NJ: POST /api/auth/kratos/flow { email, password, flowId }
+    NJ->>KR: updateLoginFlow({ flow: flowId, method: password, ... })
+    KR->>KR: Verify credentials against hashed password in postgres
+    KR-->>NJ: { session, session_token }
 
----
+    NJ->>NA: authorize() → return { id, email, kratosSessionToken }
+    NA->>NA: jwt() callback → token.userId, token.kratosSessionToken, token.isAdmin
+    NA-->>U: Set-Cookie: next-auth.session-token (encrypted JWT)
 
-### couch-db
-CouchDB 3 is the persistence layer for all notes. Each user's notes live in their own isolated database.
-
-**Database naming:**
-| Database | Owner | Purpose |
-|---|---|---|
-| `obsidian` | Admin user | Admin vault |
-| `vault-<userId>` | Regular user | Per-user private vault |
-| `vault-shared-<16hex>` | Shared | Collaborative vault |
-| `_users` | System | CouchDB credential store for LiveSync |
-
-**Access control per vault (`_security`):**
-- Personal vaults: `members.names = [userId]` — only that user's CouchDB credentials can connect directly (LiveSync). `rexform-notes` always uses admin credentials server-side.
-- Shared vaults: `members.names = [userId1, userId2, ...]` — populated/maintained by `syncVaultSecurity()` whenever Keto membership changes.
-
-**Why the public URL must be used for admin ops:**
-Railway's internal hostname (`couch-db.railway.internal:5984`) silently drops Basic auth headers. All admin operations in `lib/vault.ts` and `lib/couchdb.ts` use `COUCHDB_URL` (public domain).
-
----
-
-### oathkeeper
-Ory Oathkeeper sits in front of CouchDB and validates Kratos bearer tokens before allowing reads on the admin vault.
-
-**What it does:**
-- Receives `Authorization: Bearer <kratosSessionToken>` from `rexform-notes`
-- Validates the token against Kratos session check API
-- If valid, forwards the request to CouchDB with admin Basic auth injected (mutator)
-- If invalid, returns 401
-
-**Why writes bypass Oathkeeper:**
-Kratos session tokens expire on their own schedule. NextAuth does not refresh them. A stale token causes Oathkeeper to reject writes with 401, silently breaking saves. `fetchFromVault()` in `lib/couchdb.ts` routes all `PUT/POST/DELETE/PATCH` directly to CouchDB with admin credentials — the session is already validated at the Next.js API layer.
-
-```
-READ  (admin vault) → rexform-notes → Oathkeeper → CouchDB
-WRITE (any vault)   → rexform-notes → CouchDB (admin creds, direct)
-READ  (user vault)  → rexform-notes → CouchDB (admin creds, direct)
+    Note over U,NA: Subsequent requests include the session cookie
+    U->>NJ: Any protected request
+    NJ->>NA: Decrypt JWT → session object
+    NA-->>NJ: session.user.id, session.kratosSessionToken, session.user.isAdmin
 ```
 
 ---
 
-### rexform-keto
-Ory Keto v0.11 stores and evaluates permission relation-tuples for shared vaults.
+## Vault Isolation
 
-**Namespace:** `vault`  
-**Relations:** `owner`, `editor`, `viewer`  
-**Subject:** `userId` (Kratos identity UUID)  
-**Object:** `vault-shared-<hex>` (CouchDB database name)
+How different users are routed to different CouchDB databases.
 
-**Example tuples:**
+```mermaid
+flowchart TD
+    UA[User A\nid: abc-123] -->|getUserVaultName| VA[(vault-abc-123)]
+    UB[User B\nid: def-456] -->|getUserVaultName| VB[(vault-def-456)]
+    ADM[Admin User\nADMIN_USER_ID match] -->|getAdminVaultName| VO[(obsidian)]
+    UC[User C] -->|Keto: owner| VS[(vault-shared-xyz789)]
+    UD[User D] -->|Keto: editor| VS
+    UE[User E] -->|Keto: viewer\ncanWrite=false| VS
+
+    VA -->|_security.members=[abc-123]| CDB[(CouchDB)]
+    VB -->|_security.members=[def-456]| CDB
+    VO -->|_security.admins=[admin]| CDB
+    VS -->|_security.members=[userC,userD,userE]| CDB
 ```
-vault:vault-shared-abc123#owner@user-uuid-1
-vault:vault-shared-abc123#editor@user-uuid-2
-vault:vault-shared-abc123#viewer@user-uuid-3
+
+---
+
+## Note Creation Flow
+
+What happens when a user creates a new note.
+
+```mermaid
+sequenceDiagram
+    participant E as NewNotePage
+    participant A as POST /api/notes/create
+    participant RV as resolveVault()
+    participant FV as fetchFromVault()
+    participant DB as CouchDB
+
+    E->>A: POST { title: "My Note", content: "# My Note..." }
+    A->>A: getServerSession — verify auth
+    A->>RV: resolveVault(session, ?vault param)
+    RV-->>A: { db: "vault-abc-123", canWrite: true }
+
+    Note over A: id = "My Note.md", chunkId = "My Note.md_c0"
+
+    A->>FV: PUT "My Note.md_c0" { _id, data: content }
+    FV->>DB: PUT /vault-abc-123/My%20Note.md_c0 (admin creds)
+    DB-->>FV: { ok: true, rev: "1-xxx" }
+
+    A->>FV: PUT "My Note.md" { _id, path, type, title, mtime, children: ["My Note.md_c0"] }
+    FV->>DB: PUT /vault-abc-123/My%20Note.md (admin creds)
+    DB-->>FV: { ok: true, rev: "1-yyy" }
+
+    A-->>E: 201 { id: "My Note.md", title, path }
+    E->>E: router.push("/notes/My%20Note.md")
 ```
 
-**Ports:**
-- `4466` — Read API (`/relation-tuples`, `/relation-tuples/check`)
-- `4467` — Write API (`/admin/relation-tuples`)
+---
 
-**Important:** `getVaultMembers()` must use the **Read URL (4466)**, not the Write URL. The Write API returns empty results for list queries.
+## Permission Check Flow
 
-**When permissions are checked:**
-- `resolveVault()` (called on every note API request) checks Keto if the requested vault is `vault-shared-*`
-- `canWrite` is `false` for `viewer` role — write routes return 403
+How Keto permissions are evaluated for shared vault access.
 
-**When permissions are written:**
-- Shared vault created → creator gets `owner` tuple
-- Admin panel adds/changes/removes member → Keto tuples updated, then `syncVaultSecurity()` updates CouchDB `_security` to match
+```mermaid
+flowchart TD
+    REQ[Incoming API Request] --> GS[getServerSession]
+    GS --> TK{Valid JWT token?}
+    TK -->|No| E401[401 Unauthorized]
+    TK -->|Yes| RV[resolveVault session, vaultParam]
+
+    RV --> VP{vaultParam provided?}
+    VP -->|No| CV[getActiveVault\nread rexform-active-vault cookie]
+    CV --> RET1[return db=activeVault, canWrite=true]
+
+    VP -->|Yes| PV{isPersonalVault?}
+    PV -->|Yes — matches vault-userId| RET2[return db=vaultParam, canWrite=true]
+
+    PV -->|No — vault-shared-*| KETO[checkVaultAccess × 3\nKeto GET /relation-tuples/check]
+    KETO --> KR{Role found?}
+    KR -->|owner| RET3[canWrite=true]
+    KR -->|editor| RET4[canWrite=true]
+    KR -->|viewer| RET5[canWrite=false]
+    KR -->|none / Keto error| FB[fallback: getActiveVault]
+
+    RET1 --> EXEC[Execute CouchDB operation\nfetchFromVault admin creds]
+    RET2 --> EXEC
+    RET3 --> EXEC
+    RET4 --> EXEC
+    RET5 --> CW{canWrite required?}
+    CW -->|write route| E403[403 Read-only access]
+    CW -->|read route| EXEC
+    FB --> EXEC
+```
 
 ---
 
-### Postgres (Keto DB)
-Railway managed PostgreSQL dedicated to Keto. Keto runs `migrate up` on every container start. `DATABASE_URL` is auto-exposed by Railway and referenced as `DSN = ${{Postgres.DATABASE_URL}}` in the Keto service env.
-
----
-
-### obsidian-remote
-Runs the Obsidian desktop app in a browser via KasmVNC (`linuxserver/obsidian`). Primarily used for admin-level vault browsing. Single-user access.
-
-**Port:** `3001` (HTTPS, self-signed cert)  
-**Volume:** `/config` — must be persistent (vault files + plugin settings)
-
----
-
-## Data Flow
+## Data Flows
 
 ### Registration
+
 ```
 User registers
   → Kratos creates identity in kratos-postgres
   → Kratos fires webhook → rexform-notes /api/hooks/kratos/after-register
       → createUserVault(userId)
-          → CouchDB: PUT /vault-<userId>         (create DB)
-          → CouchDB: PUT /vault-<userId>/_security (lock to user)
+          → CouchDB: PUT /vault-<userId>           create DB
+          → CouchDB: PUT /vault-<userId>/_security  lock to admin only
           → CouchDB: seed 3 starter notes
-          → CouchDB: PUT /_users/org.couchdb.user:<userId> (LiveSync creds)
+          → CouchDB: PUT /_users/org.couchdb.user:<userId>  LiveSync credentials
           → CouchDB: configure CORS (idempotent)
 ```
 
-### Login & note access
+### Login & Note Access
+
 ```
 User logs in
   → NextAuth ← Kratos credentials flow
@@ -176,18 +190,19 @@ User logs in
 
 User opens notes
   → GET /api/notes?page=1&limit=20
-      → resolveVault(session) → reads rexform-active-vault cookie
+      → resolveVault(session)  reads rexform-active-vault cookie
       → fetchFromVault(_all_docs, admin creds, vault-<userId>)
-      → filter to .md files only, sort by mtime, paginate
+      → filter to .md files only (isVaultNote), sort by mtime, paginate
 ```
 
-### Shared vault access
+### Shared Vault Access
+
 ```
 Admin creates shared vault
   → POST /api/admin/vaults
       → createSharedVault(name, creatorId) in CouchDB
       → grantVaultAccess(vaultId, creatorId, 'owner') in Keto
-      → syncVaultSecurity(vaultId) → updates CouchDB _security.members.names
+      → syncVaultSecurity(vaultId) → CouchDB _security.members.names updated
 
 Admin adds member
   → POST /api/admin/vaults/[vaultId]/members
@@ -197,16 +212,16 @@ Admin adds member
 
 Member accesses shared vault
   → resolveVault(session, 'vault-shared-xxx')
-      → checkVaultAccess(vaultId, userId, role) via Keto Read API (4466)
+      → checkVaultAccess(vaultId, userId, role) via Keto Read API
       → returns { db: 'vault-shared-xxx', canWrite: true/false }
   → fetchFromVault(path, admin creds, vault-shared-xxx)
 ```
 
-### Obsidian LiveSync (direct CouchDB sync)
+### Obsidian LiveSync
+
 ```
 User opens Settings → copies Server URL, Database, Username, Password
-  → These are the CouchDB _users credentials (not the admin password)
-  → CouchDB: org.couchdb.user:<userId> with a generated password
+  (these are the CouchDB _users credentials, not the admin password)
 
 Obsidian LiveSync plugin connects:
   → HTTPS → couch-db-production.up.railway.app
@@ -217,42 +232,13 @@ Obsidian LiveSync plugin connects:
 
 ---
 
-## Admin Operations
-
-### Provision a missing vault
-`POST /api/admin/users/[id]/provision` — runs the same vault creation flow as registration.
-
-### Delete a user
-`DELETE /api/admin/users/[id]/vault` — deletes:
-1. Kratos identity (from kratos-postgres)
-2. CouchDB vault database (`vault-<userId>`)
-3. CouchDB `_users` credential doc
-
-### Delete only the vault (keep account)
-`DELETE /api/admin/users/[id]/vault-db` — deletes CouchDB vault + credentials, Kratos identity is preserved. User can be re-provisioned.
-
-### Delete a shared vault
-`DELETE /api/admin/vaults/[vaultId]` — revokes all Keto tuples, then drops the CouchDB database.
-
----
-
 ## Key Architectural Decisions
 
 | Decision | Reason |
 |---|---|
 | Writes bypass Oathkeeper | Kratos session tokens expire; stale tokens cause silent 401s on saves |
-| Public CouchDB URL for admin ops | Railway internal hostname drops Basic auth headers |
-| Keto Read API (4466) for member lists | Write API (4467) returns empty for list queries |
-| `echo y \| keto migrate up` in Dockerfile | v0.11 has no `--yes` flag; prompts interactively |
+| Public CouchDB URL for admin ops | Railway internal hostname silently drops Basic auth headers |
+| Keto Read API (port 4466) for member lists | Write API (port 4467) returns empty results for list queries |
+| `echo y \| keto migrate up` in Dockerfile | Keto v0.11 has no `--yes` flag; prompts interactively otherwise |
 | `syncVaultSecurity()` on every Keto change | LiveSync needs `_security.members.names` in sync with Keto tuples |
-| Admin credentials for all server-side CouchDB calls | Consistent, never expires, auth already enforced at Next.js API layer |
-
----
-
-## Deploy Command
-
-```bash
-railway up --service ddde10ba-fef1-4318-90ee-d79485f3ff0e --detach
-```
-
-GitHub push to `main` also triggers auto-deploy on `rexform-notes`.
+| Admin credentials for all server-side CouchDB calls | Consistent, never expire; auth already enforced at Next.js API layer |
