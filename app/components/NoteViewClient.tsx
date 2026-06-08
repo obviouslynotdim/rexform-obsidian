@@ -1,11 +1,16 @@
 'use client';
 import { useState } from 'react';
+import useSWR from 'swr';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import NoteEditor from './NoteEditor';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+interface VaultOption { name: string; label: string; role?: string }
+interface VaultsData { vaults: VaultOption[]; activeVault: string }
 
 interface Props {
   noteId: string;
@@ -20,6 +25,13 @@ interface Props {
 export default function NoteViewClient({ noteId, title, content, folder, tags, mtime, size }: Props) {
   const [editing, setEditing] = useState(false);
   const [liveContent, setLiveContent] = useState(content);
+
+  const { data: vaultsData } = useSWR<VaultsData>('/api/vaults', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+  const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
+  const canWrite = activeRole !== 'viewer';
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-10">
@@ -72,14 +84,23 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
           </div>
         </div>
 
-        <Button
-          variant={editing ? 'primary' : 'secondary'}
-          size="sm"
-          onClick={() => setEditing((e) => !e)}
-          className="flex-shrink-0"
-        >
-          {editing ? 'View' : 'Edit'}
-        </Button>
+        {canWrite ? (
+          <Button
+            variant={editing ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setEditing((e) => !e)}
+            className="flex-shrink-0"
+          >
+            {editing ? 'View' : 'Edit'}
+          </Button>
+        ) : (
+          <span
+            className="px-2.5 py-1 rounded text-xs font-medium flex-shrink-0"
+            style={{ background: '#64748b22', color: '#94a3b8' }}
+          >
+            Read-only
+          </span>
+        )}
       </div>
 
       {/* Body */}

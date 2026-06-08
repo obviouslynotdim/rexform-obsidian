@@ -1,10 +1,15 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { mutate } from 'swr';
 import NoteEditor from '@/components/NoteEditor';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+interface VaultOption { name: string; label: string; role?: string }
+interface VaultsData { vaults: VaultOption[]; activeVault: string }
 
 export default function NewNotePage() {
   const [title, setTitle] = useState('');
@@ -12,6 +17,13 @@ export default function NewNotePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+
+  const { data: vaultsData } = useSWR<VaultsData>('/api/vaults', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+  const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
+  const canWrite = !vaultsData || activeRole !== 'viewer';
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -37,6 +49,18 @@ export default function NewNotePage() {
       setSaving(false);
     }
   };
+
+  if (!canWrite) {
+    return (
+      <div className="flex h-[calc(100vh-56px)] items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+        <div className="text-center">
+          <p className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>Read-only vault</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>You have viewer access to this vault and cannot create notes.</p>
+          <Link href="/notes" className="text-sm" style={{ color: 'var(--accent)' }}>← Back to notes</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-56px)]" style={{ background: 'var(--bg-base)' }}>

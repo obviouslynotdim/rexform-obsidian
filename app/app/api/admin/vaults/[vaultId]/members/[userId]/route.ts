@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { isAdminUser } from '@/lib/vault';
+import { isAdminUser, syncVaultSecurity } from '@/lib/vault';
 import { grantVaultAccess, revokeVaultAccess, getVaultMembers, type VaultRole } from '@/lib/keto';
 
 const VALID_ROLES: VaultRole[] = ['owner', 'editor', 'viewer'];
@@ -31,6 +31,7 @@ export async function PATCH(
   const existing = members.filter((m) => m.userId === params.userId);
   await Promise.all(existing.map((m) => revokeVaultAccess(params.vaultId, m.userId, m.role)));
   await grantVaultAccess(params.vaultId, params.userId, newRole);
+  await syncVaultSecurity(params.vaultId);
 
   return NextResponse.json({ success: true });
 }
@@ -55,6 +56,7 @@ export async function DELETE(
 
   const existing = members.filter((m) => m.userId === params.userId);
   await Promise.all(existing.map((m) => revokeVaultAccess(params.vaultId, m.userId, m.role)));
+  await syncVaultSecurity(params.vaultId);
 
   return NextResponse.json({ success: true });
 }

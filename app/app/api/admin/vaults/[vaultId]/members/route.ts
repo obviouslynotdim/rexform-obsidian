@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { isAdminUser } from '@/lib/vault';
-import { getVaultMembers, grantVaultAccess, type VaultRole } from '@/lib/keto';
+import { isAdminUser, syncVaultSecurity } from '@/lib/vault';
+import { getVaultMembers, grantVaultAccess, revokeVaultAccess, type VaultRole } from '@/lib/keto';
 
 const VALID_ROLES: VaultRole[] = ['owner', 'editor', 'viewer'];
 
@@ -38,7 +38,12 @@ export async function POST(req: NextRequest, { params }: { params: { vaultId: st
   }
 
   try {
+    // Revoke any existing role for this user before granting the new one
+    const members = await getVaultMembers(params.vaultId);
+    const existing = members.filter((m) => m.userId === userId);
+    await Promise.all(existing.map((m) => revokeVaultAccess(params.vaultId, m.userId, m.role)));
     await grantVaultAccess(params.vaultId, userId, role);
+    await syncVaultSecurity(params.vaultId);
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

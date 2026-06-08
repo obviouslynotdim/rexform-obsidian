@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { getStarterNotes } from './starter-notes';
 import { provisionUserCredentials } from './couchdb-credentials';
+import type { VaultRole } from './keto';
 
 // Use public CouchDB URL for admin operations — the Railway internal hostname
 // rejects Basic auth; the public domain is proven to work with admin credentials.
@@ -21,6 +22,25 @@ export function getUserVaultName(userId: string): string {
 
 export function getAdminVaultName(): string {
   return 'obsidian';
+}
+
+export async function syncVaultSecurity(vaultId: string): Promise<void> {
+  if (!process.env.KETO_READ_URL) return;
+  try {
+    const { getVaultMembers } = await import('./keto');
+    const members = await getVaultMembers(vaultId);
+    const names = Array.from(new Set(members.map((m) => m.userId)));
+    await fetch(`${COUCHDB_INTERNAL_URL}/${vaultId}/_security`, {
+      method: 'PUT',
+      headers: { Authorization: adminAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admins: { names: ['admin'], roles: ['_admin'] },
+        members: { names, roles: [] },
+      }),
+    });
+  } catch (e) {
+    console.warn(`[vault] syncVaultSecurity failed for ${vaultId}:`, e);
+  }
 }
 
 export function isAdminUser(userId: string): boolean {
@@ -126,6 +146,15 @@ export async function createSharedVault(
       })
     )
   );
+
+  // Grant creator owner access in Keto and sync _security
+  try {
+    const { grantVaultAccess } = await import('./keto');
+    await grantVaultAccess(vaultId, creatorUserId, 'owner' as VaultRole);
+    await syncVaultSecurity(vaultId);
+  } catch (e) {
+    console.warn(`[vault] Keto owner grant failed for ${vaultId}:`, e);
+  }
 
   return { vaultId, vaultName: name };
 }

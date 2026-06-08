@@ -8,6 +8,9 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 const LIMIT = 20;
 
+interface VaultOption { name: string; label: string; role?: string }
+interface VaultsData { vaults: VaultOption[]; activeVault: string }
+
 interface Props {
   currentId?: string;
 }
@@ -31,6 +34,13 @@ export default function NotesSidebar({ currentId }: Props) {
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 0 }
   );
+
+  const { data: vaultsData } = useSWR<VaultsData>('/api/vaults', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+  const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
+  const canWrite = activeRole !== 'viewer';
 
   const notes: any[] = (data?.rows || [])
     .filter((n: any) => n && !n._deleted && n._id && !n._id.startsWith('_design/') && !!n.path);
@@ -61,13 +71,15 @@ export default function NotesSidebar({ currentId }: Props) {
           <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
             All Notes
           </h2>
-          <Link
-            href="/notes/new"
-            className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
-            style={{ background: 'var(--accent)', color: '#fff' }}
-          >
-            + New
-          </Link>
+          {canWrite && (
+            <Link
+              href="/notes/new"
+              className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
+              style={{ background: 'var(--accent)', color: '#fff' }}
+            >
+              + New
+            </Link>
+          )}
         </div>
         <input
           type="text"
