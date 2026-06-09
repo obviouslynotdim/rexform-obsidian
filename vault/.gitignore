@@ -1,0 +1,10 @@
+# Obsidian internals
+.obsidian/
+.smart-env/
+.trash/
+
+# Vault content — personal notes, not part of the SaaS codebase
+*.md
+**/*.md
+*.base
+**/*.base

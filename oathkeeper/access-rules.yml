@@ -1,0 +1,49 @@
+# Access rules for Oathkeeper → CouchDB proxy.
+#
+# URL patterns use <**> to match any scheme+host so rules work whether
+# Railway forwards requests as http:// or https:// (TLS terminates at
+# Railway's edge; internal traffic arrives as plain HTTP).
+#
+# ${COUCHDB_ADMIN_URL} is substituted at container startup by envsubst.
+# Set it as a Railway env var:
+#   COUCHDB_ADMIN_URL=http://admin:YOUR_PASSWORD@couch-db.railway.internal:5984
+
+# Rule 1: Public health check — no auth required.
+# Matches any request to /_up regardless of scheme/host.
+- id: couchdb-public-health
+  match:
+    url: "<**>/_up"
+    methods:
+      - GET
+      - HEAD
+  upstream:
+    url: "${COUCHDB_ADMIN_URL}"
+    preserve_host: false
+  authenticators:
+    - handler: anonymous
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+
+# Rule 2: Authenticated CouchDB access — restricted to the obsidian database.
+# Tries bearer_token first (Phase 2 kratosSessionToken), then cookie_session.
+- id: couchdb-authenticated
+  match:
+    url: "<**>/obsidian/<**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - HEAD
+  upstream:
+    url: "${COUCHDB_ADMIN_URL}"
+    preserve_host: false
+  authenticators:
+    - handler: bearer_token
+    - handler: cookie_session
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop

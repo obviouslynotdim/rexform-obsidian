@@ -1,3 +1,36 @@
-.env
-*.log
+# ── OS ──────────────────────────────────────────────
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Secrets ─────────────────────────────────────────
+.env
+.env.local
+.env*.local
+*.pem
+
+# ── Logs ────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# ── Node (global catch-all) ─────────────────────────
+node_modules/
+
+# ── site/ (VitePress) ───────────────────────────────
+site/.vitepress/cache/
+site/.vitepress/dist/
+
+# ── vault (Obsidian) ─────────────────────────────────
+.obsidian/
+.smart-env/
+.trash/
+
+# ── Claude Code ─────────────────────────────────────
+.claude/settings.local.json
+
+# ── Test vaults ──────────────────────────────────────
+rexform-testing/
+
+# ── vault/docs (old duplicate, superseded by site/) ──
+vault/docs/
