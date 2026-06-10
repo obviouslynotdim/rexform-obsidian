@@ -207,7 +207,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   return (
     <div
       draggable={canWrite}
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragging(node.id); }}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', node.id); setDragging(node.id); }}
       onDragEnd={() => setDragging(null)}
     >
       <div
@@ -224,6 +224,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
       >
         <Link
           href={`/notes/${encodeURIComponent(node.id)}`}
+          draggable={false}
           className="flex items-center flex-1 truncate min-w-0"
           style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
         >
