@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Read-only access to this vault' }, { status: 403 });
   }
 
-  let title: string, content: string;
+  let title: string, content: string, folder: string;
   try {
-    ({ title, content } = await req.json());
+    ({ title, content, folder } = await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
@@ -29,8 +29,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 });
   }
 
-  const id = `${title.trim()}.md`;
-  const chunkId = `${title.trim()}.md_c0`;
+  const sanitizedFolder = (folder || '').trim().replace(/^\/+|\/+$/g, '');
+  const id = sanitizedFolder ? `${sanitizedFolder}/${title.trim()}.md` : `${title.trim()}.md`;
+  const chunkId = `${id}_c0`;
   const now = Date.now();
   const body = content ?? `# ${title.trim()}\n\n`;
 
