@@ -354,7 +354,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!renaming) setConfirmDeleteFolder(false); }}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
-        onDragOver={(e) => { if (dragging) e.preventDefault(); }}
+        onDragOver={(e) => e.preventDefault()}
         onDragEnter={(e) => { e.preventDefault(); setDragCounter((c) => c + 1); }}
         onDragLeave={() => setDragCounter((c) => Math.max(0, c - 1))}
         onDrop={(e) => { e.preventDefault(); setDragCounter(0); onDropOnFolder(node.path); }}
