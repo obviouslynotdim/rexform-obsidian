@@ -20,23 +20,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const oldId = decodeURIComponent(params.id);
 
-  let folder: string;
+  let folder: string | undefined, name: string | undefined;
   try {
-    ({ folder } = await req.json());
+    ({ folder, name } = await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const sanitizedFolder = (folder || '').trim().replace(/^\/+|\/+$/g, '');
-  const filename = oldId.split('/').pop()!;
-  const newId = sanitizedFolder ? `${sanitizedFolder}/${filename}` : filename;
+  const oldFolder = oldId.split('/').slice(0, -1).join('/');
+  const oldFilename = oldId.split('/').pop()!;
+
+  const newFilename = name?.trim() ? `${name.trim()}.md` : oldFilename;
+  const newFolder = folder !== undefined
+    ? (folder || '').trim().replace(/^\/+|\/+$/g, '')
+    : oldFolder;
+  const newId = newFolder ? `${newFolder}/${newFilename}` : newFilename;
 
   if (newId === oldId) return NextResponse.json({ id: newId });
 
   // Check destination doesn't already exist
   const existsRes = await fetchFromVault(encodeURIComponent(newId), {}, auth, db);
   if (existsRes.ok) {
-    return NextResponse.json({ error: `A note named "${filename}" already exists in that folder` }, { status: 409 });
+    return NextResponse.json({ error: `A note named "${newFilename}" already exists in that folder` }, { status: 409 });
   }
 
   // Fetch old note
@@ -81,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...noteRest, _id: newId, path: newId, children: newChildren, mtime: Date.now() }),
+      body: JSON.stringify({ ...noteRest, _id: newId, path: newId, children: newChildren, mtime: Date.now(), ...(name?.trim() ? { title: name.trim() } : {}) }),
     },
     auth,
     db
