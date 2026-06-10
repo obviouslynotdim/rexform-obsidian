@@ -133,47 +133,84 @@ interface MoveInputProps {
 
 function MoveInput({ node, depth, onMoved, onCancel }: MoveInputProps) {
   const currentFolder = node.path.split('/').slice(0, -1).join('/');
+  const currentName = node.name; // already has .md stripped by buildTree
+  const [noteName, setNoteName] = useState(currentName);
   const [folder, setFolder] = useState(currentFolder);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  useEffect(() => { nameInputRef.current?.focus(); nameInputRef.current?.select(); }, []);
 
   async function submit() {
+    const trimmedName = noteName.trim();
+    if (!trimmedName) return;
     setLoading(true);
     setError('');
+    const body: Record<string, string> = { folder };
+    if (trimmedName !== currentName) body.name = trimmedName;
     const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     setLoading(false);
-    if (res.ok) {
-      onMoved(data.id);
-    } else {
-      setError(data.error || 'Move failed');
-    }
+    if (res.ok) onMoved(data.id);
+    else setError(data.error || 'Move failed');
   }
 
+  const inputStyle = { background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' };
+  const inputClass = 'w-full px-2 py-0.5 rounded text-xs outline-none border';
+
   return (
-    <div style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '8px' }} className="py-0.5">
-      <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Move to folder (empty = root):</p>
-      <input
-        ref={inputRef}
-        value={folder}
-        onChange={(e) => setFolder(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') submit();
-          if (e.key === 'Escape') onCancel();
-        }}
-        placeholder="folder/subfolder"
-        disabled={loading}
-        className="w-full px-2 py-0.5 rounded text-xs outline-none border"
-        style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
-      />
-      {error && <p className="text-xs mt-0.5" style={{ color: '#e55' }}>{error}</p>}
+    <div style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '8px' }} className="py-1 flex flex-col gap-1">
+      <div>
+        <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Note name:</p>
+        <input
+          ref={nameInputRef}
+          value={noteName}
+          onChange={(e) => { setNoteName(e.target.value); setError(''); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            if (e.key === 'Escape') onCancel();
+          }}
+          placeholder="Note name"
+          disabled={loading}
+          className={inputClass}
+          style={inputStyle}
+        />
+      </div>
+      <div>
+        <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Folder (empty = root):</p>
+        <input
+          value={folder}
+          onChange={(e) => { setFolder(e.target.value); setError(''); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            if (e.key === 'Escape') onCancel();
+          }}
+          placeholder="folder/subfolder"
+          disabled={loading}
+          className={inputClass}
+          style={inputStyle}
+        />
+      </div>
+      {error && <p className="text-xs" style={{ color: '#e55' }}>{error}</p>}
+      <div className="flex gap-1">
+        <button
+          onClick={submit}
+          disabled={loading || !noteName.trim()}
+          className="flex-1 py-0.5 rounded text-xs font-medium"
+          style={{ background: 'var(--accent)', color: '#fff', opacity: (!noteName.trim() || loading) ? 0.5 : 1 }}
+        >{loading ? 'Moving…' : 'Move'}</button>
+        <button
+          onClick={onCancel}
+          disabled={loading}
+          className="flex-1 py-0.5 rounded text-xs font-medium"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+        >Cancel</button>
+      </div>
     </div>
   );
 }
@@ -493,6 +530,9 @@ export default function NotesSidebar({ currentId }: Props) {
 
   const notes: NoteEntry[] = data?.notes || [];
   const activeId = currentId ?? decodeURIComponent(pathname.replace('/notes/', ''));
+
+  // Close move input when navigating to a different note
+  useEffect(() => { setMoving(null); }, [pathname]);
 
   // Auto-expand folders containing the active note
   useEffect(() => {
