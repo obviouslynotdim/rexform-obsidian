@@ -156,6 +156,7 @@ function MoveInput({ node, depth, onMoved, onCancel }: MoveInputProps) {
 
   return (
     <div style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '8px' }} className="py-0.5">
+      <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Move to folder:</p>
       <input
         ref={inputRef}
         value={folder}
@@ -164,7 +165,7 @@ function MoveInput({ node, depth, onMoved, onCancel }: MoveInputProps) {
           if (e.key === 'Enter') submit();
           if (e.key === 'Escape') onCancel();
         }}
-        placeholder="Move to folder…"
+        placeholder="folder/subfolder (empty = root)"
         disabled={loading}
         className="w-full px-2 py-0.5 rounded text-xs outline-none border"
         style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
@@ -183,14 +184,17 @@ interface FileItemProps {
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
   onDeleted: (id: string) => void;
+  dragging: string | null;
+  setDragging: (id: string | null) => void;
 }
 
-function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved, onDeleted }: FileItemProps) {
+function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved, onDeleted, dragging, setDragging }: FileItemProps) {
   const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
+  const isDragging = dragging === node.id;
 
   async function handleDelete() {
     setDeleting(true);
@@ -201,7 +205,11 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   }
 
   return (
-    <div>
+    <div
+      draggable={canWrite}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragging(node.id); }}
+      onDragEnd={() => setDragging(null)}
+    >
       <div
         className="flex items-center py-1 rounded text-sm"
         style={{
@@ -209,6 +217,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           paddingRight: '4px',
           background: isActive ? 'var(--bg-base)' : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+          opacity: isDragging ? 0.4 : 1,
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!isMoving) setConfirmDelete(false); }}
@@ -281,9 +290,12 @@ interface FolderItemProps {
   onDeleted: (id: string) => void;
   onFolderRenamed: (oldPath: string, newName: string) => void;
   onFolderDeleted: (path: string) => void;
+  dragging: string | null;
+  setDragging: (id: string | null) => void;
+  onDropOnFolder: (targetFolder: string) => void;
 }
 
-function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted }: FolderItemProps) {
+function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted, dragging, setDragging, onDropOnFolder }: FolderItemProps) {
   const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -291,9 +303,11 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   const [renameError, setRenameError] = useState('');
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
+  const isDragOver = dragCounter > 0 && !!dragging;
 
   useEffect(() => { if (renaming) renameInputRef.current?.select(); }, [renaming]);
 
@@ -330,10 +344,19 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
     <div>
       <div
         className="flex items-center py-1 rounded cursor-pointer select-none"
-        style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
+        style={{
+          paddingLeft: `${depth * 14 + 8}px`,
+          paddingRight: '4px',
+          outline: isDragOver ? '2px solid var(--accent)' : 'none',
+          borderRadius: '4px',
+        }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!renaming) setConfirmDeleteFolder(false); }}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
+        onDragOver={(e) => { if (dragging) e.preventDefault(); }}
+        onDragEnter={(e) => { e.preventDefault(); setDragCounter((c) => c + 1); }}
+        onDragLeave={() => setDragCounter((c) => Math.max(0, c - 1))}
+        onDrop={(e) => { e.preventDefault(); setDragCounter(0); onDropOnFolder(node.path); }}
       >
         <span className="mr-1 text-xs opacity-40 w-3 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
           {isOpen ? '▾' : '▸'}
@@ -446,6 +469,9 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 onDeleted={onDeleted}
                 onFolderRenamed={onFolderRenamed}
                 onFolderDeleted={onFolderDeleted}
+                dragging={dragging}
+                setDragging={setDragging}
+                onDropOnFolder={onDropOnFolder}
               />
             ) : (
               <FileItem
@@ -458,6 +484,8 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 setMoving={setMoving}
                 onMoved={onMoved}
                 onDeleted={onDeleted}
+                dragging={dragging}
+                setDragging={setDragging}
               />
             )
           )}
@@ -472,6 +500,7 @@ export default function NotesSidebar({ currentId }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<CreatingState | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -536,6 +565,29 @@ export default function NotesSidebar({ currentId }: Props) {
       router.push(`/notes/${encodeURIComponent(newId)}`);
     }
   }, [activeId, mutate, router]);
+
+  const handleDropOnFolder = useCallback(async (targetFolder: string) => {
+    if (!dragging) return;
+    const noteId = dragging;
+    setDragging(null);
+    const currentFolder = notes.find((n) => n.id === noteId)?.path.split('/').slice(0, -1).join('/') ?? '';
+    if (currentFolder === targetFolder) return;
+    const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: targetFolder }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (targetFolder) {
+        setExpanded((prev) => new Set([
+          ...prev,
+          ...targetFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/')),
+        ]));
+      }
+      handleMoved(noteId, data.id);
+    }
+  }, [dragging, notes, handleMoved]);
 
   const tree = buildTree(notes);
 
@@ -645,6 +697,17 @@ export default function NotesSidebar({ currentId }: Props) {
                 onCancel={() => setCreating(null)}
               />
             )}
+            {/* Root drop zone — only visible while dragging */}
+            {dragging && (
+              <div
+                className="mx-2 mb-1 py-1 rounded text-xs text-center border border-dashed"
+                style={{ color: 'var(--text-muted)', borderColor: 'var(--accent)', opacity: 0.7 }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); handleDropOnFolder(''); }}
+              >
+                Drop here → root
+              </div>
+            )}
             {tree.map((node) =>
               node.type === 'folder' ? (
                 <FolderItem
@@ -664,6 +727,9 @@ export default function NotesSidebar({ currentId }: Props) {
                   onDeleted={handleDeleted}
                   onFolderRenamed={handleFolderRenamed}
                   onFolderDeleted={handleFolderDeleted}
+                  dragging={dragging}
+                  setDragging={setDragging}
+                  onDropOnFolder={handleDropOnFolder}
                 />
               ) : (
                 <FileItem
@@ -676,6 +742,8 @@ export default function NotesSidebar({ currentId }: Props) {
                   setMoving={setMoving}
                   onMoved={handleMoved}
                   onDeleted={handleDeleted}
+                  dragging={dragging}
+                  setDragging={setDragging}
                 />
               )
             )}
