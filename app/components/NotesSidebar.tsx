@@ -186,12 +186,23 @@ interface FileItemProps {
   moving: string | null;
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
+  onDeleted: (id: string) => void;
 }
 
-function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved }: FileItemProps) {
+function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved, onDeleted }: FileItemProps) {
   const [hovered, setHovered] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
+
+  async function handleDelete() {
+    setDeleting(true);
+    const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}`, { method: 'DELETE' });
+    setDeleting(false);
+    if (res.ok) onDeleted(node.id);
+    else setConfirmDelete(false);
+  }
 
   return (
     <div>
@@ -204,7 +215,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved 
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
         }}
         onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseLeave={() => { setHovered(false); if (!isMoving) setConfirmDelete(false); }}
       >
         <Link
           href={`/notes/${encodeURIComponent(node.id)}`}
@@ -214,13 +225,36 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved 
           <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
           <span className="truncate">{node.name}</span>
         </Link>
-        {hovered && canWrite && (
-          <button
-            title="Move to folder"
-            onClick={(e) => { e.preventDefault(); setMoving(isMoving ? null : node.id); }}
-            className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40 ml-1"
-            style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-          >⋯</button>
+        {confirmDelete ? (
+          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
+            <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: '#fff', background: '#c0392b' }}
+            >{deleting ? '…' : '✓'}</button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+            >✗</button>
+          </div>
+        ) : hovered && canWrite && (
+          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
+            <button
+              title="Move to folder"
+              onClick={() => setMoving(isMoving ? null : node.id)}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
+              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+            >⋯</button>
+            <button
+              title="Delete note"
+              onClick={() => setConfirmDelete(true)}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
+              style={{ color: '#e55', background: 'var(--bg-elevated)' }}
+            >×</button>
+          </div>
         )}
       </div>
       {isMoving && (
@@ -248,16 +282,52 @@ interface FolderItemProps {
   moving: string | null;
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
+  onDeleted: (id: string) => void;
+  onFolderRenamed: (oldPath: string, newName: string) => void;
+  onFolderDeleted: (path: string) => void;
 }
 
-function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved }: FolderItemProps) {
+function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted }: FolderItemProps) {
   const [hovered, setHovered] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(false);
+  const [deletingFolder, setDeletingFolder] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
+
+  useEffect(() => { if (renaming) renameInputRef.current?.select(); }, [renaming]);
 
   function openAndCreate(type: 'note' | 'folder') {
     if (!isOpen) toggleExpand(node.path);
     setCreating({ folder: node.path, type });
+  }
+
+  async function handleRename() {
+    const trimmed = renameName.trim();
+    if (!trimmed || trimmed === node.name) { setRenaming(false); return; }
+    setRenameLoading(true);
+    setRenameError('');
+    const res = await fetch('/api/notes/folder/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPath: node.path, newName: trimmed }),
+    });
+    const data = await res.json();
+    setRenameLoading(false);
+    if (res.ok) { setRenaming(false); onFolderRenamed(node.path, trimmed); }
+    else setRenameError(data.error || 'Rename failed');
+  }
+
+  async function handleDeleteFolder() {
+    setDeletingFolder(true);
+    const res = await fetch(`/api/notes/folder?path=${encodeURIComponent(node.path)}`, { method: 'DELETE' });
+    setDeletingFolder(false);
+    if (res.ok) onFolderDeleted(node.path);
+    else setConfirmDeleteFolder(false);
   }
 
   return (
@@ -266,33 +336,89 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
         className="flex items-center py-1 rounded cursor-pointer select-none"
         style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
         onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        onClick={() => toggleExpand(node.path)}
+        onMouseLeave={() => { setHovered(false); if (!renaming) setConfirmDeleteFolder(false); }}
+        onClick={() => { if (!renaming) toggleExpand(node.path); }}
       >
         <span className="mr-1 text-xs opacity-40 w-3 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
           {isOpen ? '▾' : '▸'}
         </span>
         <span className="mr-1.5 text-xs flex-shrink-0 opacity-60">📁</span>
-        <span className="truncate flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>
-          {node.name}
-        </span>
-        {hovered && canWrite && (
+        {renaming ? (
+          <input
+            ref={renameInputRef}
+            value={renameName}
+            onChange={(e) => { setRenameName(e.target.value); setRenameError(''); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename();
+              if (e.key === 'Escape') setRenaming(false);
+              e.stopPropagation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            disabled={renameLoading}
+            className="flex-1 min-w-0 px-1 py-0 rounded text-sm outline-none border"
+            style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
+          />
+        ) : (
+          <span className="truncate flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>
+            {node.name}
+          </span>
+        )}
+        {confirmDeleteFolder ? (
+          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
+            <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete all?</span>
+            <button
+              onClick={handleDeleteFolder}
+              disabled={deletingFolder}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: '#fff', background: '#c0392b' }}
+            >{deletingFolder ? '…' : '✓'}</button>
+            <button
+              onClick={() => setConfirmDeleteFolder(false)}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+            >✗</button>
+          </div>
+        ) : renaming ? (
           <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
             <button
-              title="New note"
-              onClick={() => openAndCreate('note')}
+              onClick={handleRename}
+              disabled={renameLoading}
+              title="Save"
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: '#fff', background: 'var(--accent)' }}
+            >{renameLoading ? '…' : '✓'}</button>
+            <button
+              onClick={() => setRenaming(false)}
+              title="Cancel"
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+            >✗</button>
+          </div>
+        ) : hovered && canWrite && (
+          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
+            <button title="New note" onClick={() => openAndCreate('note')}
               className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
               style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
             >+</button>
-            <button
-              title="New folder"
-              onClick={() => openAndCreate('folder')}
+            <button title="New folder" onClick={() => openAndCreate('folder')}
               className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
               style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
             >⊞</button>
+            <button title="Rename folder"
+              onClick={() => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); }}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
+              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+            >✏</button>
+            <button title="Delete folder" onClick={() => setConfirmDeleteFolder(true)}
+              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
+              style={{ color: '#e55', background: 'var(--bg-elevated)' }}
+            >×</button>
           </div>
         )}
       </div>
+      {renameError && (
+        <p className="text-xs px-3 pb-0.5" style={{ paddingLeft: `${depth * 14 + 30}px`, color: '#e55' }}>{renameError}</p>
+      )}
 
       {isOpen && (
         <div>
@@ -321,6 +447,9 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 moving={moving}
                 setMoving={setMoving}
                 onMoved={onMoved}
+                onDeleted={onDeleted}
+                onFolderRenamed={onFolderRenamed}
+                onFolderDeleted={onFolderDeleted}
               />
             ) : (
               <FileItem
@@ -332,6 +461,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 moving={moving}
                 setMoving={setMoving}
                 onMoved={onMoved}
+                onDeleted={onDeleted}
               />
             )
           )}
@@ -386,6 +516,26 @@ export default function NotesSidebar({ currentId }: Props) {
   const handleMoved = useCallback((oldId: string, newId: string) => {
     mutate();
     if (activeId === oldId) router.push(`/notes/${encodeURIComponent(newId)}`);
+  }, [activeId, mutate, router]);
+
+  const handleDeleted = useCallback((id: string) => {
+    mutate();
+    if (activeId === id) router.push('/notes');
+  }, [activeId, mutate, router]);
+
+  const handleFolderDeleted = useCallback((path: string) => {
+    mutate();
+    if (activeId.startsWith(path + '/')) router.push('/notes');
+  }, [activeId, mutate, router]);
+
+  const handleFolderRenamed = useCallback((oldPath: string, newName: string) => {
+    mutate();
+    if (activeId.startsWith(oldPath + '/')) {
+      const parentSegments = oldPath.split('/').slice(0, -1);
+      const newPath = [...parentSegments, newName].join('/');
+      const newId = newPath + activeId.slice(oldPath.length);
+      router.push(`/notes/${encodeURIComponent(newId)}`);
+    }
   }, [activeId, mutate, router]);
 
   const tree = buildTree(notes);
@@ -512,6 +662,9 @@ export default function NotesSidebar({ currentId }: Props) {
                   moving={moving}
                   setMoving={setMoving}
                   onMoved={handleMoved}
+                  onDeleted={handleDeleted}
+                  onFolderRenamed={handleFolderRenamed}
+                  onFolderDeleted={handleFolderDeleted}
                 />
               ) : (
                 <FileItem
@@ -523,6 +676,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   moving={moving}
                   setMoving={setMoving}
                   onMoved={handleMoved}
+                  onDeleted={handleDeleted}
                 />
               )
             )}
