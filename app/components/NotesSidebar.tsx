@@ -581,7 +581,7 @@ export default function NotesSidebar({ currentId }: Props) {
       const data = await res.json();
       if (targetFolder) {
         setExpanded((prev) => new Set([
-          ...prev,
+          ...Array.from(prev),
           ...targetFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/')),
         ]));
       }
