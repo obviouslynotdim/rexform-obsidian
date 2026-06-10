@@ -123,25 +123,114 @@ function InlineInput({ folder, type, depth, onCreated, onCancel }: InlineInputPr
   );
 }
 
-interface FileItemProps { node: FileNode; depth: number; activeId: string }
+interface MoveInputProps {
+  node: FileNode;
+  depth: number;
+  onMoved: (newId: string) => void;
+  onCancel: () => void;
+}
 
-function FileItem({ node, depth, activeId }: FileItemProps) {
-  const isActive = node.id === activeId;
+function MoveInput({ node, depth, onMoved, onCancel }: MoveInputProps) {
+  const currentFolder = node.path.split('/').slice(0, -1).join('/');
+  const [folder, setFolder] = useState(currentFolder);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+
+  async function submit() {
+    setLoading(true);
+    setError('');
+    const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder }),
+    });
+    const data = await res.json();
+    setLoading(false);
+    if (res.ok) {
+      onMoved(data.id);
+    } else {
+      setError(data.error || 'Move failed');
+    }
+  }
+
   return (
-    <Link
-      href={`/notes/${encodeURIComponent(node.id)}`}
-      className="flex items-center py-1 rounded text-sm truncate"
-      style={{
-        paddingLeft: `${depth * 14 + 8}px`,
-        paddingRight: '8px',
-        background: isActive ? 'var(--bg-base)' : 'transparent',
-        color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)',
-        borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-      }}
-    >
-      <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
-      <span className="truncate">{node.name}</span>
-    </Link>
+    <div style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '8px' }} className="py-0.5">
+      <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Move to folder (empty = root):</p>
+      <input
+        ref={inputRef}
+        value={folder}
+        onChange={(e) => setFolder(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+          if (e.key === 'Escape') onCancel();
+        }}
+        placeholder="folder/subfolder"
+        disabled={loading}
+        className="w-full px-2 py-0.5 rounded text-xs outline-none border"
+        style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
+      />
+      {error && <p className="text-xs mt-0.5" style={{ color: '#e55' }}>{error}</p>}
+    </div>
+  );
+}
+
+interface FileItemProps {
+  node: FileNode;
+  depth: number;
+  activeId: string;
+  canWrite: boolean;
+  moving: string | null;
+  setMoving: (id: string | null) => void;
+  onMoved: (oldId: string, newId: string) => void;
+}
+
+function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved }: FileItemProps) {
+  const [hovered, setHovered] = useState(false);
+  const isActive = node.id === activeId;
+  const isMoving = moving === node.id;
+
+  return (
+    <div>
+      <div
+        className="flex items-center py-1 rounded text-sm"
+        style={{
+          paddingLeft: `${depth * 14 + 8}px`,
+          paddingRight: '4px',
+          background: isActive ? 'var(--bg-base)' : 'transparent',
+          borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <Link
+          href={`/notes/${encodeURIComponent(node.id)}`}
+          className="flex items-center flex-1 truncate min-w-0"
+          style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
+        >
+          <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
+          <span className="truncate">{node.name}</span>
+        </Link>
+        {hovered && canWrite && (
+          <button
+            title="Move to folder"
+            onClick={(e) => { e.preventDefault(); setMoving(isMoving ? null : node.id); }}
+            className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40 ml-1"
+            style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+          >⋯</button>
+        )}
+      </div>
+      {isMoving && (
+        <MoveInput
+          node={node}
+          depth={depth}
+          onMoved={(newId) => { onMoved(node.id, newId); setMoving(null); }}
+          onCancel={() => setMoving(null)}
+        />
+      )}
+    </div>
   );
 }
 
@@ -155,9 +244,12 @@ interface FolderItemProps {
   setCreating: (s: CreatingState | null) => void;
   canWrite: boolean;
   onCreated: () => void;
+  moving: string | null;
+  setMoving: (id: string | null) => void;
+  onMoved: (oldId: string, newId: string) => void;
 }
 
-function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated }: FolderItemProps) {
+function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved }: FolderItemProps) {
   const [hovered, setHovered] = useState(false);
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
@@ -225,9 +317,21 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 setCreating={setCreating}
                 canWrite={canWrite}
                 onCreated={onCreated}
+                moving={moving}
+                setMoving={setMoving}
+                onMoved={onMoved}
               />
             ) : (
-              <FileItem key={child.id} node={child} depth={depth + 1} activeId={activeId} />
+              <FileItem
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                activeId={activeId}
+                canWrite={canWrite}
+                moving={moving}
+                setMoving={setMoving}
+                onMoved={onMoved}
+              />
             )
           )}
         </div>
@@ -240,7 +344,9 @@ export default function NotesSidebar({ currentId }: Props) {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<CreatingState | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
 
   const { data, mutate, isLoading } = useSWR('/api/notes/tree', fetcher, {
     revalidateOnFocus: false,
@@ -275,6 +381,11 @@ export default function NotesSidebar({ currentId }: Props) {
       return next;
     });
   }, []);
+
+  const handleMoved = useCallback((oldId: string, newId: string) => {
+    mutate();
+    if (activeId === oldId) router.push(`/notes/${encodeURIComponent(newId)}`);
+  }, [activeId, mutate, router]);
 
   const tree = buildTree(notes);
 
@@ -397,9 +508,21 @@ export default function NotesSidebar({ currentId }: Props) {
                   setCreating={setCreating}
                   canWrite={canWrite}
                   onCreated={() => mutate()}
+                  moving={moving}
+                  setMoving={setMoving}
+                  onMoved={handleMoved}
                 />
               ) : (
-                <FileItem key={node.id} node={node} depth={0} activeId={activeId} />
+                <FileItem
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  activeId={activeId}
+                  canWrite={canWrite}
+                  moving={moving}
+                  setMoving={setMoving}
+                  onMoved={handleMoved}
+                />
               )
             )}
           </>

@@ -4,6 +4,16 @@ import { authOptions } from '@/lib/auth';
 import { fetchFromVault, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
+async function findUniqueId(base: string, folder: string, auth: AuthHeaders | undefined, db: string) {
+  for (let i = 0; i < 20; i++) {
+    const suffix = i === 0 ? '' : ` ${i}`;
+    const id = folder ? `${folder}/${base}${suffix}.md` : `${base}${suffix}.md`;
+    const res = await fetchFromVault(encodeURIComponent(id), {}, auth, db);
+    if (res.status === 404) return { id, title: base + suffix };
+  }
+  throw new Error('Could not find a unique name after 20 attempts');
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
@@ -30,10 +40,17 @@ export async function POST(req: NextRequest) {
   }
 
   const sanitizedFolder = (folder || '').trim().replace(/^\/+|\/+$/g, '');
-  const id = sanitizedFolder ? `${sanitizedFolder}/${title.trim()}.md` : `${title.trim()}.md`;
+
+  let id: string, resolvedTitle: string;
+  try {
+    ({ id, title: resolvedTitle } = await findUniqueId(title.trim(), sanitizedFolder, auth, db));
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 409 });
+  }
+
   const chunkId = `${id}_c0`;
   const now = Date.now();
-  const body = content ?? `# ${title.trim()}\n\n`;
+  const body = content ?? `# ${resolvedTitle}\n\n`;
 
   const chunkRes = await fetchFromVault(
     encodeURIComponent(chunkId),
@@ -51,7 +68,7 @@ export async function POST(req: NextRequest) {
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _id: id, path: id, type: 'plain', title: title.trim(), mtime: now, children: [chunkId] }),
+      body: JSON.stringify({ _id: id, path: id, type: 'plain', title: resolvedTitle, mtime: now, children: [chunkId] }),
     },
     auth,
     db
@@ -61,5 +78,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Failed to create note: ${text}` }, { status: parentRes.status });
   }
 
-  return NextResponse.json({ id, title: title.trim(), path: id }, { status: 201 });
+  return NextResponse.json({ id, title: resolvedTitle, path: id }, { status: 201 });
 }
