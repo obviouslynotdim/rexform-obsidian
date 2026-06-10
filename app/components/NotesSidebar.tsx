@@ -60,7 +60,7 @@ interface InlineInputProps {
   folder: string;
   type: 'note' | 'folder';
   depth: number;
-  onCreated: () => void;
+  onCreated: (expandFolder?: string) => void;
   onCancel: () => void;
 }
 
@@ -95,7 +95,8 @@ function InlineInput({ folder, type, depth, onCreated, onCancel }: InlineInputPr
     const data = await res.json();
     setLoading(false);
     if (res.ok) {
-      onCreated();
+      // Pass the folder that should be expanded after tree revalidates
+      onCreated(targetFolder || undefined);
       router.push(`/notes/${encodeURIComponent(data.id)}`);
       onCancel();
     } else {
@@ -243,7 +244,7 @@ interface FolderItemProps {
   creating: CreatingState | null;
   setCreating: (s: CreatingState | null) => void;
   canWrite: boolean;
-  onCreated: () => void;
+  onCreated: (expandFolder?: string) => void;
   moving: string | null;
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
@@ -491,7 +492,7 @@ export default function NotesSidebar({ currentId }: Props) {
                 folder=""
                 type={creating.type}
                 depth={0}
-                onCreated={() => mutate()}
+                onCreated={(expandFolder) => { mutate(); if (expandFolder) setExpanded((prev) => new Set(Array.from(prev).concat(expandFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))))); }}
                 onCancel={() => setCreating(null)}
               />
             )}
@@ -507,7 +508,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   creating={creating}
                   setCreating={setCreating}
                   canWrite={canWrite}
-                  onCreated={() => mutate()}
+                  onCreated={(expandFolder) => { mutate(); if (expandFolder) setExpanded((prev) => new Set(Array.from(prev).concat(expandFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))))); }}
                   moving={moving}
                   setMoving={setMoving}
                   onMoved={handleMoved}
