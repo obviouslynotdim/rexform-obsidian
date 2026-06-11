@@ -192,9 +192,40 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   const [hovered, setHovered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const cancelRenameRef = useRef(false);
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
   const isDragging = dragging === node.id;
+
+  useEffect(() => { if (renaming) renameInputRef.current?.select(); }, [renaming]);
+
+  function startRename() {
+    setRenameName(node.name);
+    setRenaming(true);
+    setRenameError('');
+  }
+
+  async function handleRename() {
+    if (renameLoading) return;
+    const trimmed = renameName.trim();
+    if (!trimmed || trimmed === node.name) { setRenaming(false); return; }
+    setRenameLoading(true);
+    setRenameError('');
+    const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    const data = await res.json();
+    setRenameLoading(false);
+    if (res.ok) { setRenaming(false); onMoved(node.id, data.id); }
+    else setRenameError(data.error || 'Rename failed');
+  }
 
   async function handleDelete() {
     setDeleting(true);
@@ -206,11 +237,13 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
 
   return (
     <div
-      draggable={canWrite}
+      draggable={canWrite && !renaming}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', node.id); setDragging(node.id); }}
       onDragEnd={() => setDragging(null)}
+      onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
     >
       <div
+        tabIndex={0}
         className="flex items-center py-1 rounded text-sm"
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
@@ -218,51 +251,102 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           background: isActive ? 'var(--bg-base)' : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
           opacity: isDragging ? 0.4 : 1,
+          outline: 'none',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!isMoving) setConfirmDelete(false); }}
+        onKeyDown={(e) => { if (e.key === 'F2' && canWrite && !renaming) { e.preventDefault(); startRename(); } }}
       >
-        <Link
-          href={`/notes/${encodeURIComponent(node.id)}`}
-          draggable={false}
-          className="flex items-center flex-1 truncate min-w-0"
-          style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
-        >
-          <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
-          <span className="truncate">{node.name}</span>
-        </Link>
-        {confirmDelete ? (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
-            <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete?</span>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: '#fff', background: '#c0392b' }}
-            >{deleting ? '…' : '✓'}</button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >✗</button>
-          </div>
-        ) : hovered && canWrite && (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
-            <button
-              title="Move to folder"
-              onClick={() => setMoving(isMoving ? null : node.id)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >⋯</button>
-            <button
-              title="Delete note"
-              onClick={() => setConfirmDelete(true)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
-              style={{ color: '#e55', background: 'var(--bg-elevated)' }}
-            >×</button>
-          </div>
+        {renaming ? (
+          <>
+            <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
+            <input
+              ref={renameInputRef}
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.stopPropagation(); handleRename(); }
+                if (e.key === 'Escape') { cancelRenameRef.current = true; setRenaming(false); }
+                e.stopPropagation();
+              }}
+              onBlur={() => { if (!cancelRenameRef.current) handleRename(); cancelRenameRef.current = false; }}
+              onClick={(e) => e.stopPropagation()}
+              disabled={renameLoading}
+              className="flex-1 min-w-0 px-1 py-0 rounded text-sm outline-none border"
+              style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
+            />
+            <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={handleRename}
+                disabled={renameLoading}
+                title="Save"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: '#fff', background: 'var(--accent)' }}
+              >{renameLoading ? '…' : '✓'}</button>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { cancelRenameRef.current = true; setRenaming(false); }}
+                title="Cancel"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+              >✗</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <Link
+              href={`/notes/${encodeURIComponent(node.id)}`}
+              draggable={false}
+              className="flex items-center flex-1 truncate min-w-0"
+              style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
+            >
+              <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
+              <span className="truncate">{node.name}</span>
+            </Link>
+            {confirmDelete ? (
+              <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
+                <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                  style={{ color: '#fff', background: '#c0392b' }}
+                >{deleting ? '…' : '✓'}</button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+                >✗</button>
+              </div>
+            ) : hovered && canWrite && (
+              <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
+                <button
+                  title="Rename note"
+                  onClick={(e) => { e.preventDefault(); startRename(); }}
+                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
+                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+                >✏</button>
+                <button
+                  title="Move to folder"
+                  onClick={() => setMoving(isMoving ? null : node.id)}
+                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
+                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+                >⋯</button>
+                <button
+                  title="Delete note"
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
+                  style={{ color: '#e55', background: 'var(--bg-elevated)' }}
+                >×</button>
+              </div>
+            )}
+          </>
         )}
       </div>
+      {renameError && (
+        <p className="text-xs pb-0.5" style={{ paddingLeft: `${depth * 14 + 28}px`, color: '#e55' }}>{renameError}</p>
+      )}
       {isMoving && (
         <MoveInput
           node={node}
@@ -590,7 +674,11 @@ export default function NotesSidebar({ currentId }: Props) {
     }
   }, [dragging, notes, handleMoved]);
 
-  const tree = buildTree(notes);
+  const rawTree = buildTree(notes);
+  // Unwrap a single root-level folder (e.g. "my-vaults") so its children appear at the top level
+  const singleRootFolder = rawTree.length === 1 && rawTree[0].type === 'folder' ? rawTree[0] as FolderNode : null;
+  const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
+  const tree = singleRootFolder ? singleRootFolder.children : rawTree;
 
   const filtered = search.trim()
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
@@ -691,7 +779,7 @@ export default function NotesSidebar({ currentId }: Props) {
             {/* Root-level inline input */}
             {creating?.folder === '' && (
               <InlineInput
-                folder=""
+                folder={effectiveRoot}
                 type={creating.type}
                 depth={0}
                 onCreated={(expandFolder) => { mutate(); if (expandFolder) setExpanded((prev) => new Set(Array.from(prev).concat(expandFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))))); }}
@@ -704,7 +792,7 @@ export default function NotesSidebar({ currentId }: Props) {
                 className="mx-2 mb-1 py-1 rounded text-xs text-center border border-dashed"
                 style={{ color: 'var(--text-muted)', borderColor: 'var(--accent)', opacity: 0.7 }}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); handleDropOnFolder(''); }}
+                onDrop={(e) => { e.preventDefault(); handleDropOnFolder(effectiveRoot); }}
               >
                 Drop here → root
               </div>

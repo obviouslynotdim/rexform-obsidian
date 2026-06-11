@@ -29,7 +29,10 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
   const [renameValue, setRenameValue] = useState(title);
   const [renameError, setRenameError] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [titleHovered, setTitleHovered] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const cancelRenameRef = useRef(false);
+  const isSavingRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -37,8 +40,10 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
   }, [renamingTitle]);
 
   async function handleRename() {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
     const newName = renameValue.trim();
-    if (!newName || newName === title) { setRenamingTitle(false); return; }
+    if (!newName || newName === title) { setRenamingTitle(false); isSavingRef.current = false; return; }
     setRenaming(true);
     setRenameError('');
     const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
@@ -48,6 +53,7 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
     });
     const data = await res.json();
     setRenaming(false);
+    isSavingRef.current = false;
     if (res.ok) {
       setRenamingTitle(false);
       await mutate('/api/notes/tree');
@@ -93,21 +99,29 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
                 onChange={(e) => { setRenameValue(e.target.value); setRenameError(''); }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleRename();
-                  if (e.key === 'Escape') { setRenamingTitle(false); setRenameValue(title); }
+                  if (e.key === 'Escape') { cancelRenameRef.current = true; setRenamingTitle(false); setRenameValue(title); }
                 }}
+                onBlur={() => { if (!cancelRenameRef.current) handleRename(); cancelRenameRef.current = false; }}
                 disabled={renaming}
-                className="text-3xl font-bold bg-transparent outline-none border-b w-full pb-1"
-                style={{ color: 'var(--text-primary)', borderColor: 'var(--accent)', caretColor: 'var(--accent)' }}
+                className="text-3xl font-bold capitalize bg-transparent outline-none border-none w-full"
+                style={{ color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
               />
               {renameError && <p className="text-xs mt-1" style={{ color: '#e55' }}>{renameError}</p>}
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Enter to save · Esc to cancel</p>
             </div>
           ) : (
             <h1
               className="text-3xl font-bold capitalize"
-              style={{ color: 'var(--text-primary)', cursor: canWrite ? 'text' : 'default' }}
+              style={{
+                color: 'var(--text-primary)',
+                cursor: canWrite ? 'text' : 'default',
+                textDecorationLine: (canWrite && titleHovered) ? 'underline' : 'none',
+                textDecorationStyle: 'dotted',
+                textDecorationColor: 'var(--text-muted)',
+                textUnderlineOffset: '4px',
+              }}
+              onMouseEnter={() => canWrite && setTitleHovered(true)}
+              onMouseLeave={() => setTitleHovered(false)}
               onClick={() => { if (canWrite) { setRenameValue(title); setRenamingTitle(true); } }}
-              title={canWrite ? 'Click to rename' : undefined}
             >
               {title}
             </h1>
