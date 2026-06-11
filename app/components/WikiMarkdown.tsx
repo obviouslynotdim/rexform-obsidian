@@ -17,12 +17,13 @@ function preprocessWikilinks(content: string): string {
 
 function resolveWikilink(name: string, notes: NoteStub[]): string | null {
   const lower = name.toLowerCase();
-  return (
-    notes.find((n) => {
-      const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
-      return filename.toLowerCase() === lower;
-    })?.id ?? null
-  );
+  const byFilename = notes.find((n) => {
+    const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+    return filename.toLowerCase() === lower;
+  });
+  if (byFilename) return byFilename.id;
+  const byId = notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower);
+  return byId?.id ?? null;
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {

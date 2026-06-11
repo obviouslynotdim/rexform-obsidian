@@ -17,13 +17,15 @@ interface VaultsData { vaults: VaultOption[]; activeVault: string }
 interface ContextMenuState {
   x: number;
   y: number;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'root';
   id: string;
   name: string;
   path: string;
-  onRename: () => void;
-  onDelete: () => void;
+  onRename?: () => void;
+  onDelete?: () => void;
   onMove?: () => void;
+  onNewNote?: () => void;
+  onNewFolder?: () => void;
 }
 
 interface Props { currentId?: string }
@@ -286,6 +288,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         onContextMenu={(e) => {
           if (!canWrite) return;
           e.preventDefault();
+          e.stopPropagation();
           setContextMenu({
             x: e.clientX, y: e.clientY,
             type: 'file', id: node.id, name: node.name, path: node.path,
@@ -471,6 +474,8 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
             type: 'folder', id: node.path, name: node.name, path: node.path,
             onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
             onDelete: () => setConfirmDeleteFolder(true),
+            onNewNote: () => openAndCreate('note'),
+            onNewFolder: () => openAndCreate('folder'),
           });
         }}
       >
@@ -725,9 +730,11 @@ export default function NotesSidebar({ currentId }: Props) {
   }, [notes, handleMoved]);
 
   const rawTree = buildTree(notes);
-  const singleRootFolder = rawTree.length === 1 && rawTree[0].type === 'folder' ? rawTree[0] as FolderNode : null;
+  const rootFolders = rawTree.filter((n): n is FolderNode => n.type === 'folder');
+  const rootFiles = rawTree.filter((n): n is FileNode => n.type === 'file');
+  const singleRootFolder = rootFolders.length === 1 ? rootFolders[0] : null;
   const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
-  const tree = singleRootFolder ? singleRootFolder.children : rawTree;
+  const tree: TreeNode[] = singleRootFolder ? [...rootFiles, ...singleRootFolder.children] : rawTree;
 
   const filtered = search.trim()
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
@@ -780,7 +787,19 @@ export default function NotesSidebar({ currentId }: Props) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto py-1">
+      <div
+        className="flex-1 overflow-y-auto py-1"
+        onContextMenu={(e) => {
+          if (!canWrite) return;
+          e.preventDefault();
+          setContextMenu({
+            x: e.clientX, y: e.clientY,
+            type: 'root', id: '', name: '', path: '',
+            onNewNote: () => setCreating({ folder: effectiveRoot, type: 'note' }),
+            onNewFolder: () => setCreating({ folder: effectiveRoot, type: 'folder' }),
+          });
+        }}
+      >
         {isLoading ? (
           <>
             <SkeletonItem width="60%" />
@@ -919,14 +938,39 @@ export default function NotesSidebar({ currentId }: Props) {
             overflow: 'hidden',
           }}
         >
-          <button
-            style={menuItemStyle}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            onClick={() => { contextMenu.onRename(); setContextMenu(null); }}
-          >
-            Rename
-          </button>
+          {contextMenu.onNewNote && (
+            <button
+              style={menuItemStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => { contextMenu.onNewNote!(); setContextMenu(null); }}
+            >
+              New Note here
+            </button>
+          )}
+          {contextMenu.onNewFolder && (
+            <button
+              style={menuItemStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => { contextMenu.onNewFolder!(); setContextMenu(null); }}
+            >
+              New Folder here
+            </button>
+          )}
+          {(contextMenu.onNewNote || contextMenu.onNewFolder) && (contextMenu.onRename || contextMenu.onDelete) && (
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+          )}
+          {contextMenu.onRename && (
+            <button
+              style={menuItemStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => { contextMenu.onRename!(); setContextMenu(null); }}
+            >
+              Rename
+            </button>
+          )}
           {contextMenu.type === 'file' && contextMenu.onMove && (
             <button
               style={menuItemStyle}
@@ -937,15 +981,19 @@ export default function NotesSidebar({ currentId }: Props) {
               Move to folder
             </button>
           )}
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
-          <button
-            style={{ ...menuItemStyle, color: '#f87171' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            onClick={() => { contextMenu.onDelete(); setContextMenu(null); }}
-          >
-            Delete
-          </button>
+          {contextMenu.onDelete && (
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+          )}
+          {contextMenu.onDelete && (
+            <button
+              style={{ ...menuItemStyle, color: '#f87171' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => { contextMenu.onDelete!(); setContextMenu(null); }}
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>
