@@ -780,7 +780,7 @@ export default function NotesSidebar({ currentId }: Props) {
 
   return (
     <div
-      className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden"
+      className="w-72 flex-shrink-0 border-r flex flex-col overflow-hidden h-full"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       {/* Header */}
@@ -986,7 +986,7 @@ export default function NotesSidebar({ currentId }: Props) {
             flex: 1,
             textAlign: 'left',
           }}>
-            {vaultsData?.activeVault ?? '—'}
+            {vaultsData?.vaults.find(v => v.name === vaultsData.activeVault)?.label ?? vaultsData?.activeVault ?? '—'}
           </span>
         </button>
 
