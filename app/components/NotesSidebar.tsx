@@ -782,7 +782,7 @@ export default function NotesSidebar({ currentId }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vault: vaultName }),
     });
-    window.location.href = '/dashboard';
+    window.location.href = '/notes';
   }
 
   const rawTree = buildTree(notes);
