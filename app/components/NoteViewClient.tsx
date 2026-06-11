@@ -1,12 +1,9 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import useSWR, { mutate } from 'swr';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import NoteEditor from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
-import Button from '@/components/ui/Button';
-import Card from '@/components/ui/Card';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
@@ -33,11 +30,30 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
+  const editorRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useEffect(() => {
     if (renamingTitle) renameInputRef.current?.select();
   }, [renamingTitle]);
+
+  useEffect(() => {
+    if (!editing) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setEditing(false);
+    }
+    function handleMouse(e: MouseEvent) {
+      if (editorRef.current && !editorRef.current.contains(e.target as Node)) {
+        setEditing(false);
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleMouse);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('mousedown', handleMouse);
+    };
+  }, [editing]);
 
   async function handleRename() {
     if (isSavingRef.current) return;
@@ -79,13 +95,6 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="min-w-0">
-          <Link
-            href="/notes"
-            className="text-xs mb-3 inline-block hover:underline"
-            style={{ color: 'var(--accent)' }}
-          >
-            ← All Notes
-          </Link>
           {folder && (
             <p className="text-xs mb-2" style={{ color: 'var(--accent)' }}>
               📁 {folder}
@@ -154,42 +163,32 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
           </div>
         </div>
 
-        {canWrite ? (
-          <Button
-            variant={editing ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setEditing((e) => !e)}
-            className="flex-shrink-0"
-          >
-            {editing ? 'View' : 'Edit'}
-          </Button>
-        ) : (
-          <span
-            className="px-2.5 py-1 rounded text-xs font-medium flex-shrink-0"
-            style={{ background: '#64748b22', color: '#94a3b8' }}
-          >
-            Read-only
-          </span>
-        )}
       </div>
 
       {/* Body */}
       {editing ? (
-        <div style={{ height: '60vh' }}>
+        <div ref={editorRef} style={{ height: '60vh' }}>
           <NoteEditor
             noteId={noteId}
             initialContent={liveContent}
             onSave={setLiveContent}
           />
         </div>
-      ) : liveContent ? (
-        <div className="prose">
-          <WikiMarkdown>{liveContent}</WikiMarkdown>
-        </div>
       ) : (
-        <Card className="p-6 text-center">
-          <p style={{ color: 'var(--text-secondary)' }}>No content found for this note.</p>
-        </Card>
+        <div
+          style={{ cursor: canWrite ? 'text' : 'default', minHeight: '40vh' }}
+          onClick={() => { if (canWrite) setEditing(true); }}
+        >
+          {liveContent ? (
+            <div className="prose">
+              <WikiMarkdown>{liveContent}</WikiMarkdown>
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {canWrite ? 'Click to start writing…' : 'No content.'}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
