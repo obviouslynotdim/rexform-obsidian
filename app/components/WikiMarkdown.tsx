@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import useSWR from 'swr';
+import { useTabsContext } from '@/context/TabsContext';
 
 interface NoteStub { id: string; path: string }
 
@@ -46,6 +47,7 @@ export default function WikiMarkdown({ children }: { children: string }) {
   });
   const notes = data?.notes ?? [];
   const processed = preprocessWikilinks(children);
+  const tabsCtx = useTabsContext();
 
   const components = {
     a: ({ href, children: linkChildren, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => {
@@ -53,9 +55,11 @@ export default function WikiMarkdown({ children }: { children: string }) {
         const name = decodeURIComponent(href.slice('wikilink:'.length));
         const resolvedId = resolveWikilink(name, notes);
         if (resolvedId) {
+          const displayTitle = resolvedId.split('/').pop()?.replace(/\.md$/i, '') ?? name;
           return (
             <Link
               href={`/notes/${encodeURIComponent(resolvedId)}`}
+              onClick={() => tabsCtx?.openTab(resolvedId, displayTitle)}
               style={{ color: 'var(--accent)', textDecoration: 'underline' }}
             >
               {linkChildren}

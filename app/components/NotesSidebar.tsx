@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTabsContext } from '@/context/TabsContext';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -220,6 +221,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   const cancelRenameRef = useRef(false);
   const justOpenedRename = useRef(false);
   const [hovered, setHovered] = useState(false);
+  const tabsCtx = useTabsContext();
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
   const isDragging = dragging === node.id;
@@ -353,6 +355,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
                 e.dataTransfer.setData('text/plain', node.id);
                 setDragging(node.id);
               }}
+              onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
             >
