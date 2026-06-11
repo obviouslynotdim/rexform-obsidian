@@ -1,9 +1,11 @@
 'use client';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { mutate } from 'swr';
+import { useRouter } from 'next/navigation';
+import WikiMarkdown from './WikiMarkdown';
+
+interface NoteStub { id: string; path: string }
 
 interface NoteEditorProps {
   noteId: string;
@@ -21,17 +23,50 @@ const TOOLBAR = [
   { label: '•',    title: 'Bullet list', before: '- ',    after: ''   },
   { label: '</>',  title: 'Code block',  before: '```\n', after: '\n```' },
   { label: '🔗',   title: 'Link',        before: '[',     after: '](url)' },
+  { label: '[[]]', title: 'Wikilink',    before: '[[',    after: ']]' },
 ];
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+function getWikilinkQuery(content: string, cursorPos: number): string | null {
+  const before = content.slice(0, cursorPos);
+  const match = before.match(/\[\[([^\[\]]*)$/);
+  return match ? match[1] : null;
+}
+
+function noteDisplayName(path: string): string {
+  return path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
+}
 
 export default function NoteEditor({ noteId, initialContent, onChange, onSave }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [preview, setPreview] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   const isNew = noteId === 'new';
+
+  const { data: treeData } = useSWR<{ notes: NoteStub[] }>('/api/notes/tree', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const allNotes = treeData?.notes ?? [];
+
+  // Detect wikilink autocomplete state from cursor position
+  const cursorPos = textareaRef.current?.selectionStart ?? content.length;
+  const wikilinkQuery = getWikilinkQuery(content, cursorPos);
+
+  const suggestions =
+    wikilinkQuery !== null
+      ? allNotes
+          .filter((n) =>
+            noteDisplayName(n.path).toLowerCase().includes(wikilinkQuery.toLowerCase())
+          )
+          .slice(0, 8)
+      : [];
 
   const save = useCallback(async (text: string) => {
     if (isNew) return;
@@ -45,7 +80,6 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
       if (!res.ok) throw new Error('Save failed');
       setSaveStatus('saved');
       onSave?.(text);
-      // Invalidate all paginated notes keys so the sidebar refreshes
       mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch {
@@ -56,6 +90,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
   const handleChange = (text: string) => {
     setContent(text);
     onChange?.(text);
+    setSelectedIdx(0);
     if (isNew) return;
     setSaveStatus('idle');
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -80,6 +115,40 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
     }, 0);
   };
 
+  const acceptSuggestion = (note: NoteStub) => {
+    const el = textareaRef.current;
+    if (!el || wikilinkQuery === null) return;
+    const pos = el.selectionStart;
+    const before = content.slice(0, pos);
+    // Replace the [[<partial> with [[<name>]]
+    const replaced = before.replace(/\[\[([^\[\]]*)$/, `[[${noteDisplayName(note.path)}]]`);
+    const next = replaced + content.slice(pos);
+    handleChange(next);
+    const newCursor = replaced.length;
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(newCursor, newCursor);
+    }, 0);
+  };
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      acceptSuggestion(suggestions[selectedIdx]);
+    } else if (e.key === 'Escape') {
+      // Force-clear by moving cursor (re-read from textarea)
+      textareaRef.current?.blur();
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+  };
+
   const handleManualSave = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     save(content);
@@ -90,7 +159,6 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
     try {
       const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/delete`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
-      // Invalidate all paginated notes keys before navigating
       await mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       router.push('/notes');
       router.refresh();
@@ -166,18 +234,60 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
           className="flex-1 overflow-y-auto px-6 py-4 prose"
           style={{ color: 'var(--text-primary)' }}
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <WikiMarkdown>{content}</WikiMarkdown>
         </div>
       ) : (
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => handleChange(e.target.value)}
-          className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
-          style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
-          placeholder="Start writing in Markdown…"
-          spellCheck={false}
-        />
+        <div className="relative flex-1 flex flex-col">
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => handleChange(e.target.value)}
+            onKeyDown={handleTextareaKeyDown}
+            className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
+            style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
+            placeholder="Start writing in Markdown… use [[note name]] to link notes"
+            spellCheck={false}
+          />
+
+          {/* Wikilink autocomplete dropdown */}
+          {suggestions.length > 0 && (
+            <div
+              className="absolute left-4 bottom-4 z-50 rounded shadow-lg border overflow-hidden"
+              style={{
+                background: 'var(--bg-surface)',
+                borderColor: 'var(--border)',
+                minWidth: 220,
+                maxWidth: 320,
+              }}
+            >
+              <div
+                className="px-2 py-1 text-xs border-b"
+                style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+              >
+                Link note · ↑↓ navigate · Enter/Tab select · Esc cancel
+              </div>
+              {suggestions.map((note, i) => (
+                <button
+                  key={note.id}
+                  onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(note); }}
+                  className="w-full text-left px-3 py-1.5 text-sm truncate"
+                  style={{
+                    background: i === selectedIdx ? 'var(--accent)' : 'transparent',
+                    color: i === selectedIdx ? '#fff' : 'var(--text-primary)',
+                  }}
+                  onMouseEnter={() => setSelectedIdx(i)}
+                >
+                  {noteDisplayName(note.path)}
+                  {note.path.includes('/') && (
+                    <span className="ml-1.5 text-xs opacity-60">
+                      {note.path.split('/').slice(0, -1).join('/')}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

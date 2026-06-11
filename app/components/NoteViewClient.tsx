@@ -1,11 +1,10 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import useSWR, { mutate } from 'swr';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import NoteEditor from './NoteEditor';
+import WikiMarkdown from './WikiMarkdown';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 
@@ -171,7 +170,7 @@ export default function NoteViewClient({ noteId, title, content, folder, tags, m
         </div>
       ) : liveContent ? (
         <div className="prose">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{liveContent}</ReactMarkdown>
+          <WikiMarkdown>{liveContent}</WikiMarkdown>
         </div>
       ) : (
         <Card className="p-6 text-center">
