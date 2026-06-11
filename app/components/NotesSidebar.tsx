@@ -14,6 +14,18 @@ type TreeNode = FileNode | FolderNode
 interface VaultOption { name: string; label: string; role?: string }
 interface VaultsData { vaults: VaultOption[]; activeVault: string }
 
+interface ContextMenuState {
+  x: number;
+  y: number;
+  type: 'file' | 'folder';
+  id: string;
+  name: string;
+  path: string;
+  onRename: () => void;
+  onDelete: () => void;
+  onMove?: () => void;
+}
+
 interface Props { currentId?: string }
 
 function buildTree(notes: NoteEntry[]): TreeNode[] {
@@ -95,7 +107,6 @@ function InlineInput({ folder, type, depth, onCreated, onCancel }: InlineInputPr
     const data = await res.json();
     setLoading(false);
     if (res.ok) {
-      // Pass the folder that should be expanded after tree revalidates
       onCreated(targetFolder || undefined);
       router.push(`/notes/${encodeURIComponent(data.id)}`);
       onCancel();
@@ -186,10 +197,10 @@ interface FileItemProps {
   onDeleted: (id: string) => void;
   dragging: string | null;
   setDragging: (id: string | null) => void;
+  setContextMenu: (menu: ContextMenuState | null) => void;
 }
 
-function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved, onDeleted, dragging, setDragging }: FileItemProps) {
-  const [hovered, setHovered] = useState(false);
+function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved, onDeleted, dragging, setDragging, setContextMenu }: FileItemProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -268,10 +279,19 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           opacity: isDragging ? 0.4 : 1,
           outline: 'none',
         }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => { setHovered(false); if (!isMoving) setConfirmDelete(false); }}
         onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
         onKeyDown={(e) => { if (e.key === 'F2' && canWrite && !renaming) { e.preventDefault(); startRename(); } }}
+        onContextMenu={(e) => {
+          if (!canWrite) return;
+          e.preventDefault();
+          setContextMenu({
+            x: e.clientX, y: e.clientY,
+            type: 'file', id: node.id, name: node.name, path: node.path,
+            onRename: startRename,
+            onDelete: () => setConfirmDelete(true),
+            onMove: () => setMoving(node.id),
+          });
+        }}
       >
         {renaming ? (
           <>
@@ -320,7 +340,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
               <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
               <span className="truncate">{node.name}</span>
             </Link>
-            {confirmDelete ? (
+            {confirmDelete && (
               <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
                 <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete?</span>
                 <button
@@ -334,27 +354,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
                   className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
                   style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
                 >✗</button>
-              </div>
-            ) : hovered && canWrite && (
-              <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.preventDefault()}>
-                <button
-                  title="Rename note"
-                  onClick={(e) => { e.preventDefault(); startRename(); }}
-                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
-                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-                >✏</button>
-                <button
-                  title="Move to folder"
-                  onClick={() => setMoving(isMoving ? null : node.id)}
-                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
-                  style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-                >⋯</button>
-                <button
-                  title="Delete note"
-                  onClick={() => setConfirmDelete(true)}
-                  className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-40"
-                  style={{ color: '#e55', background: 'var(--bg-elevated)' }}
-                >×</button>
               </div>
             )}
           </>
@@ -393,11 +392,11 @@ interface FolderItemProps {
   onFolderDeleted: (path: string) => void;
   dragging: string | null;
   setDragging: (id: string | null) => void;
-  onDropOnFolder: (targetFolder: string) => void;
+  onDropOnFolder: (targetFolder: string, noteId: string) => void;
+  setContextMenu: (menu: ContextMenuState | null) => void;
 }
 
-function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted, dragging, setDragging, onDropOnFolder }: FolderItemProps) {
-  const [hovered, setHovered] = useState(false);
+function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted, dragging, setDragging, onDropOnFolder, setContextMenu }: FolderItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
@@ -448,20 +447,32 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
         borderRadius: '4px',
         background: isDragOver ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
       }}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragCounter((c) => c + 1); }}
       onDragLeave={(e) => { e.stopPropagation(); setDragCounter((c) => Math.max(0, c - 1)); }}
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragCounter(0); onDropOnFolder(node.path); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragCounter(0);
+        const noteId = e.dataTransfer.getData('text/plain');
+        onDropOnFolder(node.path, noteId);
+      }}
     >
       <div
         className="flex items-center py-1 rounded cursor-pointer select-none"
-        style={{
-          paddingLeft: `${depth * 14 + 8}px`,
-          paddingRight: '4px',
-        }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => { setHovered(false); if (!renaming) setConfirmDeleteFolder(false); }}
+        style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
+        onContextMenu={(e) => {
+          if (!canWrite) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setContextMenu({
+            x: e.clientX, y: e.clientY,
+            type: 'folder', id: node.path, name: node.name, path: node.path,
+            onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
+            onDelete: () => setConfirmDeleteFolder(true),
+          });
+        }}
       >
         <span className="mr-1 text-xs opacity-40 w-3 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
           {isOpen ? '▾' : '▸'}
@@ -518,27 +529,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
               style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
             >✗</button>
           </div>
-        ) : hovered && canWrite && (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
-            <button title="New note" onClick={() => openAndCreate('note')}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >+</button>
-            <button title="New folder" onClick={() => openAndCreate('folder')}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >⊞</button>
-            <button title="Rename folder"
-              onClick={() => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); }}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >✏</button>
-            <button title="Delete folder" onClick={() => setConfirmDeleteFolder(true)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100 opacity-50"
-              style={{ color: '#e55', background: 'var(--bg-elevated)' }}
-            >×</button>
-          </div>
-        )}
+        ) : null}
       </div>
       {renameError && (
         <p className="text-xs px-3 pb-0.5" style={{ paddingLeft: `${depth * 14 + 30}px`, color: '#e55' }}>{renameError}</p>
@@ -577,6 +568,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 dragging={dragging}
                 setDragging={setDragging}
                 onDropOnFolder={onDropOnFolder}
+                setContextMenu={setContextMenu}
               />
             ) : (
               <FileItem
@@ -591,6 +583,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
                 onDeleted={onDeleted}
                 dragging={dragging}
                 setDragging={setDragging}
+                setContextMenu={setContextMenu}
               />
             )
           )}
@@ -600,12 +593,26 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   );
 }
 
+const menuItemStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  padding: '6px 16px',
+  fontSize: '13px',
+  color: 'rgba(255,255,255,0.8)',
+  background: 'transparent',
+  border: 'none',
+  cursor: 'pointer',
+};
+
 export default function NotesSidebar({ currentId }: Props) {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<CreatingState | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -624,10 +631,8 @@ export default function NotesSidebar({ currentId }: Props) {
   const notes: NoteEntry[] = data?.notes || [];
   const activeId = currentId ?? decodeURIComponent(pathname.replace('/notes/', ''));
 
-  // Close move input when navigating to a different note
   useEffect(() => { setMoving(null); }, [pathname]);
 
-  // Auto-expand folders containing the active note
   useEffect(() => {
     if (!activeId || notes.length === 0) return;
     const active = notes.find((n) => n.id === activeId);
@@ -637,6 +642,24 @@ export default function NotesSidebar({ currentId }: Props) {
       setExpanded((prev) => new Set(Array.from(prev).concat(ancestors)));
     }
   }, [activeId, notes]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setContextMenu(null);
+    }
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [contextMenu]);
 
   const toggleExpand = useCallback((path: string) => {
     setExpanded((prev) => {
@@ -671,9 +694,8 @@ export default function NotesSidebar({ currentId }: Props) {
     }
   }, [activeId, mutate, router]);
 
-  const handleDropOnFolder = useCallback(async (targetFolder: string) => {
-    if (!dragging) return;
-    const noteId = dragging;
+  const handleDropOnFolder = useCallback(async (targetFolder: string, noteId: string) => {
+    if (!noteId) return;
     setDragging(null);
     const currentFolder = notes.find((n) => n.id === noteId)?.path.split('/').slice(0, -1).join('/') ?? '';
     if (currentFolder === targetFolder) return;
@@ -692,10 +714,9 @@ export default function NotesSidebar({ currentId }: Props) {
       }
       handleMoved(noteId, data.id);
     }
-  }, [dragging, notes, handleMoved]);
+  }, [notes, handleMoved]);
 
   const rawTree = buildTree(notes);
-  // Unwrap a single root-level folder (e.g. "my-vaults") so its children appear at the top level
   const singleRootFolder = rawTree.length === 1 && rawTree[0].type === 'folder' ? rawTree[0] as FolderNode : null;
   const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
   const tree = singleRootFolder ? singleRootFolder.children : rawTree;
@@ -760,7 +781,6 @@ export default function NotesSidebar({ currentId }: Props) {
             <SkeletonItem width="55%" />
           </>
         ) : search.trim() ? (
-          /* Flat search results */
           filtered.length === 0 ? (
             <p className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>No matches</p>
           ) : (
@@ -794,9 +814,7 @@ export default function NotesSidebar({ currentId }: Props) {
         ) : notes.length === 0 ? (
           <p className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>No notes yet</p>
         ) : (
-          /* File tree */
           <>
-            {/* Root-level inline input */}
             {creating?.folder === '' && (
               <InlineInput
                 folder={effectiveRoot}
@@ -806,13 +824,17 @@ export default function NotesSidebar({ currentId }: Props) {
                 onCancel={() => setCreating(null)}
               />
             )}
-            {/* Root drop zone — only visible while dragging */}
             {dragging && (
               <div
                 className="mx-2 mb-1 py-1 rounded text-xs text-center border border-dashed"
                 style={{ color: 'var(--text-muted)', borderColor: 'var(--accent)', opacity: 0.7 }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); handleDropOnFolder(effectiveRoot); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const noteId = e.dataTransfer.getData('text/plain');
+                  handleDropOnFolder(effectiveRoot, noteId);
+                }}
               >
                 Drop here → root
               </div>
@@ -839,6 +861,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   dragging={dragging}
                   setDragging={setDragging}
                   onDropOnFolder={handleDropOnFolder}
+                  setContextMenu={setContextMenu}
                 />
               ) : (
                 <FileItem
@@ -853,6 +876,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   onDeleted={handleDeleted}
                   dragging={dragging}
                   setDragging={setDragging}
+                  setContextMenu={setContextMenu}
                 />
               )
             )}
@@ -860,12 +884,60 @@ export default function NotesSidebar({ currentId }: Props) {
         )}
       </div>
 
-      {/* Footer: note count */}
+      {/* Footer */}
       {!isLoading && notes.length > 0 && !search && (
         <div className="px-4 py-2 border-t flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
             {notes.length} note{notes.length !== 1 ? 's' : ''}
           </p>
+        </div>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: '#1e2030',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            zIndex: 9999,
+            minWidth: 160,
+            padding: '4px 0',
+            overflow: 'hidden',
+          }}
+        >
+          <button
+            style={menuItemStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onClick={() => { contextMenu.onRename(); setContextMenu(null); }}
+          >
+            Rename
+          </button>
+          {contextMenu.type === 'file' && contextMenu.onMove && (
+            <button
+              style={menuItemStyle}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onClick={() => { contextMenu.onMove!(); setContextMenu(null); }}
+            >
+              Move to folder
+            </button>
+          )}
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+          <button
+            style={{ ...menuItemStyle, color: '#f87171' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onClick={() => { contextMenu.onDelete(); setContextMenu(null); }}
+          >
+            Delete
+          </button>
         </div>
       )}
     </div>
