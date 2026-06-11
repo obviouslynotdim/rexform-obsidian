@@ -651,7 +651,10 @@ export default function NotesSidebar({ currentId }: Props) {
   const [moving, setMoving] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [vaultDropdownOpen, setVaultDropdownOpen] = useState(false);
+  const [vaultSwitching, setVaultSwitching] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const vaultBarRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -758,6 +761,29 @@ export default function NotesSidebar({ currentId }: Props) {
       setDragging(null);
     }
   }, [notes, handleMoved]);
+
+  useEffect(() => {
+    if (!vaultDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (vaultBarRef.current && !vaultBarRef.current.contains(e.target as Node)) {
+        setVaultDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [vaultDropdownOpen]);
+
+  async function switchVault(vaultName: string) {
+    if (vaultName === vaultsData?.activeVault) { setVaultDropdownOpen(false); return; }
+    setVaultSwitching(true);
+    setVaultDropdownOpen(false);
+    await fetch('/api/vaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vault: vaultName }),
+    });
+    window.location.href = '/dashboard';
+  }
 
   const rawTree = buildTree(notes);
   const rootFolders = rawTree.filter((n): n is FolderNode => n.type === 'folder');
@@ -943,78 +969,127 @@ export default function NotesSidebar({ currentId }: Props) {
 
       {/* Bottom vault bar */}
       <div
-        className="flex-shrink-0 flex items-center"
-        style={{
-          height: 40,
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          background: 'var(--bg-surface)',
-          padding: '0 8px',
-          gap: 4,
-        }}
+        ref={vaultBarRef}
+        className="flex-shrink-0"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-surface)', position: 'relative' }}
       >
-        {/* Vault icon + name — clicking opens vault switcher at /settings */}
-        <button
-          onClick={() => router.push('/settings')}
-          title={vaultsData?.activeVault ?? 'Vault'}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '0 4px',
-            borderRadius: 4,
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-            <rect x="1" y="3" width="12" height="9" rx="1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" />
-            <path d="M1 6h12" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" />
-            <path d="M4 3V1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" strokeLinecap="round" />
-            <path d="M10 3V1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-          <span style={{
-            fontSize: 12,
-            color: 'rgba(255,255,255,0.45)',
+        {/* Vault dropdown — opens upward */}
+        {vaultDropdownOpen && vaultsData && vaultsData.vaults.length > 1 && (
+          <div style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            right: 0,
+            background: '#1e2030',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px 8px 0 0',
+            boxShadow: '0 -8px 24px rgba(0,0,0,0.4)',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flex: 1,
-            textAlign: 'left',
+            zIndex: 100,
           }}>
-            {vaultsData?.vaults.find(v => v.name === vaultsData.activeVault)?.label ?? vaultsData?.activeVault ?? '—'}
-          </span>
-        </button>
+            {vaultsData.vaults.map((vault) => {
+              const isActive = vault.name === vaultsData.activeVault;
+              return (
+                <button
+                  key={vault.name}
+                  onClick={() => switchVault(vault.name)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
+                    fontSize: 13,
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                >
+                  <svg width="12" height="12" fill="currentColor" viewBox="0 0 20 20" style={{ opacity: isActive ? 1 : 0, flexShrink: 0 }}>
+                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" />
+                  </svg>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{vault.label}</span>
+                      {vault.role && vault.role !== 'owner' && (
+                        <span style={{
+                          fontSize: 11,
+                          padding: '1px 5px',
+                          borderRadius: 3,
+                          flexShrink: 0,
+                          background: vault.role === 'editor' ? 'var(--accent)22' : '#64748b22',
+                          color: vault.role === 'editor' ? 'var(--accent)' : '#94a3b8',
+                        }}>{vault.role}</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Settings icon */}
-        <button
-          onClick={() => router.push('/settings')}
-          title="Settings"
-          style={{
-            width: 26,
-            height: 26,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            borderRadius: 4,
-            flexShrink: 0,
-            color: 'rgba(255,255,255,0.35)',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.7)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.35)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
-            <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.93 2.93l1.06 1.06M10.01 10.01l1.06 1.06M2.93 11.07l1.06-1.06M10.01 3.99l1.06-1.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-        </button>
+        {/* Bar row */}
+        <div style={{ display: 'flex', alignItems: 'center', height: 40, padding: '0 8px', gap: 4 }}>
+          <button
+            onClick={() => vaultsData && vaultsData.vaults.length > 1 && setVaultDropdownOpen(o => !o)}
+            disabled={vaultSwitching}
+            title={vaultsData?.activeVault ?? 'Vault'}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'transparent',
+              border: 'none',
+              cursor: vaultsData && vaultsData.vaults.length > 1 ? 'pointer' : 'default',
+              padding: '0 4px',
+              borderRadius: 4,
+              opacity: vaultSwitching ? 0.5 : 1,
+            }}
+            onMouseEnter={(e) => { if (vaultsData && vaultsData.vaults.length > 1) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+              <rect x="1" y="3" width="12" height="9" rx="1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" />
+              <path d="M1 6h12" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" />
+              <path d="M4 3V1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" strokeLinecap="round" />
+              <path d="M10 3V1.5" stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+              {vaultSwitching ? '…' : (vaultsData?.vaults.find(v => v.name === vaultsData.activeVault)?.label ?? vaultsData?.activeVault ?? '—')}
+            </span>
+            {vaultsData && vaultsData.vaults.length > 1 && !vaultSwitching && (
+              <svg width="10" height="10" fill="rgba(255,255,255,0.35)" viewBox="0 0 20 20" style={{ flexShrink: 0, transform: vaultDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Settings icon */}
+          <button
+            onClick={() => router.push('/settings')}
+            title="Settings"
+            style={{
+              width: 26, height: 26,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              borderRadius: 4, flexShrink: 0, color: 'rgba(255,255,255,0.35)',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.7)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.35)'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.93 2.93l1.06 1.06M10.01 10.01l1.06 1.06M2.93 11.07l1.06-1.06M10.01 3.99l1.06-1.06" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Context menu */}
