@@ -25,11 +25,14 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface Props {
   showHeader?: boolean;
+  onNodeClick?: (id: string, title: string) => void;
+  activeNoteId?: string;
 }
 
-export default function GraphView({ showHeader }: Props) {
+export default function GraphView({ showHeader, onNodeClick, activeNoteId: activeNoteIdProp }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; title: string } | null>(null);
   const [dims, setDims] = useState({ w: 800, h: 600 });
   const pathname = usePathname();
@@ -41,9 +44,12 @@ export default function GraphView({ showHeader }: Props) {
     dedupingInterval: 60_000,
   });
 
-  const activeNoteId = pathname.startsWith('/notes/')
-    ? decodeURIComponent(pathname.replace('/notes/', ''))
-    : null;
+  // Use prop if provided, else derive from pathname
+  const activeNoteId = activeNoteIdProp ?? (
+    pathname.startsWith('/notes/')
+      ? decodeURIComponent(pathname.replace('/notes/', ''))
+      : null
+  );
 
   // Observe container size
   useEffect(() => {
@@ -58,9 +64,23 @@ export default function GraphView({ showHeader }: Props) {
   }, []);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
-    tabsCtx?.openTab(node.id, node.title);
-    router.push(`/notes/${encodeURIComponent(node.id)}`);
-  }, [router, tabsCtx]);
+    if (onNodeClick) {
+      onNodeClick(node.id, node.title);
+    } else {
+      tabsCtx?.openTab(node.id, node.title);
+      router.push(`/notes/${encodeURIComponent(node.id)}`);
+    }
+  }, [onNodeClick, router, tabsCtx]);
+
+  function zoomIn() {
+    if (!svgRef.current || !zoomRef.current) return;
+    d3.select(svgRef.current).call(zoomRef.current.scaleBy, 1.3);
+  }
+
+  function zoomOut() {
+    if (!svgRef.current || !zoomRef.current) return;
+    d3.select(svgRef.current).call(zoomRef.current.scaleBy, 0.7);
+  }
 
   useEffect(() => {
     if (!data || !svgRef.current || data.nodes.length === 0) return;
@@ -69,17 +89,15 @@ export default function GraphView({ showHeader }: Props) {
     svg.selectAll('*').remove();
 
     const { w, h } = dims;
-
-    // Zoom container
     const g = svg.append('g');
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 4])
       .on('zoom', event => { g.attr('transform', event.transform); });
 
+    zoomRef.current = zoom;
     svg.call(zoom);
 
-    // Deep-copy nodes/edges so D3 can mutate them
     const nodes: GraphNode[] = data.nodes.map(n => ({ ...n }));
     const edges: GraphEdge[] = data.edges.map(e => ({ ...e }));
 
@@ -96,12 +114,11 @@ export default function GraphView({ showHeader }: Props) {
       .selectAll<SVGLineElement, GraphEdge>('line')
       .data(edges)
       .join('line')
-      .attr('stroke', 'rgba(127,119,221,0.25)')
-      .attr('stroke-width', 1);
+      .attr('stroke', 'rgba(255,255,255,0.15)')
+      .attr('stroke-width', 0.8);
 
-    // Node radius helper
-    const nodeR = (d: GraphNode) => 5 + Math.min(d.linkCount * 2, 15);
-    const isActive = (d: GraphNode) => d.id === activeNoteId;
+    const nodeR = (d: GraphNode) => (d.id === activeNoteId ? 6 : 4) + Math.min(d.linkCount * 1.5, 10);
+    const nodeFill = (d: GraphNode) => d.id === activeNoteId ? '#fff' : 'rgba(255,255,255,0.6)';
 
     // Nodes
     const node = g.append('g')
@@ -109,38 +126,28 @@ export default function GraphView({ showHeader }: Props) {
       .data(nodes)
       .join('circle')
       .attr('r', nodeR)
-      .attr('fill', d => isActive(d) ? '#fff' : '#7F77DD')
-      .attr('stroke', d => isActive(d) ? '#7F77DD' : 'none')
-      .attr('stroke-width', 2)
+      .attr('fill', nodeFill)
+      .attr('stroke', 'none')
       .attr('cursor', 'pointer')
       .call(
         d3.drag<SVGCircleElement, GraphNode>()
           .on('start', (event, d) => {
             if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
+            d.fx = d.x; d.fy = d.y;
           })
-          .on('drag', (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on('end', (event) => {
-            if (!event.active) simulation.alphaTarget(0);
-          })
+          .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on('end', (event) => { if (!event.active) simulation.alphaTarget(0); })
       );
 
-    // Double-click to unfix position
     node.on('dblclick', (_event, d) => {
-      d.fx = null;
-      d.fy = null;
+      d.fx = null; d.fy = null;
       simulation.alphaTarget(0.1).restart();
     });
 
     node.on('click', (_event, d) => { handleNodeClick(d); });
 
     node.on('mouseenter', (event, d) => {
-      d3.select(event.currentTarget as SVGCircleElement)
-        .attr('fill', isActive(d) ? '#fff' : '#a09af0');
+      d3.select(event.currentTarget as SVGCircleElement).attr('fill', '#fff');
       const rect = svgRef.current!.getBoundingClientRect();
       setTooltip({
         x: event.clientX - rect.left + 12,
@@ -150,19 +157,18 @@ export default function GraphView({ showHeader }: Props) {
     });
 
     node.on('mouseleave', (event, d) => {
-      d3.select(event.currentTarget as SVGCircleElement)
-        .attr('fill', isActive(d) ? '#fff' : '#7F77DD');
+      d3.select(event.currentTarget as SVGCircleElement).attr('fill', nodeFill(d));
       setTooltip(null);
     });
 
-    // Labels for well-connected nodes
+    // Labels — all nodes
     const label = g.append('g')
       .selectAll<SVGTextElement, GraphNode>('text')
-      .data(nodes.filter(d => d.linkCount > 2))
+      .data(nodes)
       .join('text')
       .text(d => d.title)
-      .attr('font-size', '10px')
-      .attr('fill', 'rgba(255,255,255,0.6)')
+      .attr('font-size', '11px')
+      .attr('fill', 'rgba(255,255,255,0.7)')
       .attr('text-anchor', 'middle')
       .attr('pointer-events', 'none');
 
@@ -179,7 +185,7 @@ export default function GraphView({ showHeader }: Props) {
 
       label
         .attr('x', d => d.x ?? 0)
-        .attr('y', d => (d.y ?? 0) + nodeR(d) + 12);
+        .attr('y', d => (d.y ?? 0) + nodeR(d) + 14);
     });
 
     // Auto-fit after simulation settles
@@ -189,7 +195,7 @@ export default function GraphView({ showHeader }: Props) {
       if (xs.length === 0) return;
       const minX = Math.min(...xs), maxX = Math.max(...xs);
       const minY = Math.min(...ys), maxY = Math.max(...ys);
-      const pad = 40;
+      const pad = 60;
       const scaleX = (w - pad * 2) / (maxX - minX || 1);
       const scaleY = (h - pad * 2) / (maxY - minY || 1);
       const scale = Math.min(Math.min(scaleX, scaleY), 2);
@@ -207,25 +213,14 @@ export default function GraphView({ showHeader }: Props) {
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}
+      style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'var(--bg-base)' }}
     >
       {showHeader && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 32,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 16px',
-            background: 'rgba(0,0,0,0.3)',
-            zIndex: 10,
-            fontSize: 12,
-          }}
-        >
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 32,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 16px', background: 'rgba(0,0,0,0.3)', zIndex: 10, fontSize: 12,
+        }}>
           <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>Graph View</span>
           {!isLoading && (
             <span style={{ color: 'rgba(255,255,255,0.35)' }}>
@@ -236,29 +231,13 @@ export default function GraphView({ showHeader }: Props) {
       )}
 
       {isLoading && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading graph…</span>
         </div>
       )}
 
       {!isLoading && nodeCount === 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>No notes to graph</span>
         </div>
       )}
@@ -270,28 +249,52 @@ export default function GraphView({ showHeader }: Props) {
         style={{
           display: 'block',
           marginTop: showHeader ? 32 : 0,
-          height: showHeader ? `calc(100% - 32px)` : '100%',
+          height: showHeader ? 'calc(100% - 32px)' : '100%',
           width: '100%',
         }}
       />
 
+      {/* Legend bottom-left */}
+      <div style={{
+        position: 'absolute', bottom: 12, left: 12,
+        fontSize: 11, color: 'rgba(255,255,255,0.3)',
+        pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 10,
+        zIndex: 10,
+      }}>
+        <span>● note</span>
+        <span>— link</span>
+      </div>
+
+      {/* Zoom controls bottom-right */}
+      <div style={{
+        position: 'absolute', bottom: 12, right: 12,
+        display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10,
+      }}>
+        {([{ label: '+', fn: zoomIn }, { label: '−', fn: zoomOut }] as const).map(({ label, fn }) => (
+          <button
+            key={label}
+            onClick={fn}
+            style={{
+              width: 28, height: 28,
+              background: 'rgba(255,255,255,0.07)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 5,
+              color: 'rgba(255,255,255,0.6)',
+              fontSize: 16, lineHeight: 1,
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+
       {tooltip && (
-        <div
-          style={{
-            position: 'absolute',
-            left: tooltip.x,
-            top: tooltip.y,
-            background: '#1e2030',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 5,
-            padding: '4px 8px',
-            fontSize: 12,
-            color: 'rgba(255,255,255,0.85)',
-            pointerEvents: 'none',
-            zIndex: 20,
-            whiteSpace: 'nowrap',
-          }}
-        >
+        <div style={{
+          position: 'absolute', left: tooltip.x, top: tooltip.y,
+          background: '#1e2030', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 5, padding: '4px 8px', fontSize: 12,
+          color: 'rgba(255,255,255,0.85)', pointerEvents: 'none', zIndex: 20, whiteSpace: 'nowrap',
+        }}>
           {tooltip.title}
         </div>
       )}
