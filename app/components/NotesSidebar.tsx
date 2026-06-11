@@ -263,18 +263,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         console.log('[drag] started:', node.id);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
-        const ghost = document.createElement('div');
-        ghost.textContent = `○  ${node.name}`;
-        Object.assign(ghost.style, {
-          position: 'fixed', top: '-200px', left: '0',
-          padding: '4px 12px', borderRadius: '6px',
-          background: '#1e1e2e', color: '#cdd6f4',
-          border: '1px solid #7c3aed', fontSize: '12px',
-          fontFamily: 'inherit', whiteSpace: 'nowrap', pointerEvents: 'none',
-        });
-        document.body.appendChild(ghost);
-        e.dataTransfer.setDragImage(ghost, 16, 16);
-        requestAnimationFrame(() => document.body.removeChild(ghost));
         setDragging(node.id);
       }}
       onDragEnd={() => setDragging(null)}
@@ -726,24 +714,27 @@ export default function NotesSidebar({ currentId }: Props) {
   const handleDropOnFolder = useCallback(async (targetFolder: string, noteId: string) => {
     if (!noteId) return;
     if (!notes || notes.length === 0) { console.warn('[drop] notes not loaded, skipping'); return; }
-    setDragging(null);
     const currentFolder = notes.find((n) => n.id === noteId)?.path.split('/').slice(0, -1).join('/') ?? '';
     console.log('[drop]', { noteId, currentFolder, targetFolder });
-    if (currentFolder === targetFolder) return;
-    const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder: targetFolder }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (targetFolder) {
-        setExpanded((prev) => new Set([
-          ...Array.from(prev),
-          ...targetFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/')),
-        ]));
+    if (currentFolder === targetFolder) { setDragging(null); return; }
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: targetFolder }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (targetFolder) {
+          setExpanded((prev) => new Set([
+            ...Array.from(prev),
+            ...targetFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/')),
+          ]));
+        }
+        handleMoved(noteId, data.id);
       }
-      handleMoved(noteId, data.id);
+    } finally {
+      setDragging(null);
     }
   }, [notes, handleMoved]);
 
