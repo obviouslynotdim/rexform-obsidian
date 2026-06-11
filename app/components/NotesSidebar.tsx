@@ -51,12 +51,19 @@ function buildTree(notes: NoteEntry[]): TreeNode[] {
   function sort(node: FolderNode) {
     node.children.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
     });
     node.children.filter((c): c is FolderNode => c.type === 'folder').forEach(sort);
   }
   sort(root);
   return root.children;
+}
+
+function sortNodes(nodes: TreeNode[]): TreeNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+  });
 }
 
 function getAncestorFolders(notePath: string): string[] {
@@ -253,6 +260,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
     <div
       draggable={canWrite && !renaming}
       onDragStart={(e) => {
+        console.log('[drag] started:', node.id);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
         const ghost = document.createElement('div');
@@ -277,7 +285,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
           paddingRight: '4px',
-          background: isActive ? 'rgba(255,255,255,0.08)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          background: isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
           opacity: isDragging ? 0.4 : 1,
           outline: 'none',
         }}
@@ -483,14 +491,13 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
           className="mr-1 flex-shrink-0"
           width="12" height="12" viewBox="0 0 12 12" fill="none"
           style={{
-            color: 'rgba(255,255,255,0.4)',
+            color: 'rgba(255,255,255,0.55)',
             transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
             transition: 'transform 0.15s ease',
           }}
         >
           <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <span className="mr-1.5 text-xs flex-shrink-0 opacity-60">📁</span>
         {renaming ? (
           <input
             ref={renameInputRef}
@@ -549,7 +556,16 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
       )}
 
       {isOpen && (
-        <div>
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            position: 'absolute',
+            left: `${depth * 14 + 14}px`,
+            top: 0,
+            bottom: 0,
+            width: '1px',
+            background: 'rgba(255,255,255,0.07)',
+            pointerEvents: 'none',
+          }} />
           {isCreatingHere && (
             <InlineInput
               folder={node.path}
@@ -709,8 +725,10 @@ export default function NotesSidebar({ currentId }: Props) {
 
   const handleDropOnFolder = useCallback(async (targetFolder: string, noteId: string) => {
     if (!noteId) return;
+    if (!notes || notes.length === 0) { console.warn('[drop] notes not loaded, skipping'); return; }
     setDragging(null);
     const currentFolder = notes.find((n) => n.id === noteId)?.path.split('/').slice(0, -1).join('/') ?? '';
+    console.log('[drop]', { noteId, currentFolder, targetFolder });
     if (currentFolder === targetFolder) return;
     const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
       method: 'POST',
@@ -734,7 +752,7 @@ export default function NotesSidebar({ currentId }: Props) {
   const rootFiles = rawTree.filter((n): n is FileNode => n.type === 'file');
   const singleRootFolder = rootFolders.length === 1 ? rootFolders[0] : null;
   const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
-  const tree: TreeNode[] = singleRootFolder ? [...rootFiles, ...singleRootFolder.children] : rawTree;
+  const tree: TreeNode[] = sortNodes(singleRootFolder ? [...rootFiles, ...singleRootFolder.children] : rawTree);
 
   const filtered = search.trim()
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
@@ -795,8 +813,8 @@ export default function NotesSidebar({ currentId }: Props) {
           setContextMenu({
             x: e.clientX, y: e.clientY,
             type: 'root', id: '', name: '', path: '',
-            onNewNote: () => setCreating({ folder: effectiveRoot, type: 'note' }),
-            onNewFolder: () => setCreating({ folder: effectiveRoot, type: 'folder' }),
+            onNewNote: () => setCreating({ folder: '', type: 'note' }),
+            onNewFolder: () => setCreating({ folder: '', type: 'folder' }),
           });
         }}
       >
