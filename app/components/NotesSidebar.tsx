@@ -209,6 +209,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   const [renameError, setRenameError] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
+  const [hovered, setHovered] = useState(false);
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
   const isDragging = dragging === node.id;
@@ -274,11 +275,12 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
           paddingRight: '4px',
-          background: isActive ? 'var(--bg-base)' : 'transparent',
-          borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+          background: isActive ? 'rgba(255,255,255,0.08)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
           opacity: isDragging ? 0.4 : 1,
           outline: 'none',
         }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
         onKeyDown={(e) => { if (e.key === 'F2' && canWrite && !renaming) { e.preventDefault(); startRename(); } }}
         onContextMenu={(e) => {
@@ -295,7 +297,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
       >
         {renaming ? (
           <>
-            <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
             <input
               ref={renameInputRef}
               value={renameName}
@@ -335,9 +336,8 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
               href={`/notes/${encodeURIComponent(node.id)}`}
               draggable={false}
               className="flex items-center flex-1 truncate min-w-0"
-              style={{ color: isActive ? 'var(--accent-hover)' : 'var(--text-primary)' }}
+              style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
             >
-              <span className="mr-1.5 opacity-40 text-xs flex-shrink-0">○</span>
               <span className="truncate">{node.name}</span>
             </Link>
             {confirmDelete && (
@@ -474,9 +474,17 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
           });
         }}
       >
-        <span className="mr-1 text-xs opacity-40 w-3 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
-          {isOpen ? '▾' : '▸'}
-        </span>
+        <svg
+          className="mr-1 flex-shrink-0"
+          width="12" height="12" viewBox="0 0 12 12" fill="none"
+          style={{
+            color: 'rgba(255,255,255,0.4)',
+            transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.15s ease',
+          }}
+        >
+          <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
         <span className="mr-1.5 text-xs flex-shrink-0 opacity-60">📁</span>
         {renaming ? (
           <input
