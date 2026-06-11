@@ -17,11 +17,24 @@ function preprocessWikilinks(content: string): string {
 
 function resolveWikilink(name: string, notes: NoteStub[]): string | null {
   const lower = name.toLowerCase();
+  const norm = (s: string) => s.toLowerCase().replace(/[-_]/g, ' ');
+
+  // 1. Exact filename match (case-insensitive)
   const byFilename = notes.find((n) => {
     const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
     return filename.toLowerCase() === lower;
   });
   if (byFilename) return byFilename.id;
+
+  // 2. Normalized match — hyphens/underscores treated as spaces
+  const lowerNorm = norm(lower);
+  const byNorm = notes.find((n) => {
+    const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+    return norm(filename) === lowerNorm;
+  });
+  if (byNorm) return byNorm.id;
+
+  // 3. Full id match (case-insensitive, strip .md)
   const byId = notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower);
   return byId?.id ?? null;
 }
