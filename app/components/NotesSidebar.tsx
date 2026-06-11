@@ -241,7 +241,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
-        // Custom drag image: clean chip showing just the note name
         const ghost = document.createElement('div');
         ghost.textContent = `○  ${node.name}`;
         Object.assign(ghost.style, {
@@ -257,7 +256,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         setDragging(node.id);
       }}
       onDragEnd={() => setDragging(null)}
-      onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
     >
       <div
         tabIndex={0}
@@ -272,6 +270,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!isMoving) setConfirmDelete(false); }}
+        onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
         onKeyDown={(e) => { if (e.key === 'F2' && canWrite && !renaming) { e.preventDefault(); startRename(); } }}
       >
         {renaming ? (
