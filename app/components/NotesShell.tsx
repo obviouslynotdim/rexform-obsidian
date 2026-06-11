@@ -37,45 +37,44 @@ export default function NotesShell({ children }: { children: React.ReactNode }) 
   return (
     <TabsProvider>
       <div
-        className="flex flex-col"
-        style={{ height: 'calc(100vh - 56px)', background: 'var(--bg-base)' }}
+        style={{ display: 'flex', height: 'calc(100vh - 56px)', background: 'var(--bg-base)' }}
       >
-        <TabBar />
-        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {/* Icon strip */}
-          <div
-            style={{
-              width: 40,
-              background: 'var(--bg-surface)',
-              borderRight: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              paddingTop: 8,
-              gap: 4,
-              flexShrink: 0,
-            }}
-          >
-            <IconButton
-              icon={<FilesIcon />}
-              active={sidebarVisible}
-              onClick={() => setSidebarVisible(v => !v)}
-              tooltip="Files"
-            />
-            <IconButton
-              icon={<GraphIcon />}
-              active={false}
-              onClick={() => router.push('/graph')}
-              tooltip="Graph view"
-            />
-          </div>
+        {/* Icon strip */}
+        <div
+          style={{
+            width: 40,
+            background: 'var(--bg-surface)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            paddingTop: 8,
+            gap: 4,
+            flexShrink: 0,
+          }}
+        >
+          <IconButton
+            icon={<FilesIcon />}
+            active={sidebarVisible}
+            onClick={() => setSidebarVisible(v => !v)}
+            tooltip="Files"
+          />
+          <IconButton
+            icon={<GraphIcon />}
+            active={false}
+            onClick={() => router.push('/graph')}
+            tooltip="Graph view"
+          />
+        </div>
 
-          {/* Sidebar */}
-          <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-            <NotesSidebar />
-          </div>
+        {/* Sidebar */}
+        <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+          <NotesSidebar />
+        </div>
 
-          {/* Main content */}
+        {/* Main content column: TabBar on top, then page content */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <TabBar />
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
             {children}
           </div>
