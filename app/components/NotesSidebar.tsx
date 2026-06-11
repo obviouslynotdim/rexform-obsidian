@@ -218,23 +218,30 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   const [renameError, setRenameError] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
+  const justOpenedRename = useRef(false);
   const [hovered, setHovered] = useState(false);
   const isActive = node.id === activeId;
   const isMoving = moving === node.id;
   const isDragging = dragging === node.id;
 
-  useEffect(() => { if (renaming) renameInputRef.current?.select(); }, [renaming]);
+  useEffect(() => { if (renaming) requestAnimationFrame(() => renameInputRef.current?.select()); }, [renaming]);
 
   function startRename() {
     setRenameName(node.name);
     setRenaming(true);
     setRenameError('');
+    justOpenedRename.current = true;
+    setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 50);
   }
 
   async function handleRename() {
     if (renameLoading) return;
     const trimmed = renameName.trim();
-    if (!trimmed || trimmed === node.name) { setRenaming(false); return; }
+    if (!trimmed) { setRenaming(false); return; }
+    if (trimmed === node.name) { setRenaming(false); return; }
     setRenameLoading(true);
     setRenameError('');
     const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/move`, {
@@ -305,7 +312,15 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
                 if (e.key === 'Escape') { cancelRenameRef.current = true; setRenaming(false); }
                 e.stopPropagation();
               }}
-              onBlur={() => { if (!cancelRenameRef.current) handleRename(); cancelRenameRef.current = false; }}
+              onBlur={() => {
+                if (justOpenedRename.current) {
+                  justOpenedRename.current = false;
+                  renameInputRef.current?.focus();
+                  return;
+                }
+                if (!cancelRenameRef.current) handleRename();
+                cancelRenameRef.current = false;
+              }}
               onClick={(e) => e.stopPropagation()}
               disabled={renameLoading}
               className="flex-1 min-w-0 px-1 py-0 rounded text-sm outline-none border"
@@ -334,6 +349,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
               draggable={false}
+              onMouseDown={(e) => { if (e.buttons === 1) e.preventDefault(); }}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
             >
@@ -408,7 +424,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   const isCreatingHere = creating?.folder === node.path;
   const isDragOver = dragCounter > 0 && !!dragging;
 
-  useEffect(() => { if (renaming) renameInputRef.current?.select(); }, [renaming]);
+  useEffect(() => { if (renaming) requestAnimationFrame(() => renameInputRef.current?.select()); }, [renaming]);
 
   function openAndCreate(type: 'note' | 'folder') {
     if (!isOpen) toggleExpand(node.path);
@@ -713,7 +729,6 @@ export default function NotesSidebar({ currentId }: Props) {
 
   const handleDropOnFolder = useCallback(async (targetFolder: string, noteId: string) => {
     if (!noteId) return;
-    if (!notes || notes.length === 0) { console.warn('[drop] notes not loaded, skipping'); return; }
     const currentFolder = notes.find((n) => n.id === noteId)?.path.split('/').slice(0, -1).join('/') ?? '';
     console.log('[drop]', { noteId, currentFolder, targetFolder });
     if (currentFolder === targetFolder) { setDragging(null); return; }
