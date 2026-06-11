@@ -238,7 +238,24 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   return (
     <div
       draggable={canWrite && !renaming}
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', node.id); setDragging(node.id); }}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', node.id);
+        // Custom drag image: clean chip showing just the note name
+        const ghost = document.createElement('div');
+        ghost.textContent = `○  ${node.name}`;
+        Object.assign(ghost.style, {
+          position: 'fixed', top: '-200px', left: '0',
+          padding: '4px 12px', borderRadius: '6px',
+          background: '#1e1e2e', color: '#cdd6f4',
+          border: '1px solid #7c3aed', fontSize: '12px',
+          fontFamily: 'inherit', whiteSpace: 'nowrap', pointerEvents: 'none',
+        });
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 16, 16);
+        requestAnimationFrame(() => document.body.removeChild(ghost));
+        setDragging(node.id);
+      }}
       onDragEnd={() => setDragging(null)}
       onDoubleClick={() => { if (canWrite && !renaming) startRename(); }}
     >
@@ -426,22 +443,26 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   }
 
   return (
-    <div>
+    <div
+      style={{
+        outline: isDragOver ? '1px solid var(--accent)' : 'none',
+        borderRadius: '4px',
+        background: isDragOver ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragCounter((c) => c + 1); }}
+      onDragLeave={(e) => { e.stopPropagation(); setDragCounter((c) => Math.max(0, c - 1)); }}
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragCounter(0); onDropOnFolder(node.path); }}
+    >
       <div
         className="flex items-center py-1 rounded cursor-pointer select-none"
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
           paddingRight: '4px',
-          outline: isDragOver ? '2px solid var(--accent)' : 'none',
-          borderRadius: '4px',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => { setHovered(false); if (!renaming) setConfirmDeleteFolder(false); }}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
-        onDragOver={(e) => e.preventDefault()}
-        onDragEnter={(e) => { e.preventDefault(); setDragCounter((c) => c + 1); }}
-        onDragLeave={() => setDragCounter((c) => Math.max(0, c - 1))}
-        onDrop={(e) => { e.preventDefault(); setDragCounter(0); onDropOnFolder(node.path); }}
       >
         <span className="mr-1 text-xs opacity-40 w-3 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>
           {isOpen ? '▾' : '▸'}
