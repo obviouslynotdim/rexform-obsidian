@@ -4,12 +4,13 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 export interface Tab {
   id: string;
   title: string;
+  type?: 'note' | 'graph';
 }
 
 interface TabsContextType {
   tabs: Tab[];
   activeTabId: string | null;
-  openTab: (id: string, title: string) => void;
+  openTab: (id: string, title: string, type?: 'note' | 'graph') => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
 }
@@ -44,10 +45,16 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [activeTabId]);
 
-  const openTab = useCallback((id: string, title: string) => {
+  const openTab = useCallback((id: string, title: string, type?: 'note' | 'graph') => {
     setTabs(prev => {
+      if (type === 'graph') {
+        // Only one graph tab allowed — replace existing one if present
+        const withoutGraph = prev.filter(t => t.type !== 'graph');
+        const next = [...withoutGraph, { id, title, type }];
+        return next.length > 10 ? next.slice(next.length - 10) : next;
+      }
       if (prev.find(t => t.id === id)) return prev;
-      const next = [...prev, { id, title }];
+      const next = [...prev, { id, title, type: type ?? 'note' }];
       return next.length > 10 ? next.slice(next.length - 10) : next;
     });
     setActiveTabIdState(id);

@@ -1,6 +1,6 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useTabsContext } from '@/context/TabsContext';
+import { useTabsContext, type Tab } from '@/context/TabsContext';
 
 function FileIcon() {
   return (
@@ -14,6 +14,24 @@ function FileIcon() {
   );
 }
 
+function GraphTabIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginRight: 5 }}>
+      <circle cx="8" cy="3" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="2.5" cy="12" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="13.5" cy="12" r="1.8" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="8" y1="4.8" x2="2.5" y2="10.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <line x1="8" y1="4.8" x2="13.5" y2="10.2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <line x1="4.3" y1="12" x2="11.7" y2="12" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function tabHref(tab: Tab): string {
+  if (tab.type === 'graph') return '/notes/graph';
+  return `/notes/${encodeURIComponent(tab.id)}`;
+}
+
 export default function TabBar() {
   const ctx = useTabsContext();
   const router = useRouter();
@@ -22,21 +40,21 @@ export default function TabBar() {
 
   const { tabs, activeTabId, closeTab, setActiveTab } = ctx;
 
-  function handleTabClick(id: string) {
-    setActiveTab(id);
-    router.push(`/notes/${encodeURIComponent(id)}`);
+  function handleTabClick(tab: Tab) {
+    setActiveTab(tab.id);
+    router.push(tabHref(tab));
   }
 
-  function handleClose(id: string, e: React.MouseEvent) {
+  function handleClose(tab: Tab, e: React.MouseEvent) {
     e.stopPropagation();
-    const idx = tabs.findIndex(t => t.id === id);
-    const wasActive = id === activeTabId;
-    closeTab(id);
+    const idx = tabs.findIndex(t => t.id === tab.id);
+    const wasActive = tab.id === activeTabId;
+    closeTab(tab.id);
     if (wasActive) {
-      const remaining = tabs.filter(t => t.id !== id);
+      const remaining = tabs.filter(t => t.id !== tab.id);
       if (remaining.length > 0) {
         const next = remaining[Math.max(0, idx - 1)];
-        router.push(`/notes/${encodeURIComponent(next.id)}`);
+        router.push(tabHref(next));
       } else {
         router.push('/notes');
       }
@@ -64,8 +82,8 @@ export default function TabBar() {
             key={tab.id}
             tab={tab}
             isActive={isActive}
-            onActivate={() => handleTabClick(tab.id)}
-            onClose={(e) => handleClose(tab.id, e)}
+            onActivate={() => handleTabClick(tab)}
+            onClose={(e) => handleClose(tab, e)}
           />
         );
       })}
@@ -74,7 +92,7 @@ export default function TabBar() {
 }
 
 interface TabItemProps {
-  tab: { id: string; title: string };
+  tab: Tab;
   isActive: boolean;
   onActivate: () => void;
   onClose: (e: React.MouseEvent) => void;
@@ -89,7 +107,6 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
         height: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: 0,
         paddingLeft: 12,
         paddingRight: 8,
         cursor: 'pointer',
@@ -114,7 +131,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
         if (btn) btn.style.opacity = '0';
       }}
     >
-      <FileIcon />
+      {tab.type === 'graph' ? <GraphTabIcon /> : <FileIcon />}
       <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {tab.title}
       </span>

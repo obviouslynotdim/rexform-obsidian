@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { TabsProvider } from '@/context/TabsContext';
+import { useRouter, usePathname } from 'next/navigation';
+import { TabsProvider, useTabsContext } from '@/context/TabsContext';
 import TabBar from '@/components/TabBar';
 import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
@@ -30,12 +30,15 @@ function GraphIcon() {
   );
 }
 
-export default function NotesShell({ children }: { children: React.ReactNode }) {
+function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
+  const tabsCtx = useTabsContext();
+
+  const isGraphActive = pathname === '/notes/graph';
 
   return (
-    <TabsProvider>
       <div
         style={{ display: 'flex', height: 'calc(100vh - 56px)', background: 'var(--bg-base)' }}
       >
@@ -61,8 +64,11 @@ export default function NotesShell({ children }: { children: React.ReactNode }) 
           />
           <IconButton
             icon={<GraphIcon />}
-            active={false}
-            onClick={() => router.push('/graph')}
+            active={isGraphActive}
+            onClick={() => {
+              tabsCtx?.openTab('graph', 'Graph view', 'graph');
+              router.push('/notes/graph');
+            }}
             tooltip="Graph view"
           />
         </div>
@@ -80,6 +86,13 @@ export default function NotesShell({ children }: { children: React.ReactNode }) 
           </div>
         </div>
       </div>
+  );
+}
+
+export default function NotesShell({ children }: { children: React.ReactNode }) {
+  return (
+    <TabsProvider>
+      <NotesShellInner>{children}</NotesShellInner>
     </TabsProvider>
   );
 }

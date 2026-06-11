@@ -88,7 +88,11 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const { w, h } = dims;
+    // Use actual rendered dimensions for accurate centering
+    const rect = svgRef.current.getBoundingClientRect();
+    const w = rect.width > 10 ? rect.width : dims.w;
+    const h = rect.height > 10 ? rect.height : dims.h;
+
     const g = svg.append('g');
 
     const zoom = d3.zoom<SVGSVGElement, unknown>()
@@ -104,10 +108,16 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
     const simulation = d3.forceSimulation<GraphNode>(nodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(edges)
         .id(d => d.id)
-        .distance(60))
-      .force('charge', d3.forceManyBody<GraphNode>().strength(-80))
+        .distance(80))
+      .force('charge', d3.forceManyBody<GraphNode>().strength(-200))
       .force('center', d3.forceCenter(w / 2, h / 2))
-      .force('collide', d3.forceCollide<GraphNode>(12));
+      .force('collide', d3.forceCollide<GraphNode>(18))
+      .force('x', d3.forceX(w / 2).strength(0.05))
+      .force('y', d3.forceY(h / 2).strength(0.05));
+
+    // Pre-run simulation to compute settled positions before first render
+    simulation.stop();
+    for (let i = 0; i < 300; i++) simulation.tick();
 
     // Edges
     const link = g.append('g')
@@ -148,10 +158,10 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
 
     node.on('mouseenter', (event, d) => {
       d3.select(event.currentTarget as SVGCircleElement).attr('fill', '#fff');
-      const rect = svgRef.current!.getBoundingClientRect();
+      const svgRect = svgRef.current!.getBoundingClientRect();
       setTooltip({
-        x: event.clientX - rect.left + 12,
-        y: event.clientY - rect.top - 8,
+        x: event.clientX - svgRect.left + 12,
+        y: event.clientY - svgRect.top - 8,
         title: d.title,
       });
     });
@@ -172,27 +182,27 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       .attr('text-anchor', 'middle')
       .attr('pointer-events', 'none');
 
-    simulation.on('tick', () => {
+    const applyPositions = () => {
       link
         .attr('x1', d => (d.source as GraphNode).x ?? 0)
         .attr('y1', d => (d.source as GraphNode).y ?? 0)
         .attr('x2', d => (d.target as GraphNode).x ?? 0)
         .attr('y2', d => (d.target as GraphNode).y ?? 0);
-
       node
         .attr('cx', d => d.x ?? 0)
         .attr('cy', d => d.y ?? 0);
-
       label
         .attr('x', d => d.x ?? 0)
         .attr('y', d => (d.y ?? 0) + nodeR(d) + 14);
-    });
+    };
 
-    // Auto-fit after simulation settles
-    simulation.on('end', () => {
-      const xs = nodes.map(n => n.x ?? 0);
-      const ys = nodes.map(n => n.y ?? 0);
-      if (xs.length === 0) return;
+    // Apply pre-computed positions immediately (no blank-canvas flash)
+    applyPositions();
+
+    // Auto-fit based on pre-ticked positions
+    const xs = nodes.map(n => n.x ?? 0);
+    const ys = nodes.map(n => n.y ?? 0);
+    if (xs.length > 0) {
       const minX = Math.min(...xs), maxX = Math.max(...xs);
       const minY = Math.min(...ys), maxY = Math.max(...ys);
       const pad = 60;
@@ -202,7 +212,10 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       const tx = w / 2 - scale * ((minX + maxX) / 2);
       const ty = h / 2 - scale * ((minY + maxY) / 2);
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-    });
+    }
+
+    // Continue live simulation for drag interactions
+    simulation.on('tick', applyPositions).restart();
 
     return () => { simulation.stop(); };
   }, [data, dims, activeNoteId, handleNodeClick]);
