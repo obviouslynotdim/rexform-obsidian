@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import useSWR from 'swr';
 
 export interface Tab {
   id: string;
@@ -22,34 +23,58 @@ export function useTabsContext() {
   return useContext(TabsContext);
 }
 
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
 export function TabsProvider({ children }: { children: React.ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabIdState] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
+  const { data: vaultsData } = useSWR<{ vaults: any[]; activeVault: string }>(
+    '/api/vaults',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
+  const rawVaultId = vaultsData?.activeVault ?? null;
+  const vaultId = (rawVaultId === 'undefined' || rawVaultId === 'null' || rawVaultId === '')
+    ? null
+    : rawVaultId;
+
+  // Restore tabs for the current vault once vaultId is known.
+  // React 18 batches setTabs + setInitialized into one render, so the save
+  // effect below sees the restored tabs (not the initial []) on first write.
   useEffect(() => {
+    if (!vaultId) return;
     try {
-      const saved = localStorage.getItem('rexform-tabs');
-      const savedActive = localStorage.getItem('rexform-active-tab');
-      if (saved) setTabs(JSON.parse(saved));
-      if (savedActive) setActiveTabIdState(savedActive);
-    } catch {}
-  }, []);
+      const saved = localStorage.getItem(`rexform-tabs:${vaultId}`);
+      const savedActive = localStorage.getItem(`rexform-active-tab:${vaultId}`);
+      setTabs(saved ? JSON.parse(saved) : []);
+      setActiveTabIdState(savedActive ?? null);
+    } catch {
+      setTabs([]);
+      setActiveTabIdState(null);
+    }
+    setInitialized(true);
+  }, [vaultId]);
 
+  // Persist tabs — guarded so we never write [] before restoration completes.
   useEffect(() => {
-    try { localStorage.setItem('rexform-tabs', JSON.stringify(tabs)); } catch {}
-  }, [tabs]);
+    if (!initialized || !vaultId) return;
+    try { localStorage.setItem(`rexform-tabs:${vaultId}`, JSON.stringify(tabs)); } catch {}
+  }, [tabs, initialized, vaultId]);
 
+  // Persist active tab.
   useEffect(() => {
+    if (!initialized || !vaultId) return;
     try {
-      if (activeTabId) localStorage.setItem('rexform-active-tab', activeTabId);
-      else localStorage.removeItem('rexform-active-tab');
+      if (activeTabId) localStorage.setItem(`rexform-active-tab:${vaultId}`, activeTabId);
+      else localStorage.removeItem(`rexform-active-tab:${vaultId}`);
     } catch {}
-  }, [activeTabId]);
+  }, [activeTabId, initialized, vaultId]);
 
   const openTab = useCallback((id: string, title: string, type?: 'note' | 'graph') => {
     setTabs(prev => {
       if (type === 'graph') {
-        // Only one graph tab allowed — replace existing one if present
         const withoutGraph = prev.filter(t => t.type !== 'graph');
         const next = [...withoutGraph, { id, title, type }];
         return next.length > 10 ? next.slice(next.length - 10) : next;

@@ -41,7 +41,14 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
 
   // 4. Note title match (case-insensitive) — catches notes whose title differs from filename
   const byTitle = notes.find((n) => n.title && n.title.toLowerCase() === lower);
-  return byTitle?.id ?? null;
+  if (byTitle) return byTitle.id;
+
+  // 5. Partial path match — [[subfolder/note]] matches "vault/subfolder/note.md"
+  const byPartialPath = notes.find((n) => {
+    const pathNoExt = n.path.replace(/\.md$/i, '').toLowerCase();
+    return pathNoExt === lower || pathNoExt.endsWith('/' + lower);
+  });
+  return byPartialPath?.id ?? null;
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {
@@ -49,6 +56,7 @@ export default function WikiMarkdown({ children }: { children: string }) {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   });
+  const isLoading = data === undefined;
   const notes = data?.notes ?? [];
   const processed = preprocessWikilinks(children);
   const tabsCtx = useTabsContext();
@@ -58,6 +66,7 @@ export default function WikiMarkdown({ children }: { children: string }) {
       if (href?.startsWith('wikilink:')) {
         const name = decodeURIComponent(href.slice('wikilink:'.length));
         const resolvedId = resolveWikilink(name, notes);
+
         if (resolvedId) {
           const displayTitle = resolvedId.split('/').pop()?.replace(/\.md$/i, '') ?? name;
           return (
@@ -70,6 +79,20 @@ export default function WikiMarkdown({ children }: { children: string }) {
             </Link>
           );
         }
+
+        // Still loading — neutral pending state so clicks aren't swallowed
+        if (isLoading) {
+          return (
+            <span
+              title={`Loading…`}
+              style={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'underline dotted', cursor: 'default' }}
+            >
+              {linkChildren}
+            </span>
+          );
+        }
+
+        // Loaded but unresolved
         return (
           <span
             title={`Note "${name}" not found`}

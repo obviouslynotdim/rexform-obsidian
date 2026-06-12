@@ -269,7 +269,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
     <div
       draggable={canWrite && !renaming}
       onDragStart={(e) => {
-        console.log('[drag] started:', node.id);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', node.id);
         setDragging(node.id);
@@ -350,11 +349,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           <>
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', node.id);
-                setDragging(node.id);
-              }}
+              draggable={false}
               onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
@@ -428,7 +423,9 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
-  const isDragOver = dragCounter > 0 && !!dragging;
+  // dragCounter > 0 is sufficient — avoids a React state race where dragging
+  // prop hasn't propagated yet when onDragEnter fires on a sibling FolderItem.
+  const isDragOver = dragCounter > 0;
 
   useEffect(() => { if (renaming) requestAnimationFrame(() => renameInputRef.current?.select()); }, [renaming]);
 
@@ -469,7 +466,12 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
         background: isDragOver ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
       }}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDragCounter((c) => c + 1); }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.dataTransfer.types.includes('text/plain')) return;
+        setDragCounter((c) => c + 1);
+      }}
       onDragLeave={(e) => { e.stopPropagation(); setDragCounter((c) => Math.max(0, c - 1)); }}
       onDrop={(e) => {
         e.preventDefault();
