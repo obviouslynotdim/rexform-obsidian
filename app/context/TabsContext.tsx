@@ -13,6 +13,7 @@ interface TabsContextType {
   openTab: (id: string, title: string, type?: 'note' | 'graph') => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  reorderTabs: (fromId: string, toId: string) => void;
 }
 
 const TabsContext = createContext<TabsContextType | null>(null);
@@ -79,8 +80,20 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     setActiveTabIdState(id);
   }, []);
 
+  const reorderTabs = useCallback((fromId: string, toId: string) => {
+    setTabs(prev => {
+      const fromIdx = prev.findIndex(t => t.id === fromId);
+      const toIdx = prev.findIndex(t => t.id === toId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next;
+    });
+  }, []);
+
   return (
-    <TabsContext.Provider value={{ tabs, activeTabId, openTab, closeTab, setActiveTab }}>
+    <TabsContext.Provider value={{ tabs, activeTabId, openTab, closeTab, setActiveTab, reorderTabs }}>
       {children}
     </TabsContext.Provider>
   );

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllNotes, isVaultNote, AuthHeaders } from '@/lib/couchdb';
+import { getAllNotes, isVaultNote, extractTitle, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
 export async function GET(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const notes = (data.rows as { doc: any }[])
       .map((row) => row.doc)
       .filter(isVaultNote)
-      .map((doc: any) => ({ id: doc._id, path: (doc.path || doc._id) as string }))
+      .map((doc: any) => ({ id: doc._id, path: (doc.path || doc._id) as string, title: extractTitle(doc) }))
       .sort((a, b) => a.path.localeCompare(b.path));
 
     return NextResponse.json({ notes });

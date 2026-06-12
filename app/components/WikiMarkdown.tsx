@@ -5,7 +5,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import { useTabsContext } from '@/context/TabsContext';
 
-interface NoteStub { id: string; path: string }
+interface NoteStub { id: string; path: string; title?: string }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -37,7 +37,11 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
 
   // 3. Full id match (case-insensitive, strip .md)
   const byId = notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower);
-  return byId?.id ?? null;
+  if (byId) return byId.id;
+
+  // 4. Note title match (case-insensitive) — catches notes whose title differs from filename
+  const byTitle = notes.find((n) => n.title && n.title.toLowerCase() === lower);
+  return byTitle?.id ?? null;
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {

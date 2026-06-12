@@ -1,4 +1,5 @@
 'use client';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTabsContext, type Tab } from '@/context/TabsContext';
 
@@ -35,10 +36,12 @@ function tabHref(tab: Tab): string {
 export default function TabBar() {
   const ctx = useTabsContext();
   const router = useRouter();
+  const dragTabId = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   if (!ctx || ctx.tabs.length === 0) return null;
 
-  const { tabs, activeTabId, closeTab, setActiveTab } = ctx;
+  const { tabs, activeTabId, closeTab, setActiveTab, reorderTabs } = ctx;
 
   function handleTabClick(tab: Tab) {
     setActiveTab(tab.id);
@@ -82,8 +85,19 @@ export default function TabBar() {
             key={tab.id}
             tab={tab}
             isActive={isActive}
+            isDragOver={dragOverId === tab.id}
             onActivate={() => handleTabClick(tab)}
             onClose={(e) => handleClose(tab, e)}
+            onDragStart={() => { dragTabId.current = tab.id; }}
+            onDragOver={(e) => { e.preventDefault(); setDragOverId(tab.id); }}
+            onDragLeave={() => setDragOverId(null)}
+            onDrop={() => {
+              setDragOverId(null);
+              if (dragTabId.current && dragTabId.current !== tab.id) {
+                reorderTabs(dragTabId.current, tab.id);
+              }
+              dragTabId.current = null;
+            }}
           />
         );
       })}
@@ -94,14 +108,24 @@ export default function TabBar() {
 interface TabItemProps {
   tab: Tab;
   isActive: boolean;
+  isDragOver: boolean;
   onActivate: () => void;
   onClose: (e: React.MouseEvent) => void;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
 }
 
-function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
+function TabItem({ tab, isActive, isDragOver, onActivate, onClose, onDragStart, onDragOver, onDragLeave, onDrop }: TabItemProps) {
   return (
     <div
+      draggable
       onClick={onActivate}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       title={tab.title}
       style={{
         height: '100%',
@@ -109,10 +133,11 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
         alignItems: 'center',
         paddingLeft: 12,
         paddingRight: 8,
-        cursor: 'pointer',
-        background: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+        cursor: 'grab',
+        background: isActive ? 'rgba(255,255,255,0.08)' : isDragOver ? 'rgba(255,255,255,0.06)' : 'transparent',
         color: isActive ? '#fff' : 'rgba(255,255,255,0.5)',
         borderBottom: isActive ? '2px solid #7F77DD' : '2px solid transparent',
+        borderLeft: isDragOver ? '2px solid #7F77DD' : '2px solid transparent',
         boxSizing: 'border-box',
         whiteSpace: 'nowrap',
         flexShrink: 0,
@@ -126,7 +151,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
         if (btn) btn.style.opacity = '1';
       }}
       onMouseLeave={e => {
-        if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+        if (!isActive && !isDragOver) (e.currentTarget as HTMLDivElement).style.background = 'transparent';
         const btn = (e.currentTarget as HTMLDivElement).querySelector('.tab-close') as HTMLElement;
         if (btn) btn.style.opacity = '0';
       }}

@@ -350,11 +350,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           <>
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', node.id);
-                setDragging(node.id);
-              }}
+              draggable={false}
               onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
@@ -782,6 +778,10 @@ export default function NotesSidebar({ currentId }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vault: vaultName }),
     });
+    try {
+      localStorage.removeItem('rexform-tabs');
+      localStorage.removeItem('rexform-active-tab');
+    } catch {}
     window.location.href = '/notes';
   }
 
