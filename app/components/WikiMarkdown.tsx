@@ -73,6 +73,7 @@ export default function WikiMarkdown({ children }: { children: string }) {
         return (
           <span
             title={`Note "${name}" not found`}
+            onClick={(e) => e.stopPropagation()}
             style={{ color: '#f87171', textDecoration: 'underline dotted', cursor: 'help' }}
           >
             {linkChildren}
