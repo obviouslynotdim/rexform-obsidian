@@ -266,17 +266,16 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   }
 
   return (
-    <div
-      draggable={canWrite && !renaming}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', node.id);
-        setDragging(node.id);
-      }}
-      onDragEnd={() => setDragging(null)}
-    >
+    <div>
       <div
         tabIndex={0}
+        draggable={canWrite && !renaming}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', node.id);
+          setDragging(node.id);
+        }}
+        onDragEnd={() => setDragging(null)}
         className="flex items-center py-1 rounded text-sm"
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
@@ -284,6 +283,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           background: isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
           opacity: isDragging ? 0.4 : 1,
           outline: 'none',
+          userSelect: 'none',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -349,8 +349,6 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           <>
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
-              draggable={false}
-              onDragStart={(e) => e.preventDefault()}
               onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
