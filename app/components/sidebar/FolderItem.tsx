@@ -14,7 +14,6 @@ interface FolderItemProps {
   setCreating: (s: CreatingState | null) => void;
   canWrite: boolean;
   onCreated: (expandFolder?: string) => void;
-  moving: string | null;
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
   onDeleted: (id: string) => void;
@@ -29,7 +28,7 @@ interface FolderItemProps {
 
 export default function FolderItem({
   node, depth, activeId, expanded, toggleExpand, creating, setCreating,
-  canWrite, onCreated, moving, setMoving, onMoved, onDeleted,
+  canWrite, onCreated, setMoving, onMoved, onDeleted,
   onFolderRenamed, onFolderDeleted, dragging, setDragging,
   onDropOnFolder, setContextMenu, hideHeader,
 }: FolderItemProps) {
@@ -80,7 +79,7 @@ export default function FolderItem({
   }
 
   const sharedChildProps = {
-    activeId, canWrite, moving, setMoving, onMoved, onDeleted,
+    activeId, canWrite, setMoving, onMoved, onDeleted,
     dragging, setDragging, setContextMenu,
   };
 
@@ -100,11 +99,13 @@ export default function FolderItem({
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => {
         e.preventDefault();
-        e.stopPropagation();
         if (!e.dataTransfer.types.includes('text/plain')) return;
-        setDragCounter((c) => c + 1);
+        setDragCounter(1);
       }}
-      onDragLeave={(e) => { e.stopPropagation(); setDragCounter((c) => Math.max(0, c - 1)); }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        setDragCounter(0);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();

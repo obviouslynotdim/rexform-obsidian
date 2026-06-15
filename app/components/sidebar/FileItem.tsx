@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTabsContext } from '@/context/TabsContext';
-import MoveInput from './MoveInput';
 import type { FileNode, ContextMenuState } from './types';
 
 interface FileItemProps {
@@ -10,7 +9,6 @@ interface FileItemProps {
   depth: number;
   activeId: string;
   canWrite: boolean;
-  moving: string | null;
   setMoving: (id: string | null) => void;
   onMoved: (oldId: string, newId: string) => void;
   onDeleted: (id: string) => void;
@@ -20,10 +18,9 @@ interface FileItemProps {
 }
 
 export default function FileItem({
-  node, depth, activeId, canWrite, moving, setMoving,
+  node, depth, activeId, canWrite, setMoving,
   onMoved, onDeleted, dragging, setDragging, setContextMenu,
 }: FileItemProps) {
-  const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
@@ -36,7 +33,6 @@ export default function FileItem({
   const tabsCtx = useTabsContext();
 
   const isActive = node.id === activeId;
-  const isMoving = moving === node.id;
   const isDragging = dragging === node.id;
 
   useEffect(() => {
@@ -73,9 +69,7 @@ export default function FileItem({
 
   async function handleDelete() {
     if (!confirm('Delete this note? This cannot be undone.')) return;
-    setDeleting(true);
     const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/delete`, { method: 'DELETE' });
-    setDeleting(false);
     if (res.ok) onDeleted(node.id);
     else alert('Failed to delete note.');
   }
@@ -181,14 +175,6 @@ export default function FileItem({
         <p className="text-xs pb-0.5" style={{ paddingLeft: `${depth * 14 + 28}px`, color: '#e55' }}>
           {renameError}
         </p>
-      )}
-      {isMoving && (
-        <MoveInput
-          node={node}
-          depth={depth}
-          onMoved={(newId) => { onMoved(node.id, newId); setMoving(null); }}
-          onCancel={() => setMoving(null)}
-        />
       )}
     </div>
   );

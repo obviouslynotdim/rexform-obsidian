@@ -8,6 +8,7 @@ import FolderItem from './FolderItem';
 import FileItem from './FileItem';
 import InlineInput from './InlineInput';
 import ContextMenu from './ContextMenu';
+import FolderPicker from './FolderPicker';
 import VaultBar from './VaultBar';
 import type { NoteEntry, FileNode, FolderNode, TreeNode, VaultsData, ContextMenuState, CreatingState } from './types';
 
@@ -111,9 +112,9 @@ export default function NotesSidebar({ currentId }: Props) {
         body: JSON.stringify({ folder: targetFolder }),
       });
       if (res.ok) {
-        const data = await res.json();
+        const resData = await res.json();
         if (targetFolder) expandFolders(targetFolder);
-        handleMoved(noteId, data.id);
+        handleMoved(noteId, resData.id);
       }
     } finally {
       setDragging(null);
@@ -133,6 +134,17 @@ export default function NotesSidebar({ currentId }: Props) {
   const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
   const tree: TreeNode[] = sortNodes(rawTree);
 
+  // All unique folder paths for the folder picker
+  const allFolders = [
+    '/',
+    ...Array.from(new Set(
+      notes.flatMap((n) => {
+        const parts = n.path.split('/').slice(0, -1);
+        return parts.map((_, i, a) => a.slice(0, i + 1).join('/'));
+      })
+    )).filter(Boolean).sort(),
+  ];
+
   // Auto-expand single root folder
   useEffect(() => {
     if (singleRootFolder) {
@@ -144,8 +156,8 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Shared props passed to all tree items
-  const sharedChildProps = { activeId, canWrite, moving, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
+  // Shared props passed down to tree items
+  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
   const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
 
   return (
@@ -289,6 +301,15 @@ export default function NotesSidebar({ currentId }: Props) {
 
       {contextMenu && (
         <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
+      )}
+
+      {moving && (
+        <FolderPicker
+          noteId={moving}
+          folders={allFolders}
+          onMoved={(newId) => { handleMoved(moving, newId); setMoving(null); }}
+          onCancel={() => setMoving(null)}
+        />
       )}
     </div>
   );
