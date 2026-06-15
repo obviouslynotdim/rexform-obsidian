@@ -350,6 +350,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
               draggable={false}
+              onDragStart={(e) => e.preventDefault()}
               onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
