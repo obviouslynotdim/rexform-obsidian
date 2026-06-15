@@ -278,7 +278,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
         onDragEnd={() => setDragging(null)}
         className="flex items-center py-1 rounded text-sm"
         style={{
-          paddingLeft: `${depth * 14 + 8}px`,
+          paddingLeft: `${Math.max(0, depth) * 14 + 8}px`,
           paddingRight: '4px',
           background: isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
           opacity: isDragging ? 0.4 : 1,
@@ -409,9 +409,10 @@ interface FolderItemProps {
   setDragging: (id: string | null) => void;
   onDropOnFolder: (targetFolder: string, noteId: string) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
+  hideHeader?: boolean;
 }
 
-function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted, dragging, setDragging, onDropOnFolder, setContextMenu }: FolderItemProps) {
+function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, setCreating, canWrite, onCreated, moving, setMoving, onMoved, onDeleted, onFolderRenamed, onFolderDeleted, dragging, setDragging, onDropOnFolder, setContextMenu, hideHeader }: FolderItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
@@ -420,7 +421,7 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const isOpen = expanded.has(node.path);
+  const isOpen = hideHeader ? true : expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
   // dragCounter > 0 is sufficient — avoids a React state race where dragging
   // prop hasn't propagated yet when onDragEnter fires on a sibling FolderItem.
@@ -480,103 +481,107 @@ function FolderItem({ node, depth, activeId, expanded, toggleExpand, creating, s
         onDropOnFolder(node.path, noteId);
       }}
     >
-      <div
-        className="flex items-center py-1 rounded cursor-pointer select-none"
-        style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
-        onClick={() => { if (!renaming) toggleExpand(node.path); }}
-        onContextMenu={(e) => {
-          if (!canWrite) return;
-          e.preventDefault();
-          e.stopPropagation();
-          setContextMenu({
-            x: e.clientX, y: e.clientY,
-            type: 'folder', id: node.path, name: node.name, path: node.path,
-            onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
-            onDelete: () => setConfirmDeleteFolder(true),
-            onNewNote: () => openAndCreate('note'),
-            onNewFolder: () => openAndCreate('folder'),
-          });
-        }}
-      >
-        <svg
-          className="mr-1 flex-shrink-0"
-          width="12" height="12" viewBox="0 0 12 12" fill="none"
-          style={{
-            color: 'rgba(255,255,255,0.55)',
-            transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 0.15s ease',
+      {!hideHeader && (
+        <div
+          className="flex items-center py-1 rounded cursor-pointer select-none"
+          style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
+          onClick={() => { if (!renaming) toggleExpand(node.path); }}
+          onContextMenu={(e) => {
+            if (!canWrite) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setContextMenu({
+              x: e.clientX, y: e.clientY,
+              type: 'folder', id: node.path, name: node.name, path: node.path,
+              onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
+              onDelete: () => setConfirmDeleteFolder(true),
+              onNewNote: () => openAndCreate('note'),
+              onNewFolder: () => openAndCreate('folder'),
+            });
           }}
         >
-          <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {renaming ? (
-          <input
-            ref={renameInputRef}
-            value={renameName}
-            onChange={(e) => { setRenameName(e.target.value); setRenameError(''); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleRename();
-              if (e.key === 'Escape') setRenaming(false);
-              e.stopPropagation();
+          <svg
+            className="mr-1 flex-shrink-0"
+            width="12" height="12" viewBox="0 0 12 12" fill="none"
+            style={{
+              color: 'rgba(255,255,255,0.55)',
+              transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s ease',
             }}
-            onClick={(e) => e.stopPropagation()}
-            disabled={renameLoading}
-            className="flex-1 min-w-0 px-1 py-0 rounded text-sm outline-none border"
-            style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
-          />
-        ) : (
-          <span className="truncate flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>
-            {node.name}
-          </span>
-        )}
-        {confirmDeleteFolder ? (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
-            <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete all?</span>
-            <button
-              onClick={handleDeleteFolder}
-              disabled={deletingFolder}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: '#fff', background: '#c0392b' }}
-            >{deletingFolder ? '…' : '✓'}</button>
-            <button
-              onClick={() => setConfirmDeleteFolder(false)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >✗</button>
-          </div>
-        ) : renaming ? (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={handleRename}
+          >
+            <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {renaming ? (
+            <input
+              ref={renameInputRef}
+              value={renameName}
+              onChange={(e) => { setRenameName(e.target.value); setRenameError(''); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRename();
+                if (e.key === 'Escape') setRenaming(false);
+                e.stopPropagation();
+              }}
+              onClick={(e) => e.stopPropagation()}
               disabled={renameLoading}
-              title="Save"
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: '#fff', background: 'var(--accent)' }}
-            >{renameLoading ? '…' : '✓'}</button>
-            <button
-              onClick={() => setRenaming(false)}
-              title="Cancel"
-              className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >✗</button>
-          </div>
-        ) : null}
-      </div>
-      {renameError && (
+              className="flex-1 min-w-0 px-1 py-0 rounded text-sm outline-none border"
+              style={{ background: 'var(--bg-base)', borderColor: 'var(--accent)', color: 'var(--text-primary)' }}
+            />
+          ) : (
+            <span className="truncate flex-1 text-sm" style={{ color: 'var(--text-primary)' }}>
+              {node.name}
+            </span>
+          )}
+          {confirmDeleteFolder ? (
+            <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
+              <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete all?</span>
+              <button
+                onClick={handleDeleteFolder}
+                disabled={deletingFolder}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: '#fff', background: '#c0392b' }}
+              >{deletingFolder ? '…' : '✓'}</button>
+              <button
+                onClick={() => setConfirmDeleteFolder(false)}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+              >✗</button>
+            </div>
+          ) : renaming ? (
+            <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={handleRename}
+                disabled={renameLoading}
+                title="Save"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: '#fff', background: 'var(--accent)' }}
+              >{renameLoading ? '…' : '✓'}</button>
+              <button
+                onClick={() => setRenaming(false)}
+                title="Cancel"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-100"
+                style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
+              >✗</button>
+            </div>
+          ) : null}
+        </div>
+      )}
+      {!hideHeader && renameError && (
         <p className="text-xs px-3 pb-0.5" style={{ paddingLeft: `${depth * 14 + 30}px`, color: '#e55' }}>{renameError}</p>
       )}
 
       {isOpen && (
         <div style={{ position: 'relative' }}>
-          <div style={{
-            position: 'absolute',
-            left: `${depth * 14 + 14}px`,
-            top: 0,
-            bottom: 0,
-            width: '1px',
-            background: 'rgba(255,255,255,0.07)',
-            pointerEvents: 'none',
-          }} />
+          {!hideHeader && (
+            <div style={{
+              position: 'absolute',
+              left: `${depth * 14 + 14}px`,
+              top: 0,
+              bottom: 0,
+              width: '1px',
+              background: 'rgba(255,255,255,0.07)',
+              pointerEvents: 'none',
+            }} />
+          )}
           {isCreatingHere && (
             <InlineInput
               folder={node.path}
@@ -791,7 +796,18 @@ export default function NotesSidebar({ currentId }: Props) {
   const rootFiles = rawTree.filter((n): n is FileNode => n.type === 'file');
   const singleRootFolder = rootFolders.length === 1 ? rootFolders[0] : null;
   const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
-  const tree: TreeNode[] = sortNodes(singleRootFolder ? [...rootFiles, ...singleRootFolder.children] : rawTree);
+  const tree: TreeNode[] = sortNodes(rawTree);
+
+  // Auto-expand the singleRootFolder so its children appear at depth=0 immediately.
+  useEffect(() => {
+    if (singleRootFolder) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(singleRootFolder.path);
+        return next;
+      });
+    }
+  }, [singleRootFolder?.path]);
 
   const filtered = search.trim()
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
@@ -923,12 +939,13 @@ export default function NotesSidebar({ currentId }: Props) {
                 Drop here → root
               </div>
             )}
-            {tree.map((node) =>
-              node.type === 'folder' ? (
+            {singleRootFolder ? (
+              <>
                 <FolderItem
-                  key={node.path}
-                  node={node}
-                  depth={0}
+                  key={singleRootFolder.path}
+                  node={singleRootFolder}
+                  depth={-1}
+                  hideHeader={true}
                   activeId={activeId}
                   expanded={expanded}
                   toggleExpand={toggleExpand}
@@ -947,21 +964,64 @@ export default function NotesSidebar({ currentId }: Props) {
                   onDropOnFolder={handleDropOnFolder}
                   setContextMenu={setContextMenu}
                 />
-              ) : (
-                <FileItem
-                  key={node.id}
-                  node={node}
-                  depth={0}
-                  activeId={activeId}
-                  canWrite={canWrite}
-                  moving={moving}
-                  setMoving={setMoving}
-                  onMoved={handleMoved}
-                  onDeleted={handleDeleted}
-                  dragging={dragging}
-                  setDragging={setDragging}
-                  setContextMenu={setContextMenu}
-                />
+                {sortNodes(rootFiles).map((node) => (
+                  <FileItem
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    activeId={activeId}
+                    canWrite={canWrite}
+                    moving={moving}
+                    setMoving={setMoving}
+                    onMoved={handleMoved}
+                    onDeleted={handleDeleted}
+                    dragging={dragging}
+                    setDragging={setDragging}
+                    setContextMenu={setContextMenu}
+                  />
+                ))}
+              </>
+            ) : (
+              tree.map((node) =>
+                node.type === 'folder' ? (
+                  <FolderItem
+                    key={node.path}
+                    node={node}
+                    depth={0}
+                    activeId={activeId}
+                    expanded={expanded}
+                    toggleExpand={toggleExpand}
+                    creating={creating}
+                    setCreating={setCreating}
+                    canWrite={canWrite}
+                    onCreated={(expandFolder) => { mutate(); if (expandFolder) setExpanded((prev) => new Set(Array.from(prev).concat(expandFolder.split('/').map((_, i, a) => a.slice(0, i + 1).join('/'))))); }}
+                    moving={moving}
+                    setMoving={setMoving}
+                    onMoved={handleMoved}
+                    onDeleted={handleDeleted}
+                    onFolderRenamed={handleFolderRenamed}
+                    onFolderDeleted={handleFolderDeleted}
+                    dragging={dragging}
+                    setDragging={setDragging}
+                    onDropOnFolder={handleDropOnFolder}
+                    setContextMenu={setContextMenu}
+                  />
+                ) : (
+                  <FileItem
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    activeId={activeId}
+                    canWrite={canWrite}
+                    moving={moving}
+                    setMoving={setMoving}
+                    onMoved={handleMoved}
+                    onDeleted={handleDeleted}
+                    dragging={dragging}
+                    setDragging={setDragging}
+                    setContextMenu={setContextMenu}
+                  />
+                )
               )
             )}
           </>
