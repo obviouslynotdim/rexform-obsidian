@@ -964,7 +964,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   onDropOnFolder={handleDropOnFolder}
                   setContextMenu={setContextMenu}
                 />
-                {sortNodes(rootFiles).map((node) => (
+                {rootFiles.map((node) => (
                   <FileItem
                     key={node.id}
                     node={node}
