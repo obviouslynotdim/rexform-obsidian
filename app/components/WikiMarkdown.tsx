@@ -25,7 +25,7 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
     const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
     return filename.toLowerCase() === lower;
   });
-  if (byFilename) return byFilename.id;
+  if (byFilename) return byFilename.id.replace(/\.md$/i, '');
 
   // 2. Normalized match — hyphens/underscores treated as spaces
   const lowerNorm = norm(lower);
@@ -33,22 +33,22 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
     const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
     return norm(filename) === lowerNorm;
   });
-  if (byNorm) return byNorm.id;
+  if (byNorm) return byNorm.id.replace(/\.md$/i, '');
 
   // 3. Full id match (case-insensitive, strip .md)
   const byId = notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower);
-  if (byId) return byId.id;
+  if (byId) return byId.id.replace(/\.md$/i, '');
 
   // 4. Note title match (case-insensitive) — catches notes whose title differs from filename
   const byTitle = notes.find((n) => n.title && n.title.toLowerCase() === lower);
-  if (byTitle) return byTitle.id;
+  if (byTitle) return byTitle.id.replace(/\.md$/i, '');
 
   // 5. Partial path match — [[subfolder/note]] matches "vault/subfolder/note.md"
   const byPartialPath = notes.find((n) => {
     const pathNoExt = n.path.replace(/\.md$/i, '').toLowerCase();
     return pathNoExt === lower || pathNoExt.endsWith('/' + lower);
   });
-  return byPartialPath?.id ?? null;
+  return byPartialPath?.id.replace(/\.md$/i, '') ?? null;
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {

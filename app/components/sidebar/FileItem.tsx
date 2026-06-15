@@ -97,7 +97,6 @@ export default function FileItem({
           background: isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
           opacity: isDragging ? 0.4 : 1,
           outline: 'none',
-          userSelect: 'none',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -165,7 +164,7 @@ export default function FileItem({
           <div
             onClick={navigate}
             className="flex items-center flex-1 truncate min-w-0 cursor-pointer"
-            style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
+            style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)', userSelect: 'none' }}
           >
             <span className="truncate">{node.name}</span>
           </div>

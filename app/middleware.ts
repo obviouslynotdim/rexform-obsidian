@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export default withAuth(
   function middleware(req: NextRequestWithAuth) {
     if (req.nextUrl.pathname === '/' && req.nextauth.token) {
-      return NextResponse.redirect(new URL('/dashboard', req.url));
+      return NextResponse.redirect(new URL('/notes', req.url));
     }
   },
   {

@@ -156,6 +156,11 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
+  // Banner: only show when dragging a note that is inside a folder
+  const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
+  const draggedFolder = draggedNote?.path.split('/').slice(0, -1).join('/') ?? '';
+  const showRootBanner = !!dragging && draggedFolder !== '';
+
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
   const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
@@ -263,7 +268,7 @@ export default function NotesSidebar({ currentId }: Props) {
                 onCancel={() => setCreating(null)}
               />
             )}
-            {dragging && (
+            {showRootBanner && (
               <div
                 className="mx-2 mb-1 py-1 rounded text-xs text-center border border-dashed"
                 style={{ color: 'var(--text-muted)', borderColor: 'var(--accent)', opacity: 0.7 }}
@@ -271,7 +276,7 @@ export default function NotesSidebar({ currentId }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDropOnFolder(effectiveRoot, e.dataTransfer.getData('text/plain'));
+                  handleDropOnFolder('', e.dataTransfer.getData('text/plain'));
                 }}
               >
                 Drop here → root
@@ -279,7 +284,7 @@ export default function NotesSidebar({ currentId }: Props) {
             )}
             {singleRootFolder ? (
               <>
-                <FolderItem node={singleRootFolder} depth={-1} hideHeader {...sharedFolderProps} />
+                <FolderItem node={singleRootFolder} depth={0} {...sharedFolderProps} />
                 {rootFiles.map((node) => (
                   <FileItem key={node.id} node={node} depth={0} {...sharedChildProps} />
                 ))}
