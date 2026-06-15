@@ -258,11 +258,12 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
   }
 
   async function handleDelete() {
+    if (!confirm('Delete this note? This cannot be undone.')) return;
     setDeleting(true);
-    const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}`, { method: 'DELETE' });
+    const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/delete`, { method: 'DELETE' });
     setDeleting(false);
     if (res.ok) onDeleted(node.id);
-    else setConfirmDelete(false);
+    else alert('Failed to delete note.');
   }
 
   return (
@@ -297,7 +298,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
             x: e.clientX, y: e.clientY,
             type: 'file', id: node.id, name: node.name, path: node.path,
             onRename: startRename,
-            onDelete: () => setConfirmDelete(true),
+            onDelete: handleDelete,
             onMove: () => setMoving(node.id),
           });
         }}
@@ -349,6 +350,7 @@ function FileItem({ node, depth, activeId, canWrite, moving, setMoving, onMoved,
           <>
             <Link
               href={`/notes/${encodeURIComponent(node.id)}`}
+              draggable={false}
               onClick={() => tabsCtx?.openTab(node.id, node.name)}
               className="flex items-center flex-1 truncate min-w-0"
               style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.72)' }}
