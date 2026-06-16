@@ -100,7 +100,8 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
     dedupingInterval: 30_000,
     fallbackData: { plugins: { kanban: false, calendar: false, gitlab: false } },
   });
-  const plugins = pluginsData?.plugins ?? { kanban: false, calendar: false, gitlab: false };
+  const installed: string[] = pluginsData?.installed ?? [];
+  const enabled: Record<string, boolean> = pluginsData?.enabled ?? {};
 
   const isGraphActive    = pathname === '/notes/graph';
   const isKanbanActive   = pathname === '/notes/kanban';
@@ -151,7 +152,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
           tooltip="Graph view"
         />
 
-        {plugins.kanban && (
+        {installed.includes('kanban') && enabled['kanban'] && (
           <IconButton
             icon={<KanbanIcon />}
             active={isKanbanActive}
@@ -163,7 +164,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
           />
         )}
 
-        {plugins.calendar && (
+        {installed.includes('calendar') && enabled['calendar'] && (
           <IconButton
             icon={<CalendarIcon />}
             active={isCalendarActive}
@@ -175,7 +176,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
           />
         )}
 
-        {plugins.gitlab && (
+        {installed.includes('gitlab') && enabled['gitlab'] && (
           <IconButton
             icon={<GitLabIcon />}
             active={isGitLabActive}

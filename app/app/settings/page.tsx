@@ -1,9 +1,12 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { PLUGIN_REGISTRY, type PluginDefinition } from '@/lib/plugin-registry';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Credentials {
   username: string;
@@ -12,26 +15,24 @@ interface Credentials {
   database: string;
 }
 
-interface PluginState {
-  kanban: boolean;
-  calendar: boolean;
-  gitlab: boolean;
+interface PluginData {
+  installed: string[];
+  enabled: Record<string, boolean>;
 }
 
-const DEFAULT_PLUGINS: PluginState = { kanban: false, calendar: false, gitlab: false };
+const DEFAULT_PLUGIN_DATA: PluginData = { installed: [], enabled: {} };
 
-// ─── Small reusable pieces ───────────────────────────────────────────────────
+// ─── Credential components ────────────────────────────────────────────────────
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
   return (
     <button
-      onClick={copy}
+      onClick={() => {
+        navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
       className="px-2 py-1 rounded text-xs transition-colors hover:bg-white/5 flex-shrink-0"
       style={{ color: copied ? '#4ade80' : 'var(--text-muted)', border: '1px solid var(--border)' }}
     >
@@ -54,7 +55,7 @@ function CredentialRow({ label, value, secret }: { label: string; value: string;
         </code>
         {secret && (
           <button
-            onClick={() => setVisible((v) => !v)}
+            onClick={() => setVisible(v => !v)}
             className="px-2 py-1 rounded text-xs flex-shrink-0 hover:bg-white/5"
             style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
           >
@@ -67,48 +68,11 @@ function CredentialRow({ label, value, secret }: { label: string; value: string;
   );
 }
 
-function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={onChange}
-      disabled={disabled}
-      aria-checked={enabled}
-      role="switch"
-      style={{
-        width: 40,
-        height: 22,
-        borderRadius: 11,
-        background: enabled ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
-        border: 'none',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        position: 'relative',
-        transition: 'background 0.2s',
-        flexShrink: 0,
-        opacity: disabled ? 0.5 : 1,
-        padding: 0,
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          top: 3,
-          left: enabled ? 21 : 3,
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          background: '#fff',
-          transition: 'left 0.18s',
-          display: 'block',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-        }}
-      />
-    </button>
-  );
-}
+// ─── Plugin icon SVGs ─────────────────────────────────────────────────────────
 
-function KanbanPluginIcon() {
+function KanbanPluginIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
       <rect x="1.5" y="2.5" width="5" height="15" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
       <rect x="7.5" y="2.5" width="5" height="15" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
       <rect x="13.5" y="2.5" width="5" height="15" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
@@ -120,9 +84,9 @@ function KanbanPluginIcon() {
   );
 }
 
-function CalendarPluginIcon() {
+function CalendarPluginIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
       <rect x="1.5" y="3.5" width="17" height="14.5" rx="1.8" stroke="currentColor" strokeWidth="1.3" />
       <line x1="1.5" y1="8.5" x2="18.5" y2="8.5" stroke="currentColor" strokeWidth="1.1" />
       <line x1="6" y1="1.5" x2="6" y2="5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -134,9 +98,9 @@ function CalendarPluginIcon() {
   );
 }
 
-function GitLabPluginIcon() {
+function GitLabPluginIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
       <path
         d="M10 17L2 10.5 4.5 3.5 7 10H13L15.5 3.5 18 10.5Z"
         stroke="currentColor"
@@ -147,73 +111,563 @@ function GitLabPluginIcon() {
   );
 }
 
-interface PluginRowProps {
-  icon: React.ReactNode;
-  name: string;
-  description: string;
-  enabled: boolean;
-  onToggle: () => void;
-  saving: boolean;
+function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
+  switch (id) {
+    case 'kanban':   return <KanbanPluginIcon size={size} />;
+    case 'calendar': return <CalendarPluginIcon size={size} />;
+    case 'gitlab':   return <GitLabPluginIcon size={size} />;
+    default:         return null;
+  }
 }
 
-function PluginRow({ icon, name, description, enabled, onToggle, saving }: PluginRowProps) {
+// ─── Small UI atoms ───────────────────────────────────────────────────────────
+
+function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onChange}
+      disabled={disabled}
+      role="switch"
+      aria-checked={enabled}
+      style={{
+        width: 40, height: 22, borderRadius: 11,
+        background: enabled ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+        border: 'none',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        position: 'relative',
+        transition: 'background 0.2s',
+        flexShrink: 0,
+        opacity: disabled ? 0.5 : 1,
+        padding: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: enabled ? 21 : 3,
+        width: 16, height: 16, borderRadius: '50%',
+        background: '#fff', transition: 'left 0.18s', display: 'block',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+      }} />
+    </button>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M7 1.5v1.2M7 11.3v1.2M1.5 7h1.2M11.3 7h1.2M3.1 3.1l.85.85M10.05 10.05l.85.85M10.9 3.1l-.85.85M3.95 10.05l-.85.85"
+        stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path
+        d="M2 3.5h10M5.5 3.5V2.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1M11 3.5l-.75 7a1 1 0 0 1-1 .9H4.75a1 1 0 0 1-1-.9L3 3.5"
+        stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconBtn({
+  onClick,
+  title,
+  children,
+  danger,
+}: {
+  onClick: () => void;
+  title?: string;
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        width: 28, height: 28, borderRadius: 6, border: 'none',
+        background: hov ? (danger ? 'rgba(248,113,113,0.12)' : 'rgba(255,255,255,0.08)') : 'transparent',
+        color: hov ? (danger ? '#f87171' : '#fff') : 'var(--text-muted)',
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'background 0.15s, color 0.15s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Installed plugin row ─────────────────────────────────────────────────────
+
+function InstalledPluginRow({
+  plugin,
+  enabled,
+  saving,
+  onToggle,
+  onUninstall,
+}: {
+  plugin: PluginDefinition;
+  enabled: boolean;
+  saving: boolean;
+  onToggle: () => void;
+  onUninstall: () => void;
+}) {
   return (
     <div
-      className="flex items-center gap-4 py-4 border-b last:border-0"
-      style={{ borderColor: 'var(--border)' }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 0',
+        borderBottom: '1px solid var(--border)',
+      }}
     >
-      {/* Icon */}
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          background: enabled ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
-          border: `1px solid ${enabled ? 'rgba(127,119,221,0.35)' : 'var(--border)'}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          color: enabled ? 'var(--accent)' : 'var(--text-muted)',
-          transition: 'all 0.2s',
-        }}
-      >
-        {icon}
+      {/* Icon box */}
+      <div style={{
+        width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+        background: enabled ? 'rgba(127,119,221,0.15)' : 'rgba(255,255,255,0.05)',
+        border: `1px solid ${enabled ? 'rgba(127,119,221,0.35)' : 'var(--border)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: enabled ? 'var(--accent)' : 'var(--text-muted)',
+        transition: 'all 0.2s',
+      }}>
+        <PluginIcon id={plugin.id} size={20} />
       </div>
 
-      {/* Text */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            {name}
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+            {plugin.name}
           </span>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              padding: '1px 7px',
-              borderRadius: 99,
-              background: enabled ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.07)',
-              color: enabled ? '#4ade80' : 'var(--text-muted)',
-              transition: 'all 0.2s',
-            }}
-          >
-            {enabled ? 'Enabled' : 'Disabled'}
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            v{plugin.version} · {plugin.author}
           </span>
         </div>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {description}
+        <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+          {plugin.description}
         </p>
       </div>
 
-      {/* Toggle */}
-      <PluginToggle enabled={enabled} onChange={onToggle} disabled={saving} />
+      {/* Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <IconBtn onClick={() => {}} title="Plugin settings (coming soon)">
+          <GearIcon />
+        </IconBtn>
+        <IconBtn onClick={onUninstall} title="Uninstall" danger>
+          <TrashIcon />
+        </IconBtn>
+        <div style={{ width: 8 }} />
+        <PluginToggle enabled={enabled} onChange={onToggle} disabled={saving} />
+      </div>
     </div>
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Browse modal ─────────────────────────────────────────────────────────────
+
+function BrowseModal({
+  open,
+  onClose,
+  installed,
+  onInstall,
+}: {
+  open: boolean;
+  onClose: () => void;
+  installed: string[];
+  onInstall: (id: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setSearch('');
+      setTimeout(() => inputRef.current?.focus(), 30);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const filtered = PLUGIN_REGISTRY.filter(p =>
+    !search.trim() ||
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.description.toLowerCase().includes(search.toLowerCase()) ||
+    p.author.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          width: 680, maxHeight: '80vh',
+          background: '#16213e',
+          borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '18px 20px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: '#fff' }}>
+            Browse community plugins
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: 6,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 20, lineHeight: 1, padding: 0,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+              (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)';
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Search */}
+        <div style={{
+          padding: '12px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          flexShrink: 0,
+        }}>
+          <input
+            ref={inputRef}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search community plugins..."
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              fontSize: 13, color: '#fff', outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* Plugin grid */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: 20 }}>
+          {filtered.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '40px 0',
+              color: 'rgba(255,255,255,0.35)', fontSize: 13,
+            }}>
+              No plugins match &ldquo;{search}&rdquo;
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {filtered.map(plugin => {
+                const isInstalled = installed.includes(plugin.id);
+                return (
+                  <div
+                    key={plugin.id}
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${isInstalled ? 'rgba(127,119,221,0.25)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: 10,
+                      padding: 16,
+                      display: 'flex', flexDirection: 'column', gap: 5,
+                    }}
+                  >
+                    {/* Name + badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                        background: 'rgba(255,255,255,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: isInstalled ? 'var(--accent)' : 'rgba(255,255,255,0.45)',
+                      }}>
+                        <PluginIcon id={plugin.id} size={16} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 600, color: '#fff' }}>
+                            {plugin.name}
+                          </span>
+                          {isInstalled && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700,
+                              padding: '1px 6px', borderRadius: 99,
+                              background: 'rgba(127,119,221,0.25)',
+                              color: 'var(--accent)',
+                              letterSpacing: '0.05em',
+                              flexShrink: 0,
+                            }}>
+                              INSTALLED
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                      by {plugin.author} · v{plugin.version}
+                    </p>
+                    <p style={{
+                      fontSize: 12.5, color: 'rgba(255,255,255,0.6)',
+                      lineHeight: 1.55, flex: 1, margin: '4px 0 10px',
+                    }}>
+                      {plugin.description}
+                    </p>
+
+                    <button
+                      onClick={() => { if (!isInstalled) onInstall(plugin.id); }}
+                      disabled={isInstalled}
+                      style={{
+                        padding: '7px 16px',
+                        borderRadius: 6, border: 'none',
+                        cursor: isInstalled ? 'default' : 'pointer',
+                        fontSize: 12.5, fontWeight: 500,
+                        background: isInstalled ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
+                        color: isInstalled ? 'rgba(255,255,255,0.4)' : '#fff',
+                        transition: 'background 0.15s',
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      {isInstalled ? 'Installed ✓' : 'Install'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Community plugins card ───────────────────────────────────────────────────
+
+function CommunityPluginsCard({
+  pluginData,
+  saving,
+  onInstall,
+  onUninstall,
+  onToggle,
+}: {
+  pluginData: PluginData;
+  saving: boolean;
+  onInstall: (id: string) => void;
+  onUninstall: (id: string) => void;
+  onToggle: (id: string) => void;
+}) {
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const installedCount = pluginData.installed.length;
+
+  const installedPlugins = PLUGIN_REGISTRY.filter(p =>
+    pluginData.installed.includes(p.id) &&
+    (!search.trim() ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.description.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const ghostBtn: React.CSSProperties = {
+    padding: '5px 14px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    background: 'transparent',
+    color: 'var(--text-muted)',
+    fontSize: 12.5,
+    cursor: 'default',
+    flexShrink: 0,
+  };
+
+  return (
+    <>
+      <BrowseModal
+        open={browseOpen}
+        onClose={() => setBrowseOpen(false)}
+        installed={pluginData.installed}
+        onInstall={(id) => { onInstall(id); }}
+      />
+
+      <Card className="p-6">
+        <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+          Community Plugins
+        </h2>
+
+        {/* ── SECTION A ── */}
+
+        {/* Row 1: Restricted mode */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          paddingBottom: 14, marginBottom: 14,
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+              Restricted mode
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              When restricted mode is off, community plugins can run custom code.
+            </p>
+          </div>
+          <button style={ghostBtn}>Turn on and reload</button>
+        </div>
+
+        {/* Row 2: Community plugins / Browse */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          paddingBottom: 14, marginBottom: 14,
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+              Community plugins
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Browse and install plugins from the REXFORM library.
+            </p>
+          </div>
+          <button
+            onClick={() => setBrowseOpen(true)}
+            style={{
+              padding: '5px 14px',
+              borderRadius: 6, border: 'none',
+              background: 'var(--accent)',
+              color: '#fff',
+              fontSize: 12.5, fontWeight: 500,
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-hover)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)'; }}
+          >
+            Browse
+          </button>
+        </div>
+
+        {/* Row 3: Installed plugins count */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          paddingBottom: 18, marginBottom: 18,
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+              Installed plugins
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {installedCount === 0
+                ? 'No plugins installed yet.'
+                : `You have ${installedCount} plugin${installedCount !== 1 ? 's' : ''} installed.`}
+            </p>
+          </div>
+          <button style={ghostBtn}>Check for updates</button>
+        </div>
+
+        {/* ── SECTION B ── */}
+
+        {/* Search */}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search installed plugins..."
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '8px 12px',
+            fontSize: 13, color: 'var(--text-primary)', outline: 'none',
+            marginBottom: 4,
+            transition: 'border-color 0.15s',
+          }}
+          onFocus={e => { (e.target as HTMLInputElement).style.borderColor = 'var(--accent)'; }}
+          onBlur={e => { (e.target as HTMLInputElement).style.borderColor = 'var(--border)'; }}
+        />
+
+        {/* Installed list */}
+        {pluginData.installed.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '32px 0',
+            color: 'var(--text-muted)', fontSize: 13,
+          }}>
+            No plugins installed yet.{' '}
+            <button
+              onClick={() => setBrowseOpen(true)}
+              style={{
+                background: 'none', border: 'none',
+                color: 'var(--accent)', cursor: 'pointer',
+                fontSize: 13, padding: 0, textDecoration: 'underline',
+              }}
+            >
+              Click Browse to explore.
+            </button>
+          </div>
+        ) : installedPlugins.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '24px 0',
+            color: 'var(--text-muted)', fontSize: 13,
+          }}>
+            No installed plugins match &ldquo;{search}&rdquo;
+          </div>
+        ) : (
+          <div>
+            {installedPlugins.map((plugin, i) => (
+              <div key={plugin.id} style={{ borderBottom: i === installedPlugins.length - 1 ? 'none' : undefined }}>
+                <InstalledPluginRow
+                  plugin={plugin}
+                  enabled={!!pluginData.enabled[plugin.id]}
+                  saving={saving}
+                  onToggle={() => onToggle(plugin.id)}
+                  onUninstall={() => onUninstall(plugin.id)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
+// ─── Main settings page ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -225,7 +679,7 @@ export default function SettingsPage() {
   const [repairing, setRepairing] = useState(false);
   const [error, setError] = useState('');
 
-  const [plugins, setPlugins] = useState<PluginState>(DEFAULT_PLUGINS);
+  const [pluginData, setPluginData] = useState<PluginData>(DEFAULT_PLUGIN_DATA);
   const [pluginSaving, setPluginSaving] = useState(false);
 
   const loadCreds = useCallback(async () => {
@@ -254,18 +708,72 @@ export default function SettingsPage() {
       const res = await fetch('/api/user/plugins');
       if (res.ok) {
         const data = await res.json();
-        setPlugins({ ...DEFAULT_PLUGINS, ...(data.plugins ?? {}) });
+        setPluginData({
+          installed: data.installed ?? [],
+          enabled: data.enabled ?? {},
+        });
       }
     } catch {}
   }, []);
 
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') {
-      loadCreds();
-      loadPlugins();
-    }
+    if (status === 'authenticated') { loadCreds(); loadPlugins(); }
   }, [status, loadCreds, loadPlugins, router]);
+
+  const savePlugins = useCallback(async (next: PluginData, original: PluginData) => {
+    setPluginSaving(true);
+    try {
+      const res = await fetch('/api/user/plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ installed: next.installed, enabled: next.enabled }),
+      });
+      if (!res.ok) setPluginData(original);
+    } catch {
+      setPluginData(original);
+    } finally {
+      setPluginSaving(false);
+    }
+  }, []);
+
+  const handleInstall = useCallback((id: string) => {
+    setPluginData(prev => {
+      const original = prev;
+      if (prev.installed.includes(id)) return prev;
+      const next: PluginData = {
+        installed: [...prev.installed, id],
+        enabled: { ...prev.enabled, [id]: true },
+      };
+      savePlugins(next, original);
+      return next;
+    });
+  }, [savePlugins]);
+
+  const handleUninstall = useCallback((id: string) => {
+    setPluginData(prev => {
+      const original = prev;
+      const { [id]: _removed, ...restEnabled } = prev.enabled;
+      const next: PluginData = {
+        installed: prev.installed.filter(i => i !== id),
+        enabled: restEnabled,
+      };
+      savePlugins(next, original);
+      return next;
+    });
+  }, [savePlugins]);
+
+  const handleToggle = useCallback((id: string) => {
+    setPluginData(prev => {
+      const original = prev;
+      const next: PluginData = {
+        ...prev,
+        enabled: { ...prev.enabled, [id]: !prev.enabled[id] },
+      };
+      savePlugins(next, original);
+      return next;
+    });
+  }, [savePlugins]);
 
   const regenerate = async () => {
     if (!confirm('Regenerate password? Your current LiveSync connection will stop working until you update it in Obsidian.')) return;
@@ -298,25 +806,6 @@ export default function SettingsPage() {
     }
   };
 
-  const togglePlugin = async (key: keyof PluginState) => {
-    const original = { ...plugins };
-    const updated = { ...plugins, [key]: !plugins[key] };
-    setPlugins(updated);
-    setPluginSaving(true);
-    try {
-      const res = await fetch('/api/user/plugins', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plugins: updated }),
-      });
-      if (!res.ok) setPlugins(original);
-    } catch {
-      setPlugins(original);
-    } finally {
-      setPluginSaving(false);
-    }
-  };
-
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
@@ -339,7 +828,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Account section */}
+        {/* Account */}
         <Card className="p-6 mb-6">
           <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Account</h2>
           <div className="space-y-2">
@@ -359,7 +848,7 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        {/* LiveSync section */}
+        {/* LiveSync */}
         {creds && (
           <Card className="p-6 mb-6">
             <div className="flex items-start justify-between mb-1">
@@ -369,9 +858,7 @@ export default function SettingsPage() {
             </div>
             <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
               Use these details in the{' '}
-              <span className="font-medium" style={{ color: 'var(--accent)' }}>
-                Self-hosted LiveSync
-              </span>{' '}
+              <span className="font-medium" style={{ color: 'var(--accent)' }}>Self-hosted LiveSync</span>{' '}
               Obsidian plugin to sync your vault on desktop or mobile.
             </p>
 
@@ -400,20 +887,10 @@ export default function SettingsPage() {
                 If Obsidian shows "access forbidden", click Repair to re-configure CouchDB access.
               </p>
               <div className="flex gap-2 flex-shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  loading={repairing}
-                  onClick={repairConnection}
-                >
+                <Button variant="ghost" size="sm" loading={repairing} onClick={repairConnection}>
                   {repairing ? 'Repairing…' : 'Repair Connection'}
                 </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={regenerating}
-                  onClick={regenerate}
-                >
+                <Button variant="secondary" size="sm" loading={regenerating} onClick={regenerate}>
                   Regenerate Password
                 </Button>
               </div>
@@ -421,43 +898,14 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        {/* Community Plugins section */}
-        <Card className="p-6">
-          <div className="mb-5">
-            <h2 className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-              Community Plugins
-            </h2>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Extend REXFORM Notes with additional views and integrations.
-              Enabled plugins appear as icons in the sidebar.
-            </p>
-          </div>
-
-          <PluginRow
-            icon={<KanbanPluginIcon />}
-            name="Kanban"
-            description="Organize tasks with drag-and-drop boards"
-            enabled={plugins.kanban}
-            onToggle={() => togglePlugin('kanban')}
-            saving={pluginSaving}
-          />
-          <PluginRow
-            icon={<CalendarPluginIcon />}
-            name="Calendar"
-            description="Navigate and create daily notes by date"
-            enabled={plugins.calendar}
-            onToggle={() => togglePlugin('calendar')}
-            saving={pluginSaving}
-          />
-          <PluginRow
-            icon={<GitLabPluginIcon />}
-            name="GitLab Work Items"
-            description="Link notes to GitLab issues, epics and milestones"
-            enabled={plugins.gitlab}
-            onToggle={() => togglePlugin('gitlab')}
-            saving={pluginSaving}
-          />
-        </Card>
+        {/* Community Plugins */}
+        <CommunityPluginsCard
+          pluginData={pluginData}
+          saving={pluginSaving}
+          onInstall={handleInstall}
+          onUninstall={handleUninstall}
+          onToggle={handleToggle}
+        />
       </div>
     </div>
   );

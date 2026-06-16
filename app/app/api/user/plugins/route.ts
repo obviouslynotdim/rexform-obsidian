@@ -14,18 +14,30 @@ function adminAuth() {
   return 'Basic ' + Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64');
 }
 
-const DEFAULT_PLUGINS = { kanban: false, calendar: false, gitlab: false };
 const DOC_ID = 'rexform-plugins';
+const DEFAULT_STATE = { installed: [] as string[], enabled: {} as Record<string, boolean> };
+
+// Migrate legacy format { plugins: { kanban: bool } } → { installed, enabled }
+function normalise(doc: any): { installed: string[]; enabled: Record<string, boolean> } {
+  if (Array.isArray(doc.installed)) {
+    return { installed: doc.installed, enabled: doc.enabled ?? {} };
+  }
+  if (doc.plugins && typeof doc.plugins === 'object') {
+    const installed = Object.keys(doc.plugins).filter((k) => doc.plugins[k] === true);
+    const enabled: Record<string, boolean> = {};
+    installed.forEach((k) => { enabled[k] = true; });
+    return { installed, enabled };
+  }
+  return DEFAULT_STATE;
+}
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  // Admin users share the obsidian vault — return defaults rather than storing plugin prefs there
   if (isAdminUser(session.user.id)) {
-    return NextResponse.json({ plugins: DEFAULT_PLUGINS });
+    return NextResponse.json(DEFAULT_STATE);
   }
 
   const db = `vault-${session.user.id}`;
@@ -34,12 +46,9 @@ export async function GET() {
       headers: { Authorization: adminAuth() },
       cache: 'no-store',
     });
-    if (res.status === 404) {
-      return NextResponse.json({ plugins: DEFAULT_PLUGINS });
-    }
+    if (res.status === 404) return NextResponse.json(DEFAULT_STATE);
     if (!res.ok) throw new Error(`CouchDB error: ${res.status}`);
-    const doc = await res.json();
-    return NextResponse.json({ plugins: { ...DEFAULT_PLUGINS, ...(doc.plugins ?? {}) } });
+    return NextResponse.json(normalise(await res.json()));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
@@ -50,14 +59,14 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   if (isAdminUser(session.user.id)) {
-    return NextResponse.json({ plugins: DEFAULT_PLUGINS });
+    return NextResponse.json(DEFAULT_STATE);
   }
 
-  let plugins: Record<string, boolean>;
+  let installed: string[];
+  let enabled: Record<string, boolean>;
   try {
-    ({ plugins } = await req.json());
+    ({ installed, enabled } = await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
@@ -66,18 +75,14 @@ export async function POST(req: NextRequest) {
   const docUrl = `${COUCHDB_URL}/${db}/${DOC_ID}`;
   const auth = adminAuth();
 
-  // Fetch existing _rev so we can update without conflict
   let rev: string | undefined;
   try {
     const existing = await fetch(docUrl, { headers: { Authorization: auth }, cache: 'no-store' });
-    if (existing.ok) {
-      const data = await existing.json();
-      rev = data._rev;
-    }
+    if (existing.ok) rev = (await existing.json())._rev;
   } catch {}
 
   try {
-    const body: Record<string, unknown> = { _id: DOC_ID, plugins };
+    const body: Record<string, unknown> = { _id: DOC_ID, installed, enabled };
     if (rev) body._rev = rev;
     const res = await fetch(docUrl, {
       method: 'PUT',
@@ -88,7 +93,7 @@ export async function POST(req: NextRequest) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.reason || `CouchDB error: ${res.status}`);
     }
-    return NextResponse.json({ plugins });
+    return NextResponse.json({ installed, enabled });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
