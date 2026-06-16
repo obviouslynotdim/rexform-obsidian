@@ -80,7 +80,7 @@ export default function FolderItem({
 
   const sharedChildProps = {
     activeId, canWrite, setMoving, onMoved, onDeleted,
-    dragging, setDragging, setContextMenu,
+    dragging, setDragging, setContextMenu, onDropOnFolder,
   };
 
   const sharedFolderProps = {
@@ -112,6 +112,19 @@ export default function FolderItem({
         setDragCounter(0);
         const noteId = e.dataTransfer.getData('text/plain');
         onDropOnFolder(node.path, noteId);
+      }}
+      onContextMenu={(e) => {
+        if (!canWrite) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({
+          x: e.clientX, y: e.clientY,
+          type: 'folder', id: node.path, name: node.name, path: node.path,
+          onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
+          onDelete: () => setConfirmDeleteFolder(true),
+          onNewNote: () => openAndCreate('note'),
+          onNewFolder: () => openAndCreate('folder'),
+        });
       }}
     >
       {!hideHeader && (

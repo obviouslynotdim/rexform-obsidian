@@ -117,6 +117,7 @@ export default function FileItem({
           outline: isDragTarget ? '1px solid var(--accent)' : 'none',
           borderRadius: isDragTarget ? '4px' : undefined,
           opacity: isDragging ? 0.4 : 1,
+          userSelect: 'none',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
