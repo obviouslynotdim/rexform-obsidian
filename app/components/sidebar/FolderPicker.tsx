@@ -8,6 +8,34 @@ interface FolderPickerProps {
   onCancel: () => void;
 }
 
+function FolderIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+      <path d="M1.5 4.5C1.5 3.67 2.17 3 3 3h3.38l1.5 1.5H13c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5H3c-.83 0-1.5-.67-1.5-1.5V4.5z" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function FolderRowIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+      <path d="M1 3.5C1 2.95 1.45 2.5 2 2.5h2.78l1.25 1.25H11c.55 0 1 .45 1 1v5c0 .55-.45 1-1 1H2c-.55 0-1-.45-1-1V3.5z" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 14 14"
+      style={{ animation: 'spin 0.7s linear infinite', flexShrink: 0, color: 'var(--accent)' }}
+    >
+      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.25" fill="none" />
+      <path d="M7 1.5 A5.5 5.5 0 0 1 12.5 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
 export default function FolderPicker({ noteId, folders, onMoved, onCancel }: FolderPickerProps) {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -72,72 +100,100 @@ export default function FolderPicker({ noteId, folders, onMoved, onCancel }: Fol
 
   return (
     <div
-      ref={containerRef}
       style={{
-        position: 'fixed',
-        top: '44px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 10000,
-        background: '#1e2030',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '10px',
-        boxShadow: '0 24px 48px rgba(0,0,0,0.6)',
-        width: '380px',
-        maxHeight: '320px',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        paddingTop: '14vh',
       }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => { setQuery(e.target.value); setError(''); }}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a folder..."
-          disabled={loading}
-          style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: '6px',
-            padding: '7px 10px',
-            fontSize: '13px',
-            color: 'var(--text-primary)',
-            outline: 'none',
-          }}
-        />
-        {error && (
-          <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#f87171' }}>{error}</p>
-        )}
-      </div>
+      <div
+        ref={containerRef}
+        style={{
+          width: 580, maxHeight: '62vh',
+          background: 'var(--bg-surface)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 12,
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+        }}
+      >
+        {/* Input row */}
+        <div style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <FolderIcon />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setError(''); }}
+            onKeyDown={handleKeyDown}
+            placeholder="Move to folder…"
+            disabled={loading}
+            style={{
+              flex: 1, background: 'none', border: 'none', outline: 'none',
+              color: 'var(--text-primary)', fontSize: 15, lineHeight: 1.4,
+            }}
+          />
+          {loading && <SpinnerIcon />}
+          <kbd style={{
+            fontSize: 10, color: 'var(--text-muted)',
+            border: '1px solid var(--border)', borderRadius: 4,
+            padding: '2px 5px', fontFamily: 'inherit',
+          }}>Esc</kbd>
+        </div>
 
-      <div ref={listRef} style={{ overflowY: 'auto', flex: 1 }}>
-        {filtered.length === 0 ? (
-          <p style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-            No matching folders
-          </p>
-        ) : (
-          filtered.map((f, i) => (
-            <div
-              key={f}
-              onMouseDown={(e) => { e.preventDefault(); confirm(f); }}
-              onMouseEnter={() => setSelectedIndex(i)}
-              style={{
-                padding: '8px 16px',
-                fontSize: '13px',
-                cursor: 'pointer',
-                userSelect: 'none',
-                color: i === selectedIndex ? '#fff' : 'rgba(255,255,255,0.72)',
-                background: i === selectedIndex ? 'var(--accent)' : 'transparent',
-              }}
-            >
-              {f}
+        {error && (
+          <div style={{ padding: '8px 16px', fontSize: 12, color: '#f87171', borderBottom: '1px solid var(--border)' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Folder list */}
+        <div ref={listRef} style={{ overflowY: 'auto', flex: 1 }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              No matching folders
             </div>
-          ))
+          ) : (
+            filtered.map((f, i) => (
+              <div
+                key={f}
+                onMouseDown={(e) => { e.preventDefault(); confirm(f); }}
+                onMouseEnter={() => setSelectedIndex(i)}
+                style={{
+                  padding: '9px 16px',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  background: i === selectedIndex ? 'rgba(127,119,221,0.12)' : 'transparent',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  borderLeft: i === selectedIndex ? '2px solid var(--accent)' : '2px solid transparent',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}
+              >
+                <FolderRowIcon />
+                <span style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>{f}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        {filtered.length > 0 && (
+          <div style={{
+            padding: '7px 16px',
+            borderTop: '1px solid var(--border)',
+            display: 'flex', gap: 14,
+            fontSize: 11, color: 'var(--text-muted)',
+          }}>
+            <span>↑↓ navigate</span>
+            <span>↵ move here</span>
+            <span>esc cancel</span>
+          </div>
         )}
       </div>
     </div>
