@@ -2,16 +2,18 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import useSWR from 'swr';
 
+export type TabType = 'note' | 'graph' | 'kanban' | 'calendar' | 'gitlab';
+
 export interface Tab {
   id: string;
   title: string;
-  type?: 'note' | 'graph';
+  type?: TabType;
 }
 
 interface TabsContextType {
   tabs: Tab[];
   activeTabId: string | null;
-  openTab: (id: string, title: string, type?: 'note' | 'graph') => void;
+  openTab: (id: string, title: string, type?: TabType) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   reorderTabs: (fromId: string, toId: string) => void;
@@ -24,6 +26,9 @@ export function useTabsContext() {
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+// These tab types are singletons — only one instance per type at a time
+const SINGLETON_TYPES: TabType[] = ['graph', 'kanban', 'calendar', 'gitlab'];
 
 export function TabsProvider({ children }: { children: React.ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -72,13 +77,15 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [activeTabId, initialized, vaultId]);
 
-  const openTab = useCallback((id: string, title: string, type?: 'note' | 'graph') => {
+  const openTab = useCallback((id: string, title: string, type?: TabType) => {
     setTabs(prev => {
-      if (type === 'graph') {
-        const withoutGraph = prev.filter(t => t.type !== 'graph');
-        const next = [...withoutGraph, { id, title, type }];
+      // Singleton types: remove any existing tab of the same type, then add the new one
+      if (type && SINGLETON_TYPES.includes(type)) {
+        const withoutType = prev.filter(t => t.type !== type);
+        const next = [...withoutType, { id, title, type }];
         return next.length > 10 ? next.slice(next.length - 10) : next;
       }
+      // Note tabs: deduplicate by ID
       if (prev.find(t => t.id === id)) return prev;
       const next = [...prev, { id, title, type: type ?? 'note' }];
       return next.length > 10 ? next.slice(next.length - 10) : next;

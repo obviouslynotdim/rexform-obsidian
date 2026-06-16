@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTabsContext, type Tab } from '@/context/TabsContext';
+import { useTabsContext, type Tab, type TabType } from '@/context/TabsContext';
 
 function FileIcon() {
   return (
@@ -28,9 +28,65 @@ function GraphTabIcon() {
   );
 }
 
+function KanbanTabIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginRight: 5 }}>
+      <rect x="1" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="6" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="11" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="1.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="6.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="6.8" y="7" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="11.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+    </svg>
+  );
+}
+
+function CalendarTabIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginRight: 5 }}>
+      <rect x="1.5" y="3" width="13" height="11.5" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="1.5" y1="7" x2="14.5" y2="7" stroke="currentColor" strokeWidth="1" />
+      <line x1="5" y1="1.5" x2="5" y2="4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="11" y1="1.5" x2="11" y2="4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="5" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="8" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="11" cy="10" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function GitLabTabIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, marginRight: 5 }}>
+      <path
+        d="M10 17L2 10.5 4.5 3.5 7 10H13L15.5 3.5 18 10.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TabIcon({ type }: { type?: TabType }) {
+  switch (type) {
+    case 'graph':    return <GraphTabIcon />;
+    case 'kanban':   return <KanbanTabIcon />;
+    case 'calendar': return <CalendarTabIcon />;
+    case 'gitlab':   return <GitLabTabIcon />;
+    default:         return <FileIcon />;
+  }
+}
+
 function tabHref(tab: Tab): string {
-  if (tab.type === 'graph') return '/notes/graph';
-  return `/notes/${encodeURIComponent(tab.id)}`;
+  switch (tab.type) {
+    case 'graph':    return '/notes/graph';
+    case 'kanban':   return '/notes/kanban';
+    case 'calendar': return '/notes/calendar';
+    case 'gitlab':   return '/notes/gitlab';
+    default:         return `/notes/${encodeURIComponent(tab.id)}`;
+  }
 }
 
 export default function TabBar() {
@@ -156,7 +212,7 @@ function TabItem({ tab, isActive, isDragOver, onActivate, onClose, onDragStart, 
         if (btn) btn.style.opacity = '0';
       }}
     >
-      {tab.type === 'graph' ? <GraphTabIcon /> : <FileIcon />}
+      <TabIcon type={tab.type} />
       <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {tab.title}
       </span>

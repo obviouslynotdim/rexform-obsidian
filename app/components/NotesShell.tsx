@@ -1,11 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import useSWR from 'swr';
 import { TabsProvider, useTabsContext } from '@/context/TabsContext';
 import TabBar from '@/components/TabBar';
 import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
 import SearchModal from '@/components/SearchModal';
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+// ─── Icon strip SVGs ──────────────────────────────────────────────────────────
 
 function FilesIcon() {
   return (
@@ -31,6 +36,47 @@ function GraphIcon() {
   );
 }
 
+function KanbanIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="6" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="11" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="1.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="6.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="6.8" y="7" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+      <rect x="11.8" y="3" width="2.4" height="2" rx="0.4" fill="currentColor" opacity="0.6" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="3" width="13" height="11.5" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="1.5" y1="7" x2="14.5" y2="7" stroke="currentColor" strokeWidth="1" />
+      <line x1="5" y1="1.5" x2="5" y2="4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="11" y1="1.5" x2="11" y2="4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="5" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="8" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="11" cy="10" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function GitLabIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <path
+        d="M10 17L2 10.5 4.5 3.5 7 10H13L15.5 3.5 18 10.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -40,6 +86,8 @@ function SearchIcon() {
   );
 }
 
+// ─── Shell inner (needs to be inside TabsProvider to call useTabsContext) ─────
+
 function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -47,7 +95,17 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
 
-  const isGraphActive = pathname === '/notes/graph';
+  const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    fallbackData: { plugins: { kanban: false, calendar: false, gitlab: false } },
+  });
+  const plugins = pluginsData?.plugins ?? { kanban: false, calendar: false, gitlab: false };
+
+  const isGraphActive    = pathname === '/notes/graph';
+  const isKanbanActive   = pathname === '/notes/kanban';
+  const isCalendarActive = pathname === '/notes/calendar';
+  const isGitLabActive   = pathname === '/notes/gitlab';
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -61,61 +119,97 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
+    <div style={{ display: 'flex', height: 'calc(100vh - 56px)', background: 'var(--bg-base)' }}>
+
+      {/* Icon strip */}
       <div
-        style={{ display: 'flex', height: 'calc(100vh - 56px)', background: 'var(--bg-base)' }}
+        style={{
+          width: 40,
+          background: 'var(--bg-surface)',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 8,
+          gap: 4,
+          flexShrink: 0,
+        }}
       >
-        {/* Icon strip */}
-        <div
-          style={{
-            width: 40,
-            background: 'var(--bg-surface)',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            paddingTop: 8,
-            gap: 4,
-            flexShrink: 0,
+        <IconButton
+          icon={<FilesIcon />}
+          active={sidebarVisible}
+          onClick={() => setSidebarVisible(v => !v)}
+          tooltip="Files"
+        />
+        <IconButton
+          icon={<GraphIcon />}
+          active={isGraphActive}
+          onClick={() => {
+            tabsCtx?.openTab('graph', 'Graph view', 'graph');
+            router.push('/notes/graph');
           }}
-        >
+          tooltip="Graph view"
+        />
+
+        {plugins.kanban && (
           <IconButton
-            icon={<FilesIcon />}
-            active={sidebarVisible}
-            onClick={() => setSidebarVisible(v => !v)}
-            tooltip="Files"
-          />
-          <IconButton
-            icon={<GraphIcon />}
-            active={isGraphActive}
+            icon={<KanbanIcon />}
+            active={isKanbanActive}
             onClick={() => {
-              tabsCtx?.openTab('graph', 'Graph view', 'graph');
-              router.push('/notes/graph');
+              tabsCtx?.openTab('kanban', 'Kanban', 'kanban');
+              router.push('/notes/kanban');
             }}
-            tooltip="Graph view"
+            tooltip="Kanban"
           />
+        )}
+
+        {plugins.calendar && (
           <IconButton
-            icon={<SearchIcon />}
-            active={searchOpen}
-            onClick={() => setSearchOpen(true)}
-            tooltip="Search (Ctrl+K)"
+            icon={<CalendarIcon />}
+            active={isCalendarActive}
+            onClick={() => {
+              tabsCtx?.openTab('calendar', 'Calendar', 'calendar');
+              router.push('/notes/calendar');
+            }}
+            tooltip="Calendar"
           />
-        </div>
+        )}
 
-        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+        {plugins.gitlab && (
+          <IconButton
+            icon={<GitLabIcon />}
+            active={isGitLabActive}
+            onClick={() => {
+              tabsCtx?.openTab('gitlab', 'GitLab', 'gitlab');
+              router.push('/notes/gitlab');
+            }}
+            tooltip="GitLab Work Items"
+          />
+        )}
 
-        {/* Sidebar */}
-        <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>
-          <NotesSidebar />
-        </div>
+        <IconButton
+          icon={<SearchIcon />}
+          active={searchOpen}
+          onClick={() => setSearchOpen(true)}
+          tooltip="Search (Ctrl+K)"
+        />
+      </div>
 
-        {/* Main content column: TabBar on top, then page content */}
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-          <TabBar />
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            {children}
-          </div>
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+
+      {/* Sidebar */}
+      <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+        <NotesSidebar />
+      </div>
+
+      {/* Main content column: TabBar on top, then page content */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <TabBar />
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          {children}
         </div>
       </div>
+    </div>
   );
 }
 
