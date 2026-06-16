@@ -44,6 +44,10 @@ body {
   background: var(--accent);
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Card hover — overrides inline borderColor on hover */
 .card-hover:hover {
   border-color: var(--accent) !important;

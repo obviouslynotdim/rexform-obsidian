@@ -1,10 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { TabsProvider, useTabsContext } from '@/context/TabsContext';
 import TabBar from '@/components/TabBar';
 import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
+import SearchModal from '@/components/SearchModal';
 
 function FilesIcon() {
   return (
@@ -30,13 +31,34 @@ function GraphIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="9.5" y1="9.5" x2="13" y2="13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
 
   const isGraphActive = pathname === '/notes/graph';
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
       <div
@@ -71,7 +93,15 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
             }}
             tooltip="Graph view"
           />
+          <IconButton
+            icon={<SearchIcon />}
+            active={searchOpen}
+            onClick={() => setSearchOpen(true)}
+            tooltip="Search (Ctrl+K)"
+          />
         </div>
+
+        <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
         {/* Sidebar */}
         <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>

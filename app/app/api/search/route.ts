@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllNotes, isPageDoc, extractTitle, buildPreview, AuthHeaders } from '@/lib/couchdb';
+import { getAllNotes, isPageDoc, extractTitle, stripFrontmatter, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
+function extractSnippet(text: string, query: string): string {
+  const clean = text.replace(/^---[\s\S]*?---\n?/, '').replace(/[#*`>\[\]!]/g, '').replace(/\s+/g, ' ').trim();
+  const lower = clean.toLowerCase();
+  const idx = lower.indexOf(query.toLowerCase());
+  if (idx === -1) return clean.slice(0, 120);
+  const start = Math.max(0, idx - 50);
+  const end = Math.min(clean.length, idx + query.length + 70);
+  return (start > 0 ? '…' : '') + clean.slice(start, end) + (end < clean.length ? '…' : '');
+}
+
 export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get('q') || '';
+  const q = (req.nextUrl.searchParams.get('q') || '').trim();
   const session = await getServerSession(authOptions);
   const auth: AuthHeaders | undefined = session?.kratosSessionToken
     ? { authorization: `Bearer ${session.kratosSessionToken}` }
     : undefined;
+
+  if (!q) return NextResponse.json({ results: [] });
 
   try {
     const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
@@ -18,17 +30,24 @@ export async function GET(req: NextRequest) {
 
     const results = (data.rows || [])
       .map((row: any) => row.doc)
-      .filter((doc: any) => {
-        if (!isPageDoc(doc)) return false;
-        const searchable = [doc.path || '', extractTitle(doc)].join(' ').toLowerCase();
-        return searchable.includes(lower);
+      .filter((doc: any) => isPageDoc(doc))
+      .map((doc: any) => {
+        const title = extractTitle(doc);
+        const rawBody = doc.body || doc.content || doc.text || '';
+        const { content: bodyContent } = stripFrontmatter(rawBody);
+        const titleMatch = title.toLowerCase().includes(lower);
+        const pathMatch = (doc.path || '').toLowerCase().includes(lower);
+        const bodyMatch = bodyContent.toLowerCase().includes(lower);
+        if (!titleMatch && !pathMatch && !bodyMatch) return null;
+        return {
+          _id: doc._id,
+          title,
+          snippet: extractSnippet(bodyContent || rawBody, q),
+          matchIn: titleMatch ? 'title' : bodyMatch ? 'content' : 'path',
+        };
       })
-      .slice(0, 50)
-      .map((doc: any) => ({
-        _id: doc._id,
-        title: extractTitle(doc),
-        snippet: buildPreview(doc),
-      }));
+      .filter(Boolean)
+      .slice(0, 50);
 
     return NextResponse.json({ results });
   } catch (e: any) {
