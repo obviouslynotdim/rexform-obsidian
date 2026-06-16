@@ -156,10 +156,15 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner: only show when dragging a note that is inside a folder
+  // Banner: show when dragging AND the note is not already a direct child of effectiveRoot.
+  // "direct child of effectiveRoot" means the note's folder equals effectiveRoot.
   const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
   const draggedFolder = draggedNote?.path.split('/').slice(0, -1).join('/') ?? '';
-  const showRootBanner = !!dragging && draggedFolder !== '';
+  const showRootBanner = !!dragging && draggedFolder !== effectiveRoot;
+
+  const bannerLabel = effectiveRoot
+    ? `Drop here → ${effectiveRoot}`
+    : 'Drop here → root';
 
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
@@ -276,10 +281,10 @@ export default function NotesSidebar({ currentId }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDropOnFolder('', e.dataTransfer.getData('text/plain'));
+                  handleDropOnFolder(effectiveRoot, e.dataTransfer.getData('text/plain'));
                 }}
               >
-                Drop here → root
+                {bannerLabel}
               </div>
             )}
             {singleRootFolder ? (

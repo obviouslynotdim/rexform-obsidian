@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor from './NoteEditor';
@@ -28,6 +28,7 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const [renameError, setRenameError] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
+  const [backlinkCount, setBacklinkCount] = useState(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
@@ -87,6 +88,13 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   });
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
+
+  const handleBacklinkCount = useCallback((count: number) => {
+    setBacklinkCount(count);
+  }, []);
+
+  const wordCount = liveContent.trim() ? liveContent.trim().split(/\s+/).filter(Boolean).length : 0;
+  const charCount = liveContent.length;
 
   return (
     <div style={{ maxWidth: '700px', margin: '0 auto', paddingTop: '40px', paddingBottom: '80px', paddingLeft: '32px', paddingRight: '32px' }}>
@@ -183,7 +191,27 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
         </div>
       )}
 
-      <BacklinksPanel noteId={noteId} />
+      {/* Status bar */}
+      <div style={{
+        marginTop: 40,
+        paddingTop: 10,
+        paddingBottom: 2,
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 3,
+        fontSize: 11.5,
+        color: 'var(--text-muted)',
+        userSelect: 'none',
+      }}>
+        <span>{backlinkCount} {backlinkCount === 1 ? 'backlink' : 'backlinks'}</span>
+        <span style={{ opacity: 0.4 }}>·</span>
+        <span>{wordCount} words</span>
+        <span style={{ opacity: 0.4 }}>·</span>
+        <span>{charCount} characters</span>
+      </div>
+
+      <BacklinksPanel noteId={noteId} onCountLoaded={handleBacklinkCount} />
     </div>
   );
 }

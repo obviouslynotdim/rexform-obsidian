@@ -13,6 +13,7 @@ export interface Tab {
 interface TabsContextType {
   tabs: Tab[];
   activeTabId: string | null;
+  initialized: boolean;
   openTab: (id: string, title: string, type?: TabType) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -125,7 +126,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <TabsContext.Provider value={{ tabs, activeTabId, openTab, closeTab, setActiveTab, reorderTabs }}>
+    <TabsContext.Provider value={{ tabs, activeTabId, initialized, openTab, closeTab, setActiveTab, reorderTabs }}>
       {children}
     </TabsContext.Provider>
   );

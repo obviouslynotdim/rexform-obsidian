@@ -25,7 +25,7 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
     const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
     return filename.toLowerCase() === lower;
   });
-  if (byFilename) return byFilename.id.replace(/\.md$/i, '');
+  if (byFilename) return byFilename.id;
 
   // 2. Normalized match — hyphens/underscores treated as spaces
   const lowerNorm = norm(lower);
@@ -33,22 +33,22 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
     const filename = n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
     return norm(filename) === lowerNorm;
   });
-  if (byNorm) return byNorm.id.replace(/\.md$/i, '');
+  if (byNorm) return byNorm.id;
 
-  // 3. Full id match (case-insensitive, strip .md)
+  // 3. Full id match (case-insensitive, strip .md from the stored id for comparison only)
   const byId = notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower);
-  if (byId) return byId.id.replace(/\.md$/i, '');
+  if (byId) return byId.id;
 
   // 4. Note title match (case-insensitive) — catches notes whose title differs from filename
   const byTitle = notes.find((n) => n.title && n.title.toLowerCase() === lower);
-  if (byTitle) return byTitle.id.replace(/\.md$/i, '');
+  if (byTitle) return byTitle.id;
 
   // 5. Partial path match — [[subfolder/note]] matches "vault/subfolder/note.md"
   const byPartialPath = notes.find((n) => {
     const pathNoExt = n.path.replace(/\.md$/i, '').toLowerCase();
     return pathNoExt === lower || pathNoExt.endsWith('/' + lower);
   });
-  return byPartialPath?.id.replace(/\.md$/i, '') ?? null;
+  return byPartialPath?.id ?? null;
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {
@@ -68,6 +68,13 @@ export default function WikiMarkdown({ children }: { children: string }) {
         const resolvedId = resolveWikilink(name, notes);
 
         if (resolvedId) {
+          // Strip .md only for the URL — the note page fetches by the decoded param
+          // which must match the CouchDB _id exactly (includes .md).
+          // URL uses the .md-stripped form so the route param decodes cleanly;
+          // the note page receives it and fetches CouchDB with the full id.
+          // Actually: FileItem navigates with the full id including .md, and the
+          // note page uses decodeURIComponent(params.id) directly as the CouchDB key.
+          // We must therefore keep .md in the href so getNote() can find the document.
           const displayTitle = resolvedId.split('/').pop()?.replace(/\.md$/i, '') ?? name;
           return (
             <Link
@@ -84,7 +91,7 @@ export default function WikiMarkdown({ children }: { children: string }) {
         if (isLoading) {
           return (
             <span
-              title={`Loading…`}
+              title="Loading…"
               style={{ color: 'rgba(255,255,255,0.35)', textDecoration: 'underline dotted', cursor: 'default' }}
             >
               {linkChildren}
