@@ -132,6 +132,17 @@ export default function NotesSidebar({ currentId }: Props) {
     if (expandFolder) expandFolders(expandFolder);
   }, [mutate, expandFolders]);
 
+  // When there is a single root folder (e.g. my-vaults), open the inline input
+  // INSIDE it so the visual placement matches where the item will actually land.
+  function createAtRoot(type: 'note' | 'folder') {
+    if (singleRootFolder) {
+      setExpanded((prev) => { const next = new Set(prev); next.add(singleRootFolder.path); return next; });
+      setCreating({ folder: singleRootFolder.path, type });
+    } else {
+      setCreating({ folder: '', type });
+    }
+  }
+
   // Tree computation
   const rawTree = buildTree(notes);
   const rootFolders = rawTree.filter((n): n is FolderNode => n.type === 'folder');
@@ -168,7 +179,7 @@ export default function NotesSidebar({ currentId }: Props) {
   const showRootBanner = !!dragging && draggedFolder !== effectiveRoot;
 
   // Shared props passed down to tree items
-  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
+  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder };
   const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
 
   return (
@@ -185,14 +196,14 @@ export default function NotesSidebar({ currentId }: Props) {
           {canWrite && (
             <div className="flex items-center gap-1">
               <button
-                title="New folder at root"
-                onClick={() => setCreating({ folder: '', type: 'folder' })}
+                title="New folder"
+                onClick={() => createAtRoot('folder')}
                 className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
                 style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
               >⊞</button>
               <button
-                title="New note at root"
-                onClick={() => setCreating({ folder: '', type: 'note' })}
+                title="New note"
+                onClick={() => createAtRoot('note')}
                 className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
                 style={{ background: 'var(--accent)', color: '#fff' }}
               >+ New</button>
@@ -218,8 +229,8 @@ export default function NotesSidebar({ currentId }: Props) {
           setContextMenu({
             x: e.clientX, y: e.clientY,
             type: 'root', id: '', name: '', path: '',
-            onNewNote: () => setCreating({ folder: '', type: 'note' }),
-            onNewFolder: () => setCreating({ folder: '', type: 'folder' }),
+            onNewNote: () => createAtRoot('note'),
+            onNewFolder: () => createAtRoot('folder'),
           });
         }}
       >

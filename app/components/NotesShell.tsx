@@ -7,8 +7,6 @@ import TabBar from '@/components/TabBar';
 import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
 import SearchModal from '@/components/SearchModal';
-import BacklinksPanel from '@/components/BacklinksPanel';
-
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ─── Icon strip SVGs ──────────────────────────────────────────────────────────
@@ -89,8 +87,6 @@ function SearchIcon() {
 
 // ─── Shell inner (needs to be inside TabsProvider to call useTabsContext) ─────
 
-const SPECIAL_VIEWS = new Set(['graph', 'kanban', 'calendar', 'gitlab', 'new']);
-
 function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -110,11 +106,6 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   const isKanbanActive   = pathname === '/notes/kanban';
   const isCalendarActive = pathname === '/notes/calendar';
   const isGitLabActive   = pathname === '/notes/gitlab';
-
-  // Derive the current note's CouchDB ID from the pathname for the backlinks panel.
-  // usePathname() returns a decoded string, so we re-add .md to match CouchDB IDs.
-  const rawSegment = pathname.startsWith('/notes/') ? decodeURIComponent(pathname.slice('/notes/'.length)) : null;
-  const noteId = rawSegment && !SPECIAL_VIEWS.has(rawSegment) ? rawSegment + '.md' : null;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -211,42 +202,11 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
         <NotesSidebar />
       </div>
 
-      {/* Main content column: TabBar spans full width, then note + right panel */}
+      {/* Main content column */}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <TabBar />
-        <div style={{ display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-          {/* Note content */}
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            {children}
-          </div>
-          {/* Backlinks right panel — only shown when viewing a specific note */}
-          {noteId && (
-            <div style={{
-              width: 260,
-              flexShrink: 0,
-              borderLeft: '1px solid rgba(255,255,255,0.06)',
-              background: '#16213e',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                padding: '12px 16px 8px',
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                color: 'var(--text-muted)',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                flexShrink: 0,
-              }}>
-                Backlinks
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <BacklinksPanel noteId={noteId} />
-              </div>
-            </div>
-          )}
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          {children}
         </div>
       </div>
     </div>

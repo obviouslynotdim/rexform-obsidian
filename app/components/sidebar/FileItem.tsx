@@ -15,11 +15,12 @@ interface FileItemProps {
   dragging: string | null;
   setDragging: (id: string | null) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
+  onDropOnFolder?: (targetFolder: string, noteId: string) => void;
 }
 
 export default function FileItem({
   node, depth, activeId, canWrite, setMoving,
-  onMoved, onDeleted, dragging, setDragging, setContextMenu,
+  onMoved, onDeleted, dragging, setDragging, setContextMenu, onDropOnFolder,
 }: FileItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -29,6 +30,7 @@ export default function FileItem({
   const cancelRenameRef = useRef(false);
   const justOpenedRename = useRef(false);
   const [hovered, setHovered] = useState(false);
+  const [isDragTarget, setIsDragTarget] = useState(false);
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
@@ -89,14 +91,32 @@ export default function FileItem({
           e.dataTransfer.setData('text/plain', node.id);
           setDragging(node.id);
         }}
-        onDragEnd={() => setDragging(null)}
+        onDragEnd={() => { setDragging(null); setIsDragTarget(false); }}
+        onDragOver={(e) => {
+          if (!dragging || dragging === node.id) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragTarget(true);
+        }}
+        onDragLeave={() => setIsDragTarget(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragTarget(false);
+          const draggedId = e.dataTransfer.getData('text/plain');
+          if (draggedId && draggedId !== node.id && onDropOnFolder) {
+            const targetFolder = node.path.split('/').slice(0, -1).join('/');
+            onDropOnFolder(targetFolder, draggedId);
+          }
+        }}
         className="flex items-center py-1 rounded text-sm"
         style={{
           paddingLeft: `${Math.max(0, depth) * 14 + 8}px`,
           paddingRight: '4px',
-          background: isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          background: isDragTarget ? 'rgba(127,119,221,0.18)' : isActive ? 'rgba(255,255,255,0.1)' : hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+          outline: isDragTarget ? '1px solid var(--accent)' : 'none',
+          borderRadius: isDragTarget ? '4px' : undefined,
           opacity: isDragging ? 0.4 : 1,
-          outline: 'none',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
