@@ -4,6 +4,7 @@ import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
+import BacklinksPanel from './BacklinksPanel';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
@@ -181,6 +182,8 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
           )}
         </div>
       )}
+
+      <BacklinksPanel noteId={noteId} />
     </div>
   );
 }
