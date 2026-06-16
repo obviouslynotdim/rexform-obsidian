@@ -4,7 +4,6 @@ import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
-import BacklinksPanel from './BacklinksPanel';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
@@ -28,7 +27,6 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const [renameError, setRenameError] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
-  const [backlinkCount, setBacklinkCount] = useState(0);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
@@ -75,7 +73,8 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
     if (res.ok) {
       setRenamingTitle(false);
       await mutate('/api/notes/tree');
-      router.push(`/notes/${encodeURIComponent(data.id)}`);
+      const newUrlId = String(data.id).replace(/\.md$/i, '');
+      router.push(`/notes/${encodeURIComponent(newUrlId)}`);
       router.refresh();
     } else {
       setRenameError(data.error || 'Rename failed');
@@ -89,9 +88,14 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
 
-  const handleBacklinkCount = useCallback((count: number) => {
-    setBacklinkCount(count);
-  }, []);
+  // Backlink count for the status bar — BacklinksPanel in the right sidebar
+  // uses the same SWR key so only one request is made (SWR deduplication).
+  const { data: blData } = useSWR<{ backlinks: { id: string }[] }>(
+    `/api/notes/${encodeURIComponent(noteId)}/backlinks`,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  );
+  const backlinkCount = blData?.backlinks?.length ?? 0;
 
   const wordCount = liveContent.trim() ? liveContent.trim().split(/\s+/).filter(Boolean).length : 0;
   const charCount = liveContent.length;
@@ -210,8 +214,6 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
         <span style={{ opacity: 0.4 }}>·</span>
         <span>{charCount} characters</span>
       </div>
-
-      <BacklinksPanel noteId={noteId} onCountLoaded={handleBacklinkCount} />
     </div>
   );
 }

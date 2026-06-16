@@ -45,7 +45,13 @@ export default function NotesSidebar({ currentId }: Props) {
   });
 
   const notes: NoteEntry[] = data?.notes || [];
-  const activeId = currentId ?? decodeURIComponent(pathname.replace('/notes/', ''));
+
+  // Derive the active note ID from the URL, normalising to the CouchDB ID (with .md)
+  // so sidebar highlighting works whether the URL uses clean or legacy .md paths.
+  const rawActiveId = currentId ?? decodeURIComponent(pathname.replace('/notes/', ''));
+  const activeNote = notes.find((n) => n.id === rawActiveId || n.id === rawActiveId + '.md');
+  const activeId = activeNote?.id ?? rawActiveId;
+
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
 
@@ -156,15 +162,10 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner: show when dragging AND the note is not already a direct child of effectiveRoot.
-  // "direct child of effectiveRoot" means the note's folder equals effectiveRoot.
+  // Banner: show when dragging a note that isn't already a direct child of effectiveRoot
   const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
   const draggedFolder = draggedNote?.path.split('/').slice(0, -1).join('/') ?? '';
   const showRootBanner = !!dragging && draggedFolder !== effectiveRoot;
-
-  const bannerLabel = effectiveRoot
-    ? `Drop here → ${effectiveRoot}`
-    : 'Drop here → root';
 
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu };
@@ -284,7 +285,7 @@ export default function NotesSidebar({ currentId }: Props) {
                   handleDropOnFolder(effectiveRoot, e.dataTransfer.getData('text/plain'));
                 }}
               >
-                {bannerLabel}
+                Move to vault root
               </div>
             )}
             {singleRootFolder ? (

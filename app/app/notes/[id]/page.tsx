@@ -24,23 +24,41 @@ export default async function NotePage({ params }: Props) {
     : undefined;
   const db = await getActiveVault(session);
 
-  const id = decodeURIComponent(params.id);
+  const urlId = decodeURIComponent(params.id);
+  let noteId = urlId;
   let note: any = null;
   let content = '';
   let frontmatter: Record<string, string> = {};
   let error = '';
 
+  // Try the URL id as-is; if not found, retry with .md suffix for clean-URL support
   try {
-    note = await getNote(id, auth, db);
-    const raw = await assembleNoteContent(note, auth, db);
-    const parsed = stripFrontmatter(raw);
-    content = parsed.content;
-    frontmatter = parsed.frontmatter;
-  } catch (e: any) {
-    error = e.message || 'Failed to load note';
+    note = await getNote(urlId, auth, db);
+  } catch {
+    // silently swallow — retry below
   }
 
-  const title = frontmatter.title || (note ? extractTitle(note) : id);
+  if (!note && !urlId.endsWith('.md')) {
+    try {
+      note = await getNote(urlId + '.md', auth, db);
+      if (note) noteId = urlId + '.md';
+    } catch {}
+  }
+
+  if (note) {
+    try {
+      const raw = await assembleNoteContent(note, auth, db);
+      const parsed = stripFrontmatter(raw);
+      content = parsed.content;
+      frontmatter = parsed.frontmatter;
+    } catch (e: any) {
+      error = e.message || 'Failed to load note';
+    }
+  } else {
+    error = 'Note not found';
+  }
+
+  const title = frontmatter.title || (note ? extractTitle(note) : noteId);
   const folder = note?.path ? (note.path as string).split('/').slice(0, -1).join('/') : '';
   const tags = frontmatter.tags
     ? frontmatter.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
@@ -60,7 +78,7 @@ export default async function NotePage({ params }: Props) {
         </div>
       ) : (
         <NoteViewClient
-          noteId={id}
+          noteId={noteId}
           title={title}
           content={content}
           folder={folder}

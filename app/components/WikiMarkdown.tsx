@@ -68,17 +68,12 @@ export default function WikiMarkdown({ children }: { children: string }) {
         const resolvedId = resolveWikilink(name, notes);
 
         if (resolvedId) {
-          // Strip .md only for the URL — the note page fetches by the decoded param
-          // which must match the CouchDB _id exactly (includes .md).
-          // URL uses the .md-stripped form so the route param decodes cleanly;
-          // the note page receives it and fetches CouchDB with the full id.
-          // Actually: FileItem navigates with the full id including .md, and the
-          // note page uses decodeURIComponent(params.id) directly as the CouchDB key.
-          // We must therefore keep .md in the href so getNote() can find the document.
           const displayTitle = resolvedId.split('/').pop()?.replace(/\.md$/i, '') ?? name;
+          // Strip .md for a clean URL; note page retries with .md suffix if direct lookup fails
+          const urlId = resolvedId.replace(/\.md$/i, '');
           return (
             <Link
-              href={`/notes/${encodeURIComponent(resolvedId)}`}
+              href={`/notes/${encodeURIComponent(urlId)}`}
               onClick={() => tabsCtx?.openTab(resolvedId, displayTitle)}
               style={{ color: 'var(--accent)', textDecoration: 'underline' }}
             >
