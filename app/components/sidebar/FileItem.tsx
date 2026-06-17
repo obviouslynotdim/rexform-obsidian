@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTabsContext } from '@/context/TabsContext';
-import type { FileNode, ContextMenuState } from './types';
+import type { FileNode, ContextMenuState, CreatingState } from './types';
 
 interface FileItemProps {
   node: FileNode;
@@ -16,11 +16,14 @@ interface FileItemProps {
   setDragging: (id: string | null) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
   onDropOnFolder?: (targetFolder: string, noteId: string) => void;
+  setCreating: (s: CreatingState | null) => void;
+  effectiveRoot: string;
 }
 
 export default function FileItem({
   node, depth, activeId, canWrite, setMoving,
   onMoved, onDeleted, dragging, setDragging, setContextMenu, onDropOnFolder,
+  setCreating, effectiveRoot,
 }: FileItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -135,6 +138,10 @@ export default function FileItem({
             onRename: startRename,
             onDelete: handleDelete,
             onMove: () => setMoving(node.id),
+            onNewFolder: () => {
+              const parentFolder = node.path.split('/').slice(0, -1).join('/');
+              setCreating({ folder: parentFolder || effectiveRoot, type: 'folder' });
+            },
           });
         }}
       >

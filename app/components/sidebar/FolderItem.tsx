@@ -23,6 +23,7 @@ interface FolderItemProps {
   setDragging: (id: string | null) => void;
   onDropOnFolder: (targetFolder: string, noteId: string) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
+  effectiveRoot: string;
   hideHeader?: boolean;
 }
 
@@ -30,7 +31,7 @@ export default function FolderItem({
   node, depth, activeId, expanded, toggleExpand, creating, setCreating,
   canWrite, onCreated, setMoving, onMoved, onDeleted,
   onFolderRenamed, onFolderDeleted, dragging, setDragging,
-  onDropOnFolder, setContextMenu, hideHeader,
+  onDropOnFolder, setContextMenu, effectiveRoot, hideHeader,
 }: FolderItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -48,6 +49,13 @@ export default function FolderItem({
   useEffect(() => {
     if (renaming) requestAnimationFrame(() => renameInputRef.current?.select());
   }, [renaming]);
+
+  // Reset drag highlight whenever any drag ends anywhere on the page
+  useEffect(() => {
+    const reset = () => setDragCounter(0);
+    window.addEventListener('dragend', reset);
+    return () => window.removeEventListener('dragend', reset);
+  }, []);
 
   function openAndCreate(type: 'note' | 'folder') {
     if (!isOpen) toggleExpand(node.path);
@@ -81,6 +89,7 @@ export default function FolderItem({
   const sharedChildProps = {
     activeId, canWrite, setMoving, onMoved, onDeleted,
     dragging, setDragging, setContextMenu, onDropOnFolder,
+    setCreating, effectiveRoot,
   };
 
   const sharedFolderProps = {

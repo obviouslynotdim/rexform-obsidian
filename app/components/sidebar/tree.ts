@@ -15,8 +15,10 @@ export function buildTree(notes: NoteEntry[]): TreeNode[] {
       }
       cur = folder;
     }
-    const filename = parts[parts.length - 1];
-    cur.children.push({ type: 'file', name: filename.replace(/\.md$/i, ''), id: note.id, path: note.path });
+    if (!note.isMarker) {
+      const filename = parts[parts.length - 1];
+      cur.children.push({ type: 'file', name: filename.replace(/\.md$/i, ''), id: note.id, path: note.path });
+    }
   }
   function sort(node: FolderNode) {
     node.children.sort((a, b) => {

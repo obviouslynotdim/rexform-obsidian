@@ -1,4 +1,4 @@
-export interface NoteEntry { id: string; path: string }
+export interface NoteEntry { id: string; path: string; isMarker?: boolean }
 export interface FileNode { type: 'file'; name: string; id: string; path: string }
 export interface FolderNode { type: 'folder'; name: string; path: string; children: TreeNode[] }
 export type TreeNode = FileNode | FolderNode

@@ -173,13 +173,22 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner: show when dragging a note that isn't already a direct child of effectiveRoot
+  // Banner: show when dragging a note that isn't already at the true filesystem root.
+  // - If dragged note is in my-vaults directly (isAtVaultRoot), banner moves it OUT to '' (true root).
+  // - If dragged note is in a subfolder, banner moves it to effectiveRoot (vault root).
+  // - If dragged note is already at true root (isAtTrueRoot), no banner needed.
   const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
-  const draggedFolder = draggedNote?.path.split('/').slice(0, -1).join('/') ?? '';
-  const showRootBanner = !!dragging && draggedFolder !== effectiveRoot;
+  const draggedPath = draggedNote?.path ?? '';
+  const draggedFolder = draggedPath.split('/').slice(0, -1).join('/');
+  const isAtTrueRoot = draggedFolder === '';
+  const isAtVaultRoot = draggedFolder === effectiveRoot;
+
+  const showRootBanner = !!dragging && !isAtTrueRoot;
+  const bannerTarget = isAtVaultRoot ? '' : effectiveRoot;
+  const bannerLabel = isAtVaultRoot ? 'Move out of vault folder' : 'Move to vault root';
 
   // Shared props passed down to tree items
-  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder };
+  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating, effectiveRoot };
   const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
 
   return (
@@ -293,10 +302,10 @@ export default function NotesSidebar({ currentId }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDropOnFolder(effectiveRoot, e.dataTransfer.getData('text/plain'));
+                  handleDropOnFolder(bannerTarget, e.dataTransfer.getData('text/plain'));
                 }}
               >
-                Move to vault root
+                {bannerLabel}
               </div>
             )}
             {singleRootFolder ? (

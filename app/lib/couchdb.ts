@@ -136,6 +136,11 @@ export function isPageDoc(doc: any): boolean {
   );
 }
 
+export function isFolderMarker(doc: any): boolean {
+  if (!doc || doc._deleted) return false;
+  return typeof doc._id === 'string' && doc._id.endsWith('/.keep');
+}
+
 export function isVaultNote(doc: any): boolean {
   if (!doc || doc._deleted) return false;
   const id: string = doc._id;
@@ -145,6 +150,7 @@ export function isVaultNote(doc: any): boolean {
   if (id.startsWith('_')) return false;
   if (id === 'rexform-metadata') return false;
   if (id === 'rexform-plugins') return false;
+  if (id.endsWith('/.keep')) return false;
   return doc.type === 'plain' || (typeof doc.path === 'string' && doc.path.endsWith('.md'));
 }
 
