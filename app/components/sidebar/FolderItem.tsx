@@ -40,6 +40,7 @@ export default function FolderItem({
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
+  const [hovered, setHovered] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const isOpen = hideHeader ? true : expanded.has(node.path);
@@ -139,8 +140,18 @@ export default function FolderItem({
       {!hideHeader && (
         <div
           className="flex items-center py-1 rounded cursor-pointer select-none"
-          style={{ paddingLeft: `${depth * 14 + 8}px`, paddingRight: '4px' }}
+          style={{
+            paddingLeft: `${depth * 14 + 8}px`,
+            paddingRight: '4px',
+            background: isDragOver
+              ? 'rgba(127,119,221,0.12)'
+              : hovered
+              ? 'rgba(255,255,255,0.04)'
+              : 'transparent',
+          }}
           onClick={() => { if (!renaming) toggleExpand(node.path); }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
           onContextMenu={(e) => {
             if (!canWrite) return;
             e.preventDefault();

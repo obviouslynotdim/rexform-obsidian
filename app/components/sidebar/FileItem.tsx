@@ -104,13 +104,8 @@ export default function FileItem({
         onDragLeave={() => setIsDragTarget(false)}
         onDrop={(e) => {
           e.preventDefault();
-          e.stopPropagation();
+          // No stopPropagation — drop bubbles to parent FolderItem which handles the move
           setIsDragTarget(false);
-          const draggedId = e.dataTransfer.getData('text/plain');
-          if (draggedId && draggedId !== node.id && onDropOnFolder) {
-            const targetFolder = node.path.split('/').slice(0, -1).join('/');
-            onDropOnFolder(targetFolder, draggedId);
-          }
         }}
         className="flex items-center py-1 rounded text-sm"
         style={{

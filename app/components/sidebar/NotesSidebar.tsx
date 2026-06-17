@@ -173,19 +173,21 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner: show when dragging a note that isn't already at the true filesystem root.
-  // - If dragged note is in my-vaults directly (isAtVaultRoot), banner moves it OUT to '' (true root).
-  // - If dragged note is in a subfolder, banner moves it to effectiveRoot (vault root).
-  // - If dragged note is already at true root (isAtTrueRoot), no banner needed.
+  // Banner drop target shown for ALL active drags.
+  // - Root note (draggedFolder = ''): moves INTO the vault folder (effectiveRoot)
+  // - Vault-root note (draggedFolder = effectiveRoot): moves OUT to true root ('')
+  // - Subfolder note: moves to vault root (effectiveRoot)
   const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
   const draggedPath = draggedNote?.path ?? '';
   const draggedFolder = draggedPath.split('/').slice(0, -1).join('/');
   const isAtTrueRoot = draggedFolder === '';
   const isAtVaultRoot = draggedFolder === effectiveRoot;
 
-  const showRootBanner = !!dragging && !isAtTrueRoot;
+  const showRootBanner = !!dragging;
   const bannerTarget = isAtVaultRoot ? '' : effectiveRoot;
-  const bannerLabel = isAtVaultRoot ? 'Move out of vault folder' : 'Move to vault root';
+  const bannerLabel = isAtTrueRoot
+    ? `Move into ${effectiveRoot || 'vault'}`
+    : 'Move to vault root';
 
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating, effectiveRoot };
