@@ -22,6 +22,7 @@ interface FolderItemProps {
   dragging: string | null;
   setDragging: (id: string | null) => void;
   onDropOnFolder: (targetFolder: string, noteId: string) => void;
+  onFolderMoved?: (sourcePath: string, targetParent: string) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
 }
 
@@ -29,7 +30,7 @@ export default function FolderItem({
   node, depth, activeId, expanded, toggleExpand, creating, setCreating,
   canWrite, onCreated, setMoving, onMoved, onDeleted,
   onFolderRenamed, onFolderDeleted, dragging, setDragging,
-  onDropOnFolder, setContextMenu,
+  onDropOnFolder, onFolderMoved, setContextMenu,
 }: FolderItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -44,6 +45,7 @@ export default function FolderItem({
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
   const isDragOver = dragCounter > 0;
+  const isBeingDragged = dragging === 'folder:' + node.path;
 
   useEffect(() => {
     if (renaming) requestAnimationFrame(() => renameInputRef.current?.select());
@@ -95,6 +97,7 @@ export default function FolderItem({
     ...sharedChildProps,
     expanded, toggleExpand, creating, setCreating,
     onCreated, onFolderRenamed, onFolderDeleted, onDropOnFolder,
+    onFolderMoved,
   };
 
   return (
@@ -103,11 +106,17 @@ export default function FolderItem({
         outline: isDragOver ? '1px solid var(--accent)' : 'none',
         borderRadius: '4px',
         background: isDragOver ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+        opacity: isBeingDragged ? 0.4 : 1,
       }}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => {
         e.preventDefault();
         if (!e.dataTransfer.types.includes('text/plain')) return;
+        // Prevent self-highlight and highlight when dragging over own descendants
+        if (dragging?.startsWith('folder:')) {
+          const src = dragging.slice('folder:'.length);
+          if (node.path === src || node.path.startsWith(src + '/')) return;
+        }
         setDragCounter(1);
       }}
       onDragLeave={(e) => {
@@ -118,8 +127,14 @@ export default function FolderItem({
         e.preventDefault();
         e.stopPropagation();
         setDragCounter(0);
-        const noteId = e.dataTransfer.getData('text/plain');
-        onDropOnFolder(node.path, noteId);
+        const data = e.dataTransfer.getData('text/plain');
+        if (data.startsWith('folder:')) {
+          const sourcePath = data.slice('folder:'.length);
+          if (sourcePath === node.path || node.path.startsWith(sourcePath + '/')) return;
+          onFolderMoved?.(sourcePath, node.path);
+        } else {
+          onDropOnFolder(node.path, data);
+        }
       }}
       onContextMenu={(e) => {
         if (!canWrite) return;
@@ -136,6 +151,7 @@ export default function FolderItem({
       }}
     >
       <div
+        draggable={canWrite && !renaming}
         className="flex items-center py-1 rounded cursor-pointer select-none"
         style={{
           paddingLeft: `${depth * 14 + 8}px`,
@@ -146,6 +162,13 @@ export default function FolderItem({
             ? 'rgba(255,255,255,0.04)'
             : 'transparent',
         }}
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', 'folder:' + node.path);
+          setDragging('folder:' + node.path);
+        }}
+        onDragEnd={() => setDragging(null)}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}

@@ -25,22 +25,34 @@ export default function InlineInput({ folder, type, depth, onCreated, onCancel }
     setLoading(true);
     setError('');
 
-    let targetFolder = folder;
-    let title = trimmed;
     if (type === 'folder') {
-      targetFolder = folder ? `${folder}/${trimmed}` : trimmed;
-      title = 'Untitled';
+      const targetFolder = folder ? `${folder}/${trimmed}` : trimmed;
+      const res = await fetch('/api/notes/folder/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: targetFolder }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (res.ok) {
+        onCreated(targetFolder);
+        onCancel();
+      } else {
+        setError(data.error || 'Failed');
+      }
+      return;
     }
 
+    // type === 'note'
     const res = await fetch('/api/notes/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, folder: targetFolder }),
+      body: JSON.stringify({ title: trimmed, folder }),
     });
     const data = await res.json();
     setLoading(false);
     if (res.ok) {
-      onCreated(targetFolder || undefined);
+      onCreated(folder || undefined);
       router.push(`/notes/${encodeURIComponent(data.id)}`);
       onCancel();
     } else {

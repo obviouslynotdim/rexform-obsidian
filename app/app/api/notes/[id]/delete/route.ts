@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { fetchFromVault, AuthHeaders } from '@/lib/couchdb';
+import { fetchFromVault, isVaultNote, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
@@ -34,5 +34,40 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   );
 
   await fetchFromVault(`${encodeURIComponent(id)}?rev=${note._rev}`, { method: 'DELETE' }, auth, db);
+
+  // If the folder this note lived in is now empty, create a .keep marker so it stays visible
+  const folder = id.split('/').slice(0, -1).join('/');
+  if (folder) {
+    try {
+      const allDocsRes = await fetchFromVault('_all_docs?include_docs=true&limit=5000', {}, auth, db);
+      if (allDocsRes.ok) {
+        const allData = await allDocsRes.json();
+        const remaining = (allData.rows as any[])
+          .map((r: any) => r.doc)
+          .filter((doc: any) => {
+            if (!isVaultNote(doc)) return false;
+            const docPath: string = doc.path || doc._id;
+            const docFolder = docPath.split('/').slice(0, -1).join('/');
+            return docFolder === folder || docFolder.startsWith(folder + '/');
+          });
+        if (remaining.length === 0) {
+          const keepId = `${folder}/.keep`;
+          await fetchFromVault(
+            encodeURIComponent(keepId),
+            {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ _id: keepId, rexform_marker: true, path: keepId }),
+            },
+            auth,
+            db
+          );
+        }
+      }
+    } catch {
+      // non-critical: folder will simply disappear if marker creation fails
+    }
+  }
+
   return NextResponse.json({ success: true });
 }

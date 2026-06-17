@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { fetchFromVault, getAllNotes, isVaultNote, AuthHeaders } from '@/lib/couchdb';
+import { fetchFromVault, getAllNotes, isVaultNote, isFolderMarker, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
 export async function DELETE(req: NextRequest) {
@@ -20,11 +20,12 @@ export async function DELETE(req: NextRequest) {
   const data = await getAllNotes(auth, db);
   const affected = (data.rows as { doc: any }[])
     .map((r) => r.doc)
-    .filter(isVaultNote)
+    .filter((doc: any) => isVaultNote(doc) || isFolderMarker(doc))
     .filter((doc: any) => (doc.path || doc._id).startsWith(path + '/'));
 
   let deleted = 0;
   for (const note of affected) {
+    // Notes have chunks; markers do not — the empty children array handles both cases
     const children: string[] = Array.isArray(note.children) ? note.children : [];
 
     await Promise.all(children.map(async (cId: string) => {

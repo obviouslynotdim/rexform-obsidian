@@ -127,6 +127,31 @@ export default function NotesSidebar({ currentId }: Props) {
     }
   }, [notes, handleMoved, expandFolders]);
 
+  const handleFolderMove = useCallback(async (sourcePath: string, targetParent: string) => {
+    try {
+      const folderName = sourcePath.split('/').pop() ?? sourcePath;
+      const newPath = targetParent ? `${targetParent}/${folderName}` : folderName;
+      if (newPath === sourcePath || newPath.startsWith(sourcePath + '/')) {
+        setDragging(null);
+        return;
+      }
+      const res = await fetch('/api/notes/folder/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: sourcePath, target: targetParent }),
+      });
+      if (res.ok) {
+        mutate();
+        if (activeId.startsWith(sourcePath + '/')) {
+          const newId = newPath + activeId.slice(sourcePath.length);
+          router.push(`/notes/${encodeURIComponent(newId)}`);
+        }
+      }
+    } finally {
+      setDragging(null);
+    }
+  }, [activeId, mutate, router]);
+
   const handleCreated = useCallback((expandFolder?: string) => {
     mutate();
     if (expandFolder) expandFolders(expandFolder);
@@ -154,15 +179,18 @@ export default function NotesSidebar({ currentId }: Props) {
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner appears for any drag that originates inside a folder.
-  // Dropping on it moves the note to true root ('').
-  const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
-  const draggedFolder = (draggedNote?.path ?? '').split('/').slice(0, -1).join('/');
+  // Banner: visible whenever something inside a folder is being dragged (note or folder).
+  // Dropping on it moves to true root ('').
+  const isFolderDrag = typeof dragging === 'string' && dragging.startsWith('folder:');
+  const draggedNote = (!isFolderDrag && dragging) ? notes.find((n) => n.id === dragging) : null;
+  const draggedFolder = isFolderDrag
+    ? dragging!.slice('folder:'.length).split('/').slice(0, -1).join('/')
+    : (draggedNote?.path ?? '').split('/').slice(0, -1).join('/');
   const showRootBanner = !!dragging && draggedFolder !== '';
 
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating };
-  const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
+  const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder, onFolderMoved: handleFolderMove };
 
   return (
     <div
@@ -202,7 +230,7 @@ export default function NotesSidebar({ currentId }: Props) {
         />
       </div>
 
-      {/* Body */}
+      {/* Body — catch-all drop target for root-level drops (notes and folders) */}
       <div
         className="flex-1 overflow-y-auto py-1"
         onContextMenu={(e) => {
@@ -214,6 +242,20 @@ export default function NotesSidebar({ currentId }: Props) {
             onNewNote: () => createAtRoot('note'),
             onNewFolder: () => createAtRoot('folder'),
           });
+        }}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes('text/plain')) return;
+          e.preventDefault();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          const data = e.dataTransfer.getData('text/plain');
+          if (!data) return;
+          if (data.startsWith('folder:')) {
+            handleFolderMove(data.slice('folder:'.length), '');
+          } else {
+            handleDropOnFolder('', data);
+          }
         }}
       >
         {isLoading ? (
@@ -275,7 +317,12 @@ export default function NotesSidebar({ currentId }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDropOnFolder('', e.dataTransfer.getData('text/plain'));
+                  const data = e.dataTransfer.getData('text/plain');
+                  if (data.startsWith('folder:')) {
+                    handleFolderMove(data.slice('folder:'.length), '');
+                  } else {
+                    handleDropOnFolder('', data);
+                  }
                 }}
               >
                 Move to vault root
