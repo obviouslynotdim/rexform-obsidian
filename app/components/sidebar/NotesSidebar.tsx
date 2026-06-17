@@ -3,14 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { buildTree, sortNodes, getAncestorFolders } from './tree';
+import { buildTree, getAncestorFolders } from './tree';
 import FolderItem from './FolderItem';
 import FileItem from './FileItem';
 import InlineInput from './InlineInput';
 import ContextMenu from './ContextMenu';
 import FolderPicker from './FolderPicker';
 import VaultBar from './VaultBar';
-import type { NoteEntry, FileNode, FolderNode, TreeNode, VaultsData, ContextMenuState, CreatingState } from './types';
+import type { NoteEntry, VaultsData, ContextMenuState, CreatingState } from './types';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -132,24 +132,12 @@ export default function NotesSidebar({ currentId }: Props) {
     if (expandFolder) expandFolders(expandFolder);
   }, [mutate, expandFolders]);
 
-  // When there is a single root folder (e.g. my-vaults), open the inline input
-  // INSIDE it so the visual placement matches where the item will actually land.
   function createAtRoot(type: 'note' | 'folder') {
-    if (singleRootFolder) {
-      setExpanded((prev) => { const next = new Set(prev); next.add(singleRootFolder.path); return next; });
-      setCreating({ folder: singleRootFolder.path, type });
-    } else {
-      setCreating({ folder: '', type });
-    }
+    setCreating({ folder: '', type });
   }
 
-  // Tree computation
-  const rawTree = buildTree(notes);
-  const rootFolders = rawTree.filter((n): n is FolderNode => n.type === 'folder');
-  const rootFiles = rawTree.filter((n): n is FileNode => n.type === 'file');
-  const singleRootFolder = rootFolders.length === 1 ? rootFolders[0] : null;
-  const effectiveRoot = singleRootFolder ? singleRootFolder.path : '';
-  const tree: TreeNode[] = sortNodes(rawTree);
+  // buildTree already returns a sorted tree
+  const tree = buildTree(notes);
 
   // All unique folder paths for the folder picker
   const allFolders = [
@@ -162,35 +150,18 @@ export default function NotesSidebar({ currentId }: Props) {
     )).filter(Boolean).sort(),
   ];
 
-  // Auto-expand single root folder
-  useEffect(() => {
-    if (singleRootFolder) {
-      setExpanded((prev) => { const next = new Set(prev); next.add(singleRootFolder.path); return next; });
-    }
-  }, [singleRootFolder?.path]);
-
   const filtered = search.trim()
     ? notes.filter((n) => n.path.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Banner drop target shown for ALL active drags.
-  // - Root note (draggedFolder = ''): moves INTO the vault folder (effectiveRoot)
-  // - Vault-root note (draggedFolder = effectiveRoot): moves OUT to true root ('')
-  // - Subfolder note: moves to vault root (effectiveRoot)
+  // Banner appears for any drag that originates inside a folder.
+  // Dropping on it moves the note to true root ('').
   const draggedNote = dragging ? notes.find((n) => n.id === dragging) : null;
-  const draggedPath = draggedNote?.path ?? '';
-  const draggedFolder = draggedPath.split('/').slice(0, -1).join('/');
-  const isAtTrueRoot = draggedFolder === '';
-  const isAtVaultRoot = draggedFolder === effectiveRoot;
-
-  const showRootBanner = !!dragging;
-  const bannerTarget = isAtVaultRoot ? '' : effectiveRoot;
-  const bannerLabel = isAtTrueRoot
-    ? `Move into ${effectiveRoot || 'vault'}`
-    : 'Move to vault root';
+  const draggedFolder = (draggedNote?.path ?? '').split('/').slice(0, -1).join('/');
+  const showRootBanner = !!dragging && draggedFolder !== '';
 
   // Shared props passed down to tree items
-  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating, effectiveRoot };
+  const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating };
   const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder };
 
   return (
@@ -289,7 +260,7 @@ export default function NotesSidebar({ currentId }: Props) {
           <>
             {creating?.folder === '' && (
               <InlineInput
-                folder={effectiveRoot}
+                folder=""
                 type={creating.type}
                 depth={0}
                 onCreated={handleCreated}
@@ -304,26 +275,17 @@ export default function NotesSidebar({ currentId }: Props) {
                 onDrop={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDropOnFolder(bannerTarget, e.dataTransfer.getData('text/plain'));
+                  handleDropOnFolder('', e.dataTransfer.getData('text/plain'));
                 }}
               >
-                {bannerLabel}
+                Move to vault root
               </div>
             )}
-            {singleRootFolder ? (
-              <>
-                <FolderItem node={singleRootFolder} depth={0} {...sharedFolderProps} />
-                {rootFiles.map((node) => (
-                  <FileItem key={node.id} node={node} depth={0} {...sharedChildProps} />
-                ))}
-              </>
-            ) : (
-              tree.map((node) =>
-                node.type === 'folder' ? (
-                  <FolderItem key={node.path} node={node} depth={0} {...sharedFolderProps} />
-                ) : (
-                  <FileItem key={node.id} node={node} depth={0} {...sharedChildProps} />
-                )
+            {tree.map((node) =>
+              node.type === 'folder' ? (
+                <FolderItem key={node.path} node={node} depth={0} {...sharedFolderProps} />
+              ) : (
+                <FileItem key={node.id} node={node} depth={0} {...sharedChildProps} />
               )
             )}
           </>
