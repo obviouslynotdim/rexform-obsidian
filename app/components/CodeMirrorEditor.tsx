@@ -10,18 +10,22 @@ interface Props {
   extensions?: Extension[];
   /** Parent-owned handle to the EditorView (for toolbar dispatch, focus, etc.). */
   viewRef?: React.MutableRefObject<EditorView | null>;
+  /** Called once after the EditorView is created (e.g. to dispatch initial state). */
+  onReady?: (view: EditorView) => void;
   placeholder?: string;
   autoFocus?: boolean;
 }
 
 export default function CodeMirrorEditor({
-  value, onChange, extensions = [], viewRef, placeholder, autoFocus,
+  value, onChange, extensions = [], viewRef, onReady, placeholder, autoFocus,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewInternal = useRef<EditorView | null>(null);
   // Keep onChange current without re-creating the view.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   // Create the EditorView once on mount.
   useEffect(() => {
@@ -43,6 +47,7 @@ export default function CodeMirrorEditor({
     const view = new EditorView({ state, parent: hostRef.current });
     viewInternal.current = view;
     if (viewRef) viewRef.current = view;
+    onReadyRef.current?.(view);
     if (autoFocus) view.focus();
 
     return () => {

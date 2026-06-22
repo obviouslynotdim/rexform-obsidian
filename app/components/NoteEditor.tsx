@@ -11,9 +11,9 @@ import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirro
 import {
   autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap,
 } from '@codemirror/autocomplete';
-import WikiMarkdown from './WikiMarkdown';
 import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
 import { wikilinkCompletions, type NoteStub } from '@/lib/cm/wikilinkComplete';
+import { livePreview, setLivePreview } from '@/lib/cm/livePreview';
 
 // CM touches the DOM at instantiation — load client-only to keep it out of SSR.
 const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
@@ -21,7 +21,7 @@ const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
   loading: () => <div style={{ height: '100%', background: 'var(--bg-base)' }} />,
 });
 
-export type ViewMode = 'reading' | 'source' | 'split';
+export type ViewMode = 'reading' | 'source' | 'live';
 
 interface NoteEditorProps {
   noteId: string;
@@ -54,6 +54,8 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
   const dirtyRef = useRef(false);
   const manualSaveRef = useRef<() => void>(() => {});
   const notesRef = useRef<NoteStub[]>([]);
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
   const router = useRouter();
 
   const isNew = noteId === 'new';
@@ -124,11 +126,19 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
     };
   }, [noteId, isNew]);
 
+  // Toggle inline live-preview decorations when the mode changes (same editor
+  // instance for 'source' and 'live'). onReady covers the initial dispatch once
+  // the view exists (it's created lazily via the dynamic import).
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setLivePreview.of(viewMode === 'live') });
+  }, [viewMode]);
+
   // Built once — stable for the editor's lifetime. Dynamic bits (notes list,
   // save handler) are read through refs so this never needs to rebuild.
   const extensions = useMemo(() => [
     rexformDarkTheme,
     rexformSyntaxHighlighting,
+    livePreview(),
     markdown(),
     EditorView.lineWrapping,
     history(),
@@ -187,18 +197,10 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
         onChange={handleChange}
         extensions={extensions}
         viewRef={viewRef}
+        onReady={(view) => view.dispatch({ effects: setLivePreview.of(viewModeRef.current === 'live') })}
         placeholder="Start writing in Markdown… use [[note name]] to link notes"
         autoFocus={!isNew}
       />
-    </div>
-  );
-
-  const previewPane = (
-    <div
-      className="flex-1 overflow-y-auto px-6 py-4 prose min-w-0"
-      style={{ color: 'var(--text-primary)' }}
-    >
-      <WikiMarkdown>{content}</WikiMarkdown>
     </div>
   );
 
@@ -248,19 +250,9 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
         )}
       </div>
 
-      {/* Content area — 'split' shows the CM editor beside a live preview pane,
-          otherwise editor only. ('reading' is handled by NoteViewClient.)
-          True inline live preview replaces the split pane in Phase A2. */}
-      {viewMode === 'split' ? (
-        <div className="flex-1 flex min-h-0">
-          <div className="flex flex-col min-w-0" style={{ flex: 1, borderRight: '1px solid var(--border)' }}>
-            {editorPane}
-          </div>
-          {previewPane}
-        </div>
-      ) : (
-        editorPane
-      )}
+      {/* Single CM pane for both 'source' (raw) and 'live' (inline decorations,
+          toggled via setLivePreview). 'reading' is handled by NoteViewClient. */}
+      {editorPane}
     </div>
   );
 }

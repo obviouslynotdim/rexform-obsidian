@@ -22,7 +22,7 @@ interface Props {
 const MODE_LABELS: Record<ViewMode, string> = {
   reading: 'Reading',
   source: 'Source mode',
-  split: 'Live Preview',
+  live: 'Live Preview',
 };
 
 export default function NoteViewClient({ noteId, title, content, folder: _folder, tags }: Props) {
@@ -36,7 +36,7 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
-  const lastEditMode = useRef<'source' | 'split'>('source');
+  const lastEditMode = useRef<'source' | 'live'>('source');
   const router = useRouter();
 
   useEffect(() => {
@@ -237,7 +237,7 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
 
         {/* Right: mode toggles */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {(['reading', 'source', 'split'] as const).map((mode) => {
+          {(['reading', 'source', 'live'] as const).map((mode) => {
             const disabled = mode !== 'reading' && !canWrite;
             return (
               <button
