@@ -65,7 +65,7 @@ export default async function NotePage({ params }: Props) {
     : [];
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full" style={{ display: 'flex', flexDirection: 'column' }}>
       {error ? (
         <div className="p-8">
           <div className="rounded-xl p-6 border border-red-800 bg-red-900/20">

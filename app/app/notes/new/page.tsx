@@ -84,6 +84,7 @@ export default function NewNotePage() {
         >
           <NoteEditor
             noteId="new"
+            viewMode="source"
             initialContent={content}
             onChange={setContent}
           />

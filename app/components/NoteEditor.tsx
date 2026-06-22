@@ -7,9 +7,12 @@ import WikiMarkdown from './WikiMarkdown';
 
 interface NoteStub { id: string; path: string }
 
+export type ViewMode = 'reading' | 'source' | 'split';
+
 interface NoteEditorProps {
   noteId: string;
   initialContent: string;
+  viewMode: ViewMode;
   onChange?: (content: string) => void;
   onSave?: (content: string) => void;
 }
@@ -38,9 +41,8 @@ function noteDisplayName(path: string): string {
   return path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
 }
 
-export default function NoteEditor({ noteId, initialContent, onChange, onSave }: NoteEditorProps) {
+export default function NoteEditor({ noteId, initialContent, viewMode, onChange, onSave }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
-  const [viewMode, setViewMode] = useState<'edit' | 'split' | 'preview'>('edit');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -281,22 +283,6 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
 
         <div className="flex-1" />
 
-        <div className="flex rounded overflow-hidden border" style={{ borderColor: 'var(--accent)' }}>
-          {(['edit', 'split', 'preview'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setViewMode(m)}
-              className="px-2.5 py-1 text-xs font-medium capitalize transition-colors"
-              style={{
-                background: viewMode === m ? 'var(--accent)' : 'transparent',
-                color: viewMode === m ? '#fff' : 'var(--accent)',
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
         {!isNew && (
           <>
             <button
@@ -322,10 +308,9 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
         )}
       </div>
 
-      {/* Content area */}
-      {viewMode === 'preview' ? (
-        previewPane
-      ) : viewMode === 'split' ? (
+      {/* Content area — 'split' shows source + live preview, otherwise source only.
+          ('reading' is handled by NoteViewClient, which renders WikiMarkdown instead.) */}
+      {viewMode === 'split' ? (
         <div className="flex-1 flex min-h-0">
           <div className="flex flex-col min-w-0" style={{ flex: 1, borderRight: '1px solid var(--border)' }}>
             {editorPane}
