@@ -110,7 +110,14 @@ export default function WikiMarkdown({ children }: { children: string }) {
   };
 
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components as any}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={components as any}
+      // react-markdown v9's default urlTransform strips non-allowlisted
+      // protocols (including our `wikilink:` sentinel) to ''. Identity transform
+      // lets wikilink: URLs reach the custom <a> renderer above.
+      urlTransform={(url) => url}
+    >
       {processed}
     </ReactMarkdown>
   );

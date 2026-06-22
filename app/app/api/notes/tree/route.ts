@@ -18,7 +18,13 @@ export async function GET(req: NextRequest) {
     const notes = rows
       .map((row) => row.doc)
       .filter(isVaultNote)
-      .map((doc: any) => ({ id: doc._id, path: (doc.path || doc._id) as string, title: extractTitle(doc) }))
+      .map((doc: any) => ({
+        id: doc._id,
+        path: (doc.path || doc._id) as string,
+        title: extractTitle(doc),
+        ...(doc.mtime != null ? { mtime: doc.mtime } : {}),
+        ...(doc.ctime != null ? { ctime: doc.ctime } : {}),
+      }))
       .sort((a, b) => a.path.localeCompare(b.path));
 
     const markers = rows

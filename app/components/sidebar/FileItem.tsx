@@ -39,6 +39,11 @@ export default function FileItem({
   const isActive = node.id === activeId;
   const isDragging = dragging === node.id;
 
+  const tooltip = [
+    node.mtime ? `Last modified at ${new Date(node.mtime).toLocaleString()}` : null,
+    node.ctime ? `Created at ${new Date(node.ctime).toLocaleString()}` : null,
+  ].filter(Boolean).join('\n') || undefined;
+
   useEffect(() => {
     if (renaming) requestAnimationFrame(() => renameInputRef.current?.select());
   }, [renaming]);
@@ -87,6 +92,7 @@ export default function FileItem({
     <div>
       <div
         tabIndex={0}
+        title={tooltip}
         draggable={canWrite && !renaming}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move';

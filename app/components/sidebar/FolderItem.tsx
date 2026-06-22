@@ -50,6 +50,10 @@ export default function FolderItem({
   const isDragOver = dragCounter > 0;
   const isBeingDragged = dragging === 'folder:' + node.path;
 
+  const fileCount = node.children.filter((c) => c.type === 'file' && !c.id.endsWith('/.keep')).length;
+  const folderCount = node.children.filter((c) => c.type === 'folder').length;
+  const folderTooltip = `${fileCount} ${fileCount === 1 ? 'file' : 'files'}, ${folderCount} ${folderCount === 1 ? 'folder' : 'folders'}`;
+
   function buildContextMenu(x: number, y: number): ContextMenuState {
     return {
       x, y,
@@ -161,6 +165,7 @@ export default function FolderItem({
     >
       <div
         draggable={canWrite && !renaming}
+        title={folderTooltip}
         className="flex items-center py-1 rounded cursor-pointer select-none"
         style={{
           paddingLeft: `${depth * 14 + 8}px`,

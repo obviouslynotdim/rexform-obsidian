@@ -25,7 +25,7 @@ const MODE_LABELS: Record<ViewMode, string> = {
   split: 'Live Preview',
 };
 
-export default function NoteViewClient({ noteId, title, content, folder: _folder, tags, mtime, size }: Props) {
+export default function NoteViewClient({ noteId, title, content, folder: _folder, tags }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('reading');
   const [liveContent, setLiveContent] = useState(content);
   const [renamingTitle, setRenamingTitle] = useState(false);
@@ -36,6 +36,7 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
+  const lastEditMode = useRef<'source' | 'split'>('source');
   const router = useRouter();
 
   useEffect(() => {
@@ -84,6 +85,25 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   });
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
+
+  // Ctrl/Cmd+E toggles Reading <-> last edit mode (Obsidian behavior).
+  // Separate from the Escape effect above so it stays mounted in every mode.
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        if (!canWrite) return;
+        if (viewMode === 'reading') {
+          setViewMode(lastEditMode.current);
+        } else {
+          lastEditMode.current = viewMode;
+          setViewMode('reading');
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [viewMode, canWrite]);
 
   // Backlink count for the status bar — BacklinksPanel in the right sidebar
   // uses the same SWR key so only one request is made (SWR deduplication).
@@ -162,19 +182,6 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
                 ))}
               </div>
             )}
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginBottom: '24px', display: 'flex', gap: '16px' }}>
-              {mtime ? (
-                <span>
-                  Modified{' '}
-                  {new Date(mtime).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                </span>
-              ) : null}
-              {size ? <span>{(size / 1024).toFixed(1)} KB</span> : null}
-            </div>
           </div>
 
           {/* Body */}
