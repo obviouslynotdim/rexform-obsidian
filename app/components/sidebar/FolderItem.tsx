@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import type { FolderNode, ContextMenuState, CreatingState } from './types';
 import InlineInput from './InlineInput';
 import FileItem from './FileItem';
@@ -42,10 +43,26 @@ export default function FolderItem({
   const [hovered, setHovered] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  const router = useRouter();
+
   const isOpen = expanded.has(node.path);
   const isCreatingHere = creating?.folder === node.path;
   const isDragOver = dragCounter > 0;
   const isBeingDragged = dragging === 'folder:' + node.path;
+
+  function buildContextMenu(x: number, y: number): ContextMenuState {
+    return {
+      x, y,
+      type: 'folder', id: node.path, name: node.name, path: node.path,
+      onOpenGraph: () => router.push(`/notes/graph?folder=${encodeURIComponent(node.path)}`),
+      ...(canWrite ? {
+        onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
+        onDelete: () => setConfirmDeleteFolder(true),
+        onNewNote: () => openAndCreate('note'),
+        onNewFolder: () => openAndCreate('folder'),
+      } : {}),
+    };
+  }
 
   useEffect(() => {
     if (renaming) requestAnimationFrame(() => renameInputRef.current?.select());
@@ -137,17 +154,9 @@ export default function FolderItem({
         }
       }}
       onContextMenu={(e) => {
-        if (!canWrite) return;
         e.preventDefault();
         e.stopPropagation();
-        setContextMenu({
-          x: e.clientX, y: e.clientY,
-          type: 'folder', id: node.path, name: node.name, path: node.path,
-          onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
-          onDelete: () => setConfirmDeleteFolder(true),
-          onNewNote: () => openAndCreate('note'),
-          onNewFolder: () => openAndCreate('folder'),
-        });
+        setContextMenu(buildContextMenu(e.clientX, e.clientY));
       }}
     >
       <div
@@ -176,17 +185,9 @@ export default function FolderItem({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onContextMenu={(e) => {
-          if (!canWrite) return;
           e.preventDefault();
           e.stopPropagation();
-          setContextMenu({
-            x: e.clientX, y: e.clientY,
-            type: 'folder', id: node.path, name: node.name, path: node.path,
-            onRename: () => { setRenameName(node.name); setRenaming(true); if (!isOpen) toggleExpand(node.path); },
-            onDelete: () => setConfirmDeleteFolder(true),
-            onNewNote: () => openAndCreate('note'),
-            onNewFolder: () => openAndCreate('folder'),
-          });
+          setContextMenu(buildContextMenu(e.clientX, e.clientY));
         }}
       >
         <svg

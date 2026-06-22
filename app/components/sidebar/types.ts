@@ -18,6 +18,7 @@ export interface ContextMenuState {
   onMove?: () => void;
   onNewNote?: () => void;
   onNewFolder?: () => void;
+  onOpenGraph?: () => void;
 }
 
 export interface CreatingState { folder: string; type: 'note' | 'folder' }

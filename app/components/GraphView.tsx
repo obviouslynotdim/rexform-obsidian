@@ -8,6 +8,7 @@ import { useTabsContext } from '@/context/TabsContext';
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
   title: string;
+  path?: string;
   linkCount: number;
 }
 
@@ -23,13 +24,19 @@ interface GraphData {
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
+const FOLDER_PALETTE = [
+  '#7F77DD', '#4ade80', '#f87171', '#fbbf24',
+  '#60a5fa', '#a78bfa', '#34d399', '#fb923c',
+];
+
 interface Props {
   showHeader?: boolean;
   onNodeClick?: (id: string, title: string) => void;
   activeNoteId?: string;
+  folderFilter?: string;
 }
 
-export default function GraphView({ showHeader, onNodeClick, activeNoteId: activeNoteIdProp }: Props) {
+export default function GraphView({ showHeader, onNodeClick, activeNoteId: activeNoteIdProp, folderFilter }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
@@ -39,19 +46,21 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
-  const { data, isLoading } = useSWR<GraphData>('/api/notes/graph', fetcher, {
+  const swrKey = folderFilter
+    ? `/api/notes/graph?folder=${encodeURIComponent(folderFilter)}`
+    : '/api/notes/graph';
+
+  const { data, isLoading } = useSWR<GraphData>(swrKey, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });
 
-  // Use prop if provided, else derive from pathname
   const activeNoteId = activeNoteIdProp ?? (
     pathname.startsWith('/notes/')
       ? decodeURIComponent(pathname.replace('/notes/', ''))
       : null
   );
 
-  // Observe container size
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -88,7 +97,6 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    // Use actual rendered dimensions for accurate centering
     const rect = svgRef.current.getBoundingClientRect();
     const w = rect.width > 10 ? rect.width : dims.w;
     const h = rect.height > 10 ? rect.height : dims.h;
@@ -105,6 +113,24 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
     const nodes: GraphNode[] = data.nodes.map(n => ({ ...n }));
     const edges: GraphEdge[] = data.edges.map(e => ({ ...e }));
 
+    // Build folder → color palette from top-level folder names
+    const topFolders = new Set<string>();
+    nodes.forEach(n => {
+      if (n.path?.includes('/')) topFolders.add(n.path.split('/')[0]);
+    });
+    const folderPalette = new Map<string, string>();
+    Array.from(topFolders).forEach((f, i) => folderPalette.set(f, FOLDER_PALETTE[i % FOLDER_PALETTE.length]));
+
+    const nodeR = (d: GraphNode) => (d.id === activeNoteId ? 6 : 4) + Math.min(d.linkCount * 1.5, 10);
+    const nodeFill = (d: GraphNode) => {
+      if (d.id === activeNoteId) return '#fff';
+      if (d.path?.includes('/')) {
+        const c = folderPalette.get(d.path.split('/')[0]);
+        if (c) return c;
+      }
+      return 'rgba(255,255,255,0.6)';
+    };
+
     const simulation = d3.forceSimulation<GraphNode>(nodes)
       .force('link', d3.forceLink<GraphNode, GraphEdge>(edges)
         .id(d => d.id)
@@ -115,11 +141,9 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       .force('x', d3.forceX(w / 2).strength(0.05))
       .force('y', d3.forceY(h / 2).strength(0.05));
 
-    // Pre-run simulation to compute settled positions before first render
     simulation.stop();
     for (let i = 0; i < 300; i++) simulation.tick();
 
-    // Edges
     const link = g.append('g')
       .selectAll<SVGLineElement, GraphEdge>('line')
       .data(edges)
@@ -127,10 +151,6 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       .attr('stroke', 'rgba(255,255,255,0.15)')
       .attr('stroke-width', 0.8);
 
-    const nodeR = (d: GraphNode) => (d.id === activeNoteId ? 6 : 4) + Math.min(d.linkCount * 1.5, 10);
-    const nodeFill = (d: GraphNode) => d.id === activeNoteId ? '#fff' : 'rgba(255,255,255,0.6)';
-
-    // Nodes
     const node = g.append('g')
       .selectAll<SVGCircleElement, GraphNode>('circle')
       .data(nodes)
@@ -171,7 +191,6 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       setTooltip(null);
     });
 
-    // Labels — all nodes
     const label = g.append('g')
       .selectAll<SVGTextElement, GraphNode>('text')
       .data(nodes)
@@ -196,10 +215,8 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
         .attr('y', d => (d.y ?? 0) + nodeR(d) + 14);
     };
 
-    // Apply pre-computed positions immediately (no blank-canvas flash)
     applyPositions();
 
-    // Auto-fit based on pre-ticked positions
     const xs = nodes.map(n => n.x ?? 0);
     const ys = nodes.map(n => n.y ?? 0);
     if (xs.length > 0) {
@@ -214,11 +231,10 @@ export default function GraphView({ showHeader, onNodeClick, activeNoteId: activ
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
     }
 
-    // Continue live simulation for drag interactions
     simulation.on('tick', applyPositions).restart();
 
     return () => { simulation.stop(); };
-  }, [data, dims, activeNoteId, handleNodeClick]);
+  }, [data, dims, activeNoteId, handleNodeClick, folderFilter]);
 
   const nodeCount = data?.nodes.length ?? 0;
   const edgeCount = data?.edges.length ?? 0;

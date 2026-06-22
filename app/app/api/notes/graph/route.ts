@@ -13,11 +13,8 @@ function resolveWikilinkToId(name: string, docs: any[]): string | null {
   for (const doc of docs) {
     const path: string = doc.path || doc._id;
     const filename = path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
-    // 1. Exact filename match
     if (filename.toLowerCase() === lower) return doc._id;
-    // 2. Normalized match (hyphens/underscores as spaces)
     if (norm(filename) === lowerNorm) return doc._id;
-    // 3. Full path without .md
     if (path.replace(/\.md$/i, '').toLowerCase() === lower) return doc._id;
   }
   return null;
@@ -30,14 +27,23 @@ export async function GET(req: NextRequest) {
     : undefined;
 
   try {
-    const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
+    const sp = req.nextUrl.searchParams;
+    const { db } = await resolveVault(session, sp.get('vault'));
     const data = await getAllNotes(auth, db);
 
-    const docs = (data.rows as { doc: any }[])
+    const allDocs = (data.rows as { doc: any }[])
       .map(r => r.doc)
       .filter(isVaultNote);
 
-    // Assemble full content for each note (follows children/chunks)
+    // Optional folder scope: only include notes within the given folder path.
+    const folderParam = sp.get('folder');
+    const docs = folderParam
+      ? allDocs.filter((doc: any) => {
+          const p: string = doc.path || doc._id;
+          return p === folderParam || p.startsWith(folderParam + '/');
+        })
+      : allDocs;
+
     const contents = await Promise.all(
       docs.map((doc: any) => assembleNoteContent(doc, auth, db).catch(() => ''))
     );
@@ -69,6 +75,7 @@ export async function GET(req: NextRequest) {
 
     const nodes = docs.map((doc: any) => ({
       id: doc._id as string,
+      path: (doc.path as string) || doc._id,
       title: ((doc.path as string) || doc._id).split('/').pop()?.replace(/\.md$/i, '') ?? doc._id,
       linkCount: linkCounts[doc._id] || 0,
     }));

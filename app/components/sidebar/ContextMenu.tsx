@@ -14,6 +14,12 @@ const itemStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+const sepStyle: React.CSSProperties = {
+  height: 1,
+  background: 'rgba(255,255,255,0.08)',
+  margin: '4px 0',
+};
+
 const hoverBg = 'rgba(255,255,255,0.08)';
 
 interface ContextMenuProps {
@@ -39,8 +45,10 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
-  const hasMeta = menu.onNewNote || menu.onNewFolder;
-  const hasActions = menu.onRename || menu.onDelete;
+  const hasCreateGroup = !!(menu.onNewNote || menu.onNewFolder);
+  const hasGraphGroup = !!menu.onOpenGraph;
+  const hasEditGroup = !!(menu.onRename || (menu.type === 'file' && menu.onMove));
+  const hasDeleteGroup = !!menu.onDelete;
 
   return (
     <div
@@ -59,6 +67,7 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
         overflow: 'hidden',
       }}
     >
+      {/* Create group */}
       {menu.onNewNote && (
         <button
           style={itemStyle}
@@ -75,9 +84,22 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
           onClick={() => { menu.onNewFolder!(); onClose(); }}
         >New Folder here</button>
       )}
-      {hasMeta && hasActions && (
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+
+      {/* Graph group */}
+      {hasGraphGroup && (
+        <>
+          {hasCreateGroup && <div style={sepStyle} />}
+          <button
+            style={itemStyle}
+            onMouseEnter={(e) => { e.currentTarget.style.background = hoverBg; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onClick={() => { menu.onOpenGraph!(); onClose(); }}
+          >Open in Graph</button>
+        </>
       )}
+
+      {/* Edit group */}
+      {hasEditGroup && (hasCreateGroup || hasGraphGroup) && <div style={sepStyle} />}
       {menu.onRename && (
         <button
           style={itemStyle}
@@ -94,9 +116,11 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
           onClick={() => { menu.onMove!(); onClose(); }}
         >Move to folder</button>
       )}
-      {menu.onDelete && (
+
+      {/* Delete group */}
+      {hasDeleteGroup && (
         <>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
+          <div style={sepStyle} />
           <button
             style={{ ...itemStyle, color: '#f87171' }}
             onMouseEnter={(e) => { e.currentTarget.style.background = hoverBg; }}
