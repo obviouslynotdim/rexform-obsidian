@@ -2,8 +2,29 @@ import type { CompletionContext, CompletionResult, CompletionSource } from '@cod
 
 export interface NoteStub { id: string; path: string; title?: string }
 
-function noteDisplayName(path: string): string {
+export function noteDisplayName(path: string): string {
   return path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
+}
+
+// Resolve a wikilink name to a note, mirroring WikiMarkdown's 5-pass strategy:
+// exact filename → normalized (hyphen/underscore as space) → id → title → partial path.
+export function resolveWikilink(name: string, notes: NoteStub[]): NoteStub | null {
+  const lower = name.toLowerCase();
+  const norm = (s: string) => s.toLowerCase().replace(/[-_]/g, ' ');
+  const lowerNorm = norm(lower);
+  const filename = (n: NoteStub) => n.path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+
+  return (
+    notes.find((n) => filename(n).toLowerCase() === lower) ??
+    notes.find((n) => norm(filename(n)) === lowerNorm) ??
+    notes.find((n) => n.id.replace(/\.md$/i, '').toLowerCase() === lower) ??
+    notes.find((n) => !!n.title && n.title.toLowerCase() === lower) ??
+    notes.find((n) => {
+      const p = n.path.replace(/\.md$/i, '').toLowerCase();
+      return p === lower || p.endsWith('/' + lower);
+    }) ??
+    null
+  );
 }
 
 // CM6 completion source for `[[wikilink]]`. Reads the latest notes list from a

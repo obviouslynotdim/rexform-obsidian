@@ -11,9 +11,10 @@ import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirro
 import {
   autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap,
 } from '@codemirror/autocomplete';
+import { useTabsContext } from '@/context/TabsContext';
 import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
-import { wikilinkCompletions, type NoteStub } from '@/lib/cm/wikilinkComplete';
-import { livePreview, setLivePreview } from '@/lib/cm/livePreview';
+import { wikilinkCompletions, resolveWikilink, noteDisplayName, type NoteStub } from '@/lib/cm/wikilinkComplete';
+import { livePreview, setLivePreview, wikilinkConfig } from '@/lib/cm/livePreview';
 
 // CM touches the DOM at instantiation — load client-only to keep it out of SSR.
 const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
@@ -57,6 +58,20 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
   const viewModeRef = useRef(viewMode);
   viewModeRef.current = viewMode;
   const router = useRouter();
+  const tabsCtx = useTabsContext();
+
+  // Stable closures for the CM wikilink facet — they read live values via refs
+  // so the editor extension never needs rebuilding.
+  const resolveRef = useRef<(name: string) => { id: string; title: string } | null>(() => null);
+  resolveRef.current = (name: string) => {
+    const note = resolveWikilink(name, notesRef.current);
+    return note ? { id: note.id, title: noteDisplayName(note.path) } : null;
+  };
+  const onOpenRef = useRef<(id: string, title: string) => void>(() => {});
+  onOpenRef.current = (id: string, title: string) => {
+    tabsCtx?.openTab(id, title);
+    router.push(`/notes/${encodeURIComponent(id.replace(/\.md$/i, ''))}`);
+  };
 
   const isNew = noteId === 'new';
 
@@ -133,12 +148,24 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
     viewRef.current?.dispatch({ effects: setLivePreview.of(viewMode === 'live') });
   }, [viewMode]);
 
+  // When the notes list resolves (SWR), re-run the decoration build so wikilinks
+  // that rendered as "broken" before the list loaded resolve to real links.
+  useEffect(() => {
+    if (viewModeRef.current === 'live') {
+      viewRef.current?.dispatch({ effects: setLivePreview.of(true) });
+    }
+  }, [treeData]);
+
   // Built once — stable for the editor's lifetime. Dynamic bits (notes list,
   // save handler) are read through refs so this never needs to rebuild.
   const extensions = useMemo(() => [
     rexformDarkTheme,
     rexformSyntaxHighlighting,
     livePreview(),
+    wikilinkConfig.of({
+      resolve: (name) => resolveRef.current(name),
+      onOpen: (id, title) => onOpenRef.current(id, title),
+    }),
     markdown(),
     EditorView.lineWrapping,
     history(),

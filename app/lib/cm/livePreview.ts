@@ -1,8 +1,21 @@
 import {
   Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType,
 } from '@codemirror/view';
-import { StateField, StateEffect, type Extension, type EditorState } from '@codemirror/state';
+import { StateField, StateEffect, Facet, type Extension, type EditorState } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
+
+// ── Wikilink bridge ───────────────────────────────────────────────────────--
+// CM extensions can't use React hooks, so the resolver (notes list) and the
+// click handler (openTab/router) are supplied from React via this facet, whose
+// value reads through stable refs and therefore never needs reconfiguring.
+export interface WikilinkConfig {
+  resolve: (name: string) => { id: string; title: string } | null;
+  onOpen: (id: string, title: string) => void;
+}
+
+export const wikilinkConfig = Facet.define<WikilinkConfig | null, WikilinkConfig | null>({
+  combine: (values) => values[0] ?? null,
+});
 
 // ── Toggle ──────────────────────────────────────────────────────────────────
 // Live preview is on in 'live' mode, off in 'source' mode. The editor instance
@@ -50,6 +63,36 @@ class LinkWidget extends WidgetType {
     return a;
   }
   ignoreEvent() { return true; } // let the browser handle clicks (navigate)
+}
+
+class WikilinkWidget extends WidgetType {
+  constructor(
+    readonly name: string,
+    readonly resolved: { id: string; title: string } | null,
+    readonly cfg: WikilinkConfig | null,
+  ) { super(); }
+  eq(other: WikilinkWidget) {
+    return other.name === this.name && other.resolved?.id === this.resolved?.id;
+  }
+  toDOM() {
+    const el = document.createElement('span');
+    if (this.resolved) {
+      el.className = 'cm-rx-wikilink';
+      el.textContent = this.resolved.title;
+      // preventDefault on mousedown so CM doesn't move the caret into the widget.
+      el.addEventListener('mousedown', (e) => e.preventDefault());
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.cfg?.onOpen(this.resolved!.id, this.resolved!.title);
+      });
+    } else {
+      el.className = 'cm-rx-wikilink-broken';
+      el.textContent = this.name;
+      el.title = `Note "${this.name}" not found`;
+    }
+    return el;
+  }
+  ignoreEvent() { return true; }
 }
 
 // ── Decoration builder ───────────────────────────────────────────────────────
@@ -145,6 +188,30 @@ function buildDecorations(view: EditorView): DecorationSet {
     });
   }
 
+  // Wikilinks aren't part of the markdown grammar, so scan visible lines for
+  // `[[name]]` directly. (They never span lines and have no parens, so they
+  // don't collide with the Link handling above.)
+  const cfg = state.facet(wikilinkConfig);
+  if (cfg) {
+    for (const { from, to } of view.visibleRanges) {
+      const startLine = doc.lineAt(from).number;
+      const endLine = doc.lineAt(to).number;
+      for (let n = startLine; n <= endLine; n++) {
+        const line = doc.line(n);
+        const re = /\[\[([^\[\]\n]+)\]\]/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(line.text)) !== null) {
+          const wFrom = line.from + m.index;
+          const wTo = wFrom + m[0].length;
+          if (touches(wFrom, wTo)) continue; // caret inside → show raw
+          const name = m[1].trim();
+          const resolved = cfg.resolve(name);
+          deco.push({ from: wFrom, to: wTo, value: Decoration.replace({ widget: new WikilinkWidget(name, resolved, cfg) }) });
+        }
+      }
+    }
+  }
+
   return Decoration.set(deco.map((d) => d.value.range(d.from, d.to)), true);
 }
 
@@ -195,6 +262,12 @@ const livePreviewTheme = EditorView.baseTheme({
     verticalAlign: 'middle',
   },
   '.cm-rx-link': { color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' },
+  '.cm-rx-wikilink': { color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' },
+  '.cm-rx-wikilink-broken': {
+    color: '#f87171',
+    textDecoration: 'underline dotted',
+    cursor: 'help',
+  },
 });
 
 export function livePreview(): Extension {
