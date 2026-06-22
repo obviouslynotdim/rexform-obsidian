@@ -91,7 +91,11 @@ export default function FileItem({
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', node.id);
-          setDragging(node.id);
+          // Defer the React state update: setDragging() synchronously re-renders
+          // the (deep, for nested items) subtree containing this source element,
+          // which cancels the in-flight native drag. Let the drag fully start first.
+          const id = node.id;
+          setTimeout(() => setDragging(id), 0);
         }}
         onDragEnd={() => { setDragging(null); setIsDragTarget(false); }}
         onDragOver={(e) => {

@@ -166,7 +166,10 @@ export default function FolderItem({
           e.stopPropagation();
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', 'folder:' + node.path);
-          setDragging('folder:' + node.path);
+          // Defer state update so the synchronous re-render doesn't cancel the
+          // native drag (see FileItem.onDragStart for the full rationale).
+          const p = 'folder:' + node.path;
+          setTimeout(() => setDragging(p), 0);
         }}
         onDragEnd={() => setDragging(null)}
         onClick={() => { if (!renaming) toggleExpand(node.path); }}
