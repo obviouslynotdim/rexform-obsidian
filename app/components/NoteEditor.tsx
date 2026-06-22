@@ -40,11 +40,13 @@ function noteDisplayName(path: string): string {
 
 export default function NoteEditor({ noteId, initialContent, onChange, onSave }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
-  const [preview, setPreview] = useState(false);
+  const [viewMode, setViewMode] = useState<'edit' | 'split' | 'preview'>('edit');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [selectedIdx, setSelectedIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentRef = useRef(initialContent);
+  const dirtyRef = useRef(false);
   const router = useRouter();
 
   const isNew = noteId === 'new';
@@ -78,6 +80,7 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
         body: JSON.stringify({ content: text }),
       });
       if (!res.ok) throw new Error('Save failed');
+      dirtyRef.current = false;
       setSaveStatus('saved');
       onSave?.(text);
       mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
@@ -89,17 +92,37 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
 
   const handleChange = (text: string) => {
     setContent(text);
+    contentRef.current = text;
     onChange?.(text);
     setSelectedIdx(0);
     if (isNew) return;
+    dirtyRef.current = true;
     setSaveStatus('idle');
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => save(text), 2000);
   };
 
+  // Flush any pending debounced save when unmounting (navigating away / switching
+  // notes) or when the tab/window closes — otherwise edits made within the 2s
+  // debounce window are silently lost. keepalive lets the request outlive the page.
   useEffect(() => {
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, []);
+    const flush = () => {
+      if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
+      if (isNew || !dirtyRef.current) return;
+      dirtyRef.current = false;
+      fetch(`/api/notes/${encodeURIComponent(noteId)}/update`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: contentRef.current }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, [noteId, isNew]);
 
   const insertMarkdown = (before: string, after: string) => {
     const el = textareaRef.current;
@@ -174,6 +197,69 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
     idle: '', saving: 'var(--text-secondary)', saved: '#4ade80', error: '#f87171',
   };
 
+  const editorPane = (
+    <div className="relative flex-1 flex flex-col min-w-0">
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => handleChange(e.target.value)}
+        onKeyDown={handleTextareaKeyDown}
+        className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
+        style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
+        placeholder="Start writing in Markdown… use [[note name]] to link notes"
+        spellCheck={false}
+      />
+
+      {/* Wikilink autocomplete dropdown */}
+      {suggestions.length > 0 && (
+        <div
+          className="absolute left-4 bottom-4 z-50 rounded shadow-lg border overflow-hidden"
+          style={{
+            background: 'var(--bg-surface)',
+            borderColor: 'var(--border)',
+            minWidth: 220,
+            maxWidth: 320,
+          }}
+        >
+          <div
+            className="px-2 py-1 text-xs border-b"
+            style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+          >
+            Link note · ↑↓ navigate · Enter/Tab select · Esc cancel
+          </div>
+          {suggestions.map((note, i) => (
+            <button
+              key={note.id}
+              onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(note); }}
+              className="w-full text-left px-3 py-1.5 text-sm truncate"
+              style={{
+                background: i === selectedIdx ? 'var(--accent)' : 'transparent',
+                color: i === selectedIdx ? '#fff' : 'var(--text-primary)',
+              }}
+              onMouseEnter={() => setSelectedIdx(i)}
+            >
+              {noteDisplayName(note.path)}
+              {note.path.includes('/') && (
+                <span className="ml-1.5 text-xs opacity-60">
+                  {note.path.split('/').slice(0, -1).join('/')}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const previewPane = (
+    <div
+      className="flex-1 overflow-y-auto px-6 py-4 prose min-w-0"
+      style={{ color: 'var(--text-primary)' }}
+    >
+      <WikiMarkdown>{content}</WikiMarkdown>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-base)' }}>
       {/* Toolbar */}
@@ -195,13 +281,21 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
 
         <div className="flex-1" />
 
-        <button
-          onClick={() => setPreview((p) => !p)}
-          className="px-3 py-1 rounded text-xs font-medium border"
-          style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
-        >
-          {preview ? 'Edit' : 'Preview'}
-        </button>
+        <div className="flex rounded overflow-hidden border" style={{ borderColor: 'var(--accent)' }}>
+          {(['edit', 'split', 'preview'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              className="px-2.5 py-1 text-xs font-medium capitalize transition-colors"
+              style={{
+                background: viewMode === m ? 'var(--accent)' : 'transparent',
+                color: viewMode === m ? '#fff' : 'var(--accent)',
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
 
         {!isNew && (
           <>
@@ -229,65 +323,17 @@ export default function NoteEditor({ noteId, initialContent, onChange, onSave }:
       </div>
 
       {/* Content area */}
-      {preview ? (
-        <div
-          className="flex-1 overflow-y-auto px-6 py-4 prose"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          <WikiMarkdown>{content}</WikiMarkdown>
+      {viewMode === 'preview' ? (
+        previewPane
+      ) : viewMode === 'split' ? (
+        <div className="flex-1 flex min-h-0">
+          <div className="flex flex-col min-w-0" style={{ flex: 1, borderRight: '1px solid var(--border)' }}>
+            {editorPane}
+          </div>
+          {previewPane}
         </div>
       ) : (
-        <div className="relative flex-1 flex flex-col">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleTextareaKeyDown}
-            className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
-            style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
-            placeholder="Start writing in Markdown… use [[note name]] to link notes"
-            spellCheck={false}
-          />
-
-          {/* Wikilink autocomplete dropdown */}
-          {suggestions.length > 0 && (
-            <div
-              className="absolute left-4 bottom-4 z-50 rounded shadow-lg border overflow-hidden"
-              style={{
-                background: 'var(--bg-surface)',
-                borderColor: 'var(--border)',
-                minWidth: 220,
-                maxWidth: 320,
-              }}
-            >
-              <div
-                className="px-2 py-1 text-xs border-b"
-                style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-              >
-                Link note · ↑↓ navigate · Enter/Tab select · Esc cancel
-              </div>
-              {suggestions.map((note, i) => (
-                <button
-                  key={note.id}
-                  onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(note); }}
-                  className="w-full text-left px-3 py-1.5 text-sm truncate"
-                  style={{
-                    background: i === selectedIdx ? 'var(--accent)' : 'transparent',
-                    color: i === selectedIdx ? '#fff' : 'var(--text-primary)',
-                  }}
-                  onMouseEnter={() => setSelectedIdx(i)}
-                >
-                  {noteDisplayName(note.path)}
-                  {note.path.includes('/') && (
-                    <span className="ml-1.5 text-xs opacity-60">
-                      {note.path.split('/').slice(0, -1).join('/')}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        editorPane
       )}
     </div>
   );
