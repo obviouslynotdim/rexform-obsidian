@@ -1,11 +1,25 @@
 'use client';
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { EditorView, keymap } from '@codemirror/view';
+import type { EditorView as EditorViewType } from '@codemirror/view';
+import { markdown } from '@codemirror/lang-markdown';
+import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
+import {
+  autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap,
+} from '@codemirror/autocomplete';
 import WikiMarkdown from './WikiMarkdown';
+import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
+import { wikilinkCompletions, type NoteStub } from '@/lib/cm/wikilinkComplete';
 
-interface NoteStub { id: string; path: string }
+// CM touches the DOM at instantiation — load client-only to keep it out of SSR.
+const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
+  ssr: false,
+  loading: () => <div style={{ height: '100%', background: 'var(--bg-base)' }} />,
+});
 
 export type ViewMode = 'reading' | 'source' | 'split';
 
@@ -31,24 +45,15 @@ const TOOLBAR = [
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-function getWikilinkQuery(content: string, cursorPos: number): string | null {
-  const before = content.slice(0, cursorPos);
-  const match = before.match(/\[\[([^\[\]]*)$/);
-  return match ? match[1] : null;
-}
-
-function noteDisplayName(path: string): string {
-  return path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
-}
-
 export default function NoteEditor({ noteId, initialContent, viewMode, onChange, onSave }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const viewRef = useRef<EditorViewType | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(initialContent);
   const dirtyRef = useRef(false);
+  const manualSaveRef = useRef<() => void>(() => {});
+  const notesRef = useRef<NoteStub[]>([]);
   const router = useRouter();
 
   const isNew = noteId === 'new';
@@ -57,20 +62,8 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   });
-  const allNotes = treeData?.notes ?? [];
-
-  // Detect wikilink autocomplete state from cursor position
-  const cursorPos = textareaRef.current?.selectionStart ?? content.length;
-  const wikilinkQuery = getWikilinkQuery(content, cursorPos);
-
-  const suggestions =
-    wikilinkQuery !== null
-      ? allNotes
-          .filter((n) =>
-            noteDisplayName(n.path).toLowerCase().includes(wikilinkQuery.toLowerCase())
-          )
-          .slice(0, 8)
-      : [];
+  // Keep the completion source's notes list current without rebuilding the editor.
+  notesRef.current = treeData?.notes ?? [];
 
   const save = useCallback(async (text: string) => {
     if (isNew) return;
@@ -92,17 +85,22 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
     }
   }, [noteId, isNew, onSave]);
 
-  const handleChange = (text: string) => {
+  const handleChange = useCallback((text: string) => {
     setContent(text);
     contentRef.current = text;
     onChange?.(text);
-    setSelectedIdx(0);
     if (isNew) return;
     dirtyRef.current = true;
     setSaveStatus('idle');
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => save(text), 2000);
+  }, [isNew, onChange, save]);
+
+  const handleManualSave = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    save(contentRef.current);
   };
+  manualSaveRef.current = handleManualSave;
 
   // Flush any pending debounced save when unmounting (navigating away / switching
   // notes) or when the tab/window closes — otherwise edits made within the 2s
@@ -126,57 +124,40 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
     };
   }, [noteId, isNew]);
 
+  // Built once — stable for the editor's lifetime. Dynamic bits (notes list,
+  // save handler) are read through refs so this never needs to rebuild.
+  const extensions = useMemo(() => [
+    rexformDarkTheme,
+    rexformSyntaxHighlighting,
+    markdown(),
+    EditorView.lineWrapping,
+    history(),
+    closeBrackets(),
+    autocompletion({
+      override: [wikilinkCompletions(notesRef)],
+      icons: false,
+      activateOnTyping: true,
+    }),
+    keymap.of([
+      { key: 'Mod-s', preventDefault: true, run: () => { manualSaveRef.current(); return true; } },
+      ...closeBracketsKeymap,
+      ...completionKeymap,
+      ...historyKeymap,
+      ...defaultKeymap,
+      indentWithTab,
+    ]),
+  ], []);
+
   const insertMarkdown = (before: string, after: string) => {
-    const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = content.slice(start, end);
-    const next = content.slice(0, start) + before + selected + after + content.slice(end);
-    handleChange(next);
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + before.length, end + before.length);
-    }, 0);
-  };
-
-  const acceptSuggestion = (note: NoteStub) => {
-    const el = textareaRef.current;
-    if (!el || wikilinkQuery === null) return;
-    const pos = el.selectionStart;
-    const before = content.slice(0, pos);
-    // Replace the [[<partial> with [[<name>]]
-    const replaced = before.replace(/\[\[([^\[\]]*)$/, `[[${noteDisplayName(note.path)}]]`);
-    const next = replaced + content.slice(pos);
-    handleChange(next);
-    const newCursor = replaced.length;
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(newCursor, newCursor);
-    }, 0);
-  };
-
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (suggestions.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      acceptSuggestion(suggestions[selectedIdx]);
-    } else if (e.key === 'Escape') {
-      // Force-clear by moving cursor (re-read from textarea)
-      textareaRef.current?.blur();
-      setTimeout(() => textareaRef.current?.focus(), 0);
-    }
-  };
-
-  const handleManualSave = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    save(content);
+    const view = viewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    const selected = view.state.sliceDoc(from, to);
+    view.dispatch({
+      changes: { from, to, insert: before + selected + after },
+      selection: { anchor: from + before.length, head: from + before.length + selected.length },
+    });
+    view.focus();
   };
 
   const handleDelete = async () => {
@@ -200,56 +181,15 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
   };
 
   const editorPane = (
-    <div className="relative flex-1 flex flex-col min-w-0">
-      <textarea
-        ref={textareaRef}
+    <div className="flex-1 min-w-0" style={{ minHeight: 0 }}>
+      <CodeMirrorEditor
         value={content}
-        onChange={(e) => handleChange(e.target.value)}
-        onKeyDown={handleTextareaKeyDown}
-        className="flex-1 resize-none outline-none font-mono text-sm p-4 leading-relaxed"
-        style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', caretColor: 'var(--accent)' }}
+        onChange={handleChange}
+        extensions={extensions}
+        viewRef={viewRef}
         placeholder="Start writing in Markdown… use [[note name]] to link notes"
-        spellCheck={false}
+        autoFocus={!isNew}
       />
-
-      {/* Wikilink autocomplete dropdown */}
-      {suggestions.length > 0 && (
-        <div
-          className="absolute left-4 bottom-4 z-50 rounded shadow-lg border overflow-hidden"
-          style={{
-            background: 'var(--bg-surface)',
-            borderColor: 'var(--border)',
-            minWidth: 220,
-            maxWidth: 320,
-          }}
-        >
-          <div
-            className="px-2 py-1 text-xs border-b"
-            style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-          >
-            Link note · ↑↓ navigate · Enter/Tab select · Esc cancel
-          </div>
-          {suggestions.map((note, i) => (
-            <button
-              key={note.id}
-              onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(note); }}
-              className="w-full text-left px-3 py-1.5 text-sm truncate"
-              style={{
-                background: i === selectedIdx ? 'var(--accent)' : 'transparent',
-                color: i === selectedIdx ? '#fff' : 'var(--text-primary)',
-              }}
-              onMouseEnter={() => setSelectedIdx(i)}
-            >
-              {noteDisplayName(note.path)}
-              {note.path.includes('/') && (
-                <span className="ml-1.5 text-xs opacity-60">
-                  {note.path.split('/').slice(0, -1).join('/')}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 
@@ -308,8 +248,9 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
         )}
       </div>
 
-      {/* Content area — 'split' shows source + live preview, otherwise source only.
-          ('reading' is handled by NoteViewClient, which renders WikiMarkdown instead.) */}
+      {/* Content area — 'split' shows the CM editor beside a live preview pane,
+          otherwise editor only. ('reading' is handled by NoteViewClient.)
+          True inline live preview replaces the split pane in Phase A2. */}
       {viewMode === 'split' ? (
         <div className="flex-1 flex min-h-0">
           <div className="flex flex-col min-w-0" style={{ flex: 1, borderRight: '1px solid var(--border)' }}>
