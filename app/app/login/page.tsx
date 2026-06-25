@@ -47,7 +47,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      window.location.href = '/dashboard';
+      window.location.href = '/notes';
     }
   }, [status]);
 
@@ -74,7 +74,7 @@ function LoginForm() {
       setError(result.error);
       initFlow().then(setFlowId).catch(() => {});
     } else {
-      window.location.href = '/dashboard';
+      window.location.href = '/notes';
     }
   }
 
