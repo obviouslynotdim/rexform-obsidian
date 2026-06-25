@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useId, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
@@ -49,6 +50,97 @@ function resolveWikilink(name: string, notes: NoteStub[]): string | null {
     return pathNoExt === lower || pathNoExt.endsWith('/' + lower);
   });
   return byPartialPath?.id ?? null;
+}
+
+/**
+ * Renders a ```mermaid fenced block as an SVG diagram.
+ *
+ * Client-only: `mermaid` touches `document`, so it is dynamically imported
+ * inside an effect (which never runs during SSR). On the server and on the
+ * first client paint we render a lightweight placeholder, then swap in the SVG
+ * once rendering completes.
+ */
+function Mermaid({ chart }: { chart: string }) {
+  const [svg, setSvg] = useState('');
+  const [failed, setFailed] = useState(false);
+  // Stable, SSR-safe id; mermaid uses it as a DOM/CSS id so strip non-word chars.
+  const rawId = useId();
+  const id = 'mermaid-' + rawId.replace(/[^a-zA-Z0-9]/g, '');
+
+  useEffect(() => {
+    let cancelled = false;
+    setSvg('');
+    setFailed(false);
+
+    (async () => {
+      try {
+        const mermaid = (await import('mermaid')).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'dark',
+          securityLevel: 'loose',
+          fontFamily: 'inherit',
+          themeVariables: {
+            background: '#1a1a2e',
+            primaryColor: '#252538',
+            primaryTextColor: '#e8e8f0',
+            primaryBorderColor: '#7F77DD',
+            lineColor: '#7F77DD',
+            secondaryColor: '#2a2a40',
+            tertiaryColor: '#1f1f30',
+            fontSize: '14px',
+          },
+        });
+        const { svg } = await mermaid.render(id, chart);
+        if (!cancelled) setSvg(svg);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [chart, id]);
+
+  // Render failed — fall back to showing the raw diagram source as a code block.
+  if (failed) {
+    return (
+      <pre
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          padding: 12,
+          overflowX: 'auto',
+          fontSize: 13,
+        }}
+      >
+        <code>{chart}</code>
+      </pre>
+    );
+  }
+
+  // Not rendered yet (SSR / first paint) — neutral placeholder.
+  if (!svg) {
+    return (
+      <div
+        style={{
+          display: 'flex', justifyContent: 'center',
+          margin: '16px 0', padding: '24px 0',
+          color: 'rgba(255,255,255,0.3)', fontSize: 13,
+        }}
+      >
+        Rendering diagram…
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mermaid-diagram"
+      style={{ display: 'flex', justifyContent: 'center', margin: '16px 0', overflowX: 'auto' }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
 }
 
 export default function WikiMarkdown({ children }: { children: string }) {
@@ -106,6 +198,27 @@ export default function WikiMarkdown({ children }: { children: string }) {
         );
       }
       return <a href={href} {...props}>{linkChildren}</a>;
+    },
+
+    // Mermaid fenced blocks (```mermaid) render as diagrams; all other code
+    // renders as a normal <code>.
+    code: ({ className, children: codeChildren, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => {
+      const cls = className || '';
+      if (cls.includes('language-mermaid')) {
+        return <Mermaid chart={String(codeChildren).replace(/\n$/, '')} />;
+      }
+      return <code className={className} {...props}>{codeChildren}</code>;
+    },
+
+    // The Mermaid diagram is block-level on its own, so don't wrap it in <pre>
+    // (a <div> inside <pre> is invalid). Other fenced blocks keep their <pre>.
+    pre: ({ children: preChildren, ...props }: React.HTMLAttributes<HTMLPreElement> & { children?: React.ReactNode }) => {
+      const child: any = Array.isArray(preChildren) ? preChildren[0] : preChildren;
+      const childCls = child?.props?.className;
+      if (typeof childCls === 'string' && childCls.includes('language-mermaid')) {
+        return <>{preChildren}</>;
+      }
+      return <pre {...props}>{preChildren}</pre>;
     },
   };
 

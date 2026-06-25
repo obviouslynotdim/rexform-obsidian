@@ -21,9 +21,18 @@ function GraphPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const folder = searchParams.get('folder');
+  // `?open=<noteId>` pre-selects a note so the preview panel opens on arrival
+  // (used by the first-time onboarding redirect). Independent of `?folder=`,
+  // so both params work together, e.g. /notes/graph?folder=X&open=Y.
+  const openParam = searchParams.get('open');
 
-  const [selectedNote, setSelectedNote] = useState<string | null>(null);
-  const [selectedNoteTitle, setSelectedNoteTitle] = useState('');
+  // Mount-only initialisers: derive the initial selection from `?open=`. We do
+  // NOT sync these to `openParam` on later renders, otherwise closing the panel
+  // (✕) would immediately reopen it while the param lingers in the URL.
+  const [selectedNote, setSelectedNote] = useState<string | null>(openParam);
+  const [selectedNoteTitle, setSelectedNoteTitle] = useState(() =>
+    openParam ? openParam.replace(/\.md$/i, '').split('/').pop() ?? openParam : ''
+  );
   const [showAnalytics, setShowAnalytics] = useState(false);
 
   const swrKey = folder
