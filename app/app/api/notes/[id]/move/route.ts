@@ -4,6 +4,91 @@ import { authOptions } from '@/lib/auth';
 import { fetchFromVault, isVaultNote, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
 
+// Normalize a wikilink target the same way resolveWikilink does on the client:
+// case-insensitive, hyphens/underscores treated as spaces.
+function normalizeTitle(s: string): string {
+  return s.toLowerCase().replace(/[-_]/g, ' ').trim();
+}
+
+/**
+ * Rewrites every `[[Old Name]]` wikilink in `content` to `[[New Name]]`.
+ * Matches case-insensitively and treats hyphens/underscores as spaces, so
+ * `[[old-name]]` is updated too. Preserves any `#heading` and `|alias` parts.
+ * Returns the original string unchanged if nothing matched.
+ */
+function rewriteWikilinks(content: string, oldTitle: string, newTitle: string): string {
+  const oldNorm = normalizeTitle(oldTitle);
+  return content.replace(/\[\[([^\[\]\n]+)\]\]/g, (full, inner: string) => {
+    const pipeIdx = inner.indexOf('|');
+    const alias = pipeIdx >= 0 ? inner.slice(pipeIdx) : '';
+    const beforeAlias = pipeIdx >= 0 ? inner.slice(0, pipeIdx) : inner;
+    const hashIdx = beforeAlias.indexOf('#');
+    const heading = hashIdx >= 0 ? beforeAlias.slice(hashIdx) : '';
+    const name = hashIdx >= 0 ? beforeAlias.slice(0, hashIdx) : beforeAlias;
+    if (normalizeTitle(name) === oldNorm) {
+      return `[[${newTitle}${heading}${alias}]]`;
+    }
+    return full;
+  });
+}
+
+/**
+ * Best-effort backlink update: after a note is renamed, scan every other doc
+ * in the vault and rewrite `[[Old Name]]` wikilinks to `[[New Name]]`.
+ *
+ * Content lives in chunk docs (the `data` field) for this app's notes, with a
+ * fallback to inline `body`/`content`/`text` fields. Only docs whose content
+ * actually changes are written back. Runs un-awaited so it never blocks the
+ * rename response; any failure is swallowed (the rename already succeeded).
+ */
+async function updateBacklinks(
+  oldTitle: string,
+  newTitle: string,
+  auth: AuthHeaders | undefined,
+  db: string,
+  skipIds: Set<string>
+): Promise<void> {
+  const allDocsRes = await fetchFromVault('_all_docs?include_docs=true&limit=5000', {}, auth, db);
+  if (!allDocsRes.ok) return;
+  const allData = await allDocsRes.json();
+  const rows: any[] = Array.isArray(allData.rows) ? allData.rows : [];
+  const contentFields = ['data', 'body', 'content', 'text'] as const;
+
+  await Promise.all(
+    rows.map(async (row) => {
+      const doc = row.doc;
+      if (!doc || doc._deleted) return;
+      const id: string = doc._id;
+      if (skipIds.has(id)) return;
+      if (id.startsWith('_design/') || id.startsWith('_')) return;
+
+      let changed = false;
+      const updated: Record<string, unknown> = { ...doc };
+      for (const field of contentFields) {
+        const value = doc[field];
+        if (typeof value !== 'string') continue;
+        const rewritten = rewriteWikilinks(value, oldTitle, newTitle);
+        if (rewritten !== value) {
+          updated[field] = rewritten;
+          changed = true;
+        }
+      }
+      if (!changed) return;
+
+      try {
+        await fetchFromVault(
+          encodeURIComponent(id),
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) },
+          auth,
+          db
+        );
+      } catch {
+        // best-effort per doc — skip on conflict/error
+      }
+    })
+  );
+}
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
@@ -153,6 +238,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     } catch {
       // non-critical: folder will simply disappear if marker creation fails
     }
+  }
+
+  // Best-effort: rewrite [[Old Name]] wikilinks across the vault so backlinks
+  // survive the rename. Only meaningful when the filename (title) changed —
+  // a pure folder move keeps the same title. Fired un-awaited so it doesn't
+  // block the response; ctx.waitUntil isn't available in Next.js route handlers.
+  const oldTitle = oldFilename.replace(/\.md$/i, '');
+  const newTitle = newFilename.replace(/\.md$/i, '');
+  if (normalizeTitle(oldTitle) !== normalizeTitle(newTitle)) {
+    const skipIds = new Set<string>([newId, ...newChildren]);
+    void updateBacklinks(oldTitle, newTitle, auth, db, skipIds).catch(() => {
+      // best-effort — rename already succeeded
+    });
   }
 
   return NextResponse.json({ id: newId });

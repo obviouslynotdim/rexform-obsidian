@@ -17,6 +17,7 @@ interface TabsContextType {
   openTab: (id: string, title: string, type?: TabType) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
+  updateTab: (oldId: string, newId: string, newTitle: string) => void;
   reorderTabs: (fromId: string, toId: string) => void;
 }
 
@@ -113,6 +114,16 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
     setActiveTabIdState(id);
   }, []);
 
+  // Rename reconciliation: swap a tab's id/title in place (e.g. after a note
+  // is renamed) so the tab keeps pointing at the live note instead of the
+  // deleted old id. Preserves tab order; keeps it active if it was active.
+  const updateTab = useCallback((oldId: string, newId: string, newTitle: string) => {
+    setTabs(prev => prev.map(tab =>
+      tab.id === oldId ? { ...tab, id: newId, title: newTitle } : tab
+    ));
+    setActiveTabIdState(prev => prev === oldId ? newId : prev);
+  }, []);
+
   const reorderTabs = useCallback((fromId: string, toId: string) => {
     setTabs(prev => {
       const fromIdx = prev.findIndex(t => t.id === fromId);
@@ -126,7 +137,7 @@ export function TabsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <TabsContext.Provider value={{ tabs, activeTabId, initialized, openTab, closeTab, setActiveTab, reorderTabs }}>
+    <TabsContext.Provider value={{ tabs, activeTabId, initialized, openTab, closeTab, setActiveTab, updateTab, reorderTabs }}>
       {children}
     </TabsContext.Provider>
   );

@@ -4,6 +4,7 @@ import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
+import { useTabsContext } from '@/context/TabsContext';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
@@ -38,6 +39,7 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const isSavingRef = useRef(false);
   const lastEditMode = useRef<'source' | 'live'>('source');
   const router = useRouter();
+  const tabsCtx = useTabsContext();
 
   useEffect(() => {
     if (renamingTitle) renameInputRef.current?.select();
@@ -71,6 +73,9 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
     if (res.ok) {
       setRenamingTitle(false);
       await mutate('/api/notes/tree');
+      // Reconcile the open tab with the new id/title before navigating so the
+      // tab never points at the now-deleted old note id.
+      tabsCtx?.updateTab(noteId, data.id, newName);
       const newUrlId = String(data.id).replace(/\.md$/i, '');
       router.push(`/notes/${encodeURIComponent(newUrlId)}`);
       router.refresh();

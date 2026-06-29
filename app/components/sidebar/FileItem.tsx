@@ -72,7 +72,12 @@ export default function FileItem({
     });
     const data = await res.json();
     setRenameLoading(false);
-    if (res.ok) { setRenaming(false); onMoved(node.id, data.id); }
+    if (res.ok) {
+      setRenaming(false);
+      // Keep any open tab for this note pointing at the new id/title.
+      tabsCtx?.updateTab(node.id, data.id, trimmed);
+      onMoved(node.id, data.id);
+    }
     else setRenameError(data.error || 'Rename failed');
   }
 
