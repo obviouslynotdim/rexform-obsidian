@@ -1,6 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface InlineInputProps {
   folder: string;
@@ -16,6 +19,12 @@ export default function InlineInput({ folder, type, depth, onCreated, onCancel }
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  const { data: fileSettings } = useSWR<{ syncHeadingWithFilename?: boolean }>(
+    '/api/user/settings',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -43,11 +52,16 @@ export default function InlineInput({ folder, type, depth, onCreated, onCancel }
       return;
     }
 
-    // type === 'note'
+    // type === 'note' — start with a synced "# Heading" unless the user turned
+    // filename/heading sync off, in which case start with an empty body
+    // (Obsidian convention: filename = title, body = content only).
+    const initialContent = fileSettings?.syncHeadingWithFilename === false
+      ? ''
+      : `# ${trimmed}\n\n`;
     const res = await fetch('/api/notes/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: trimmed, folder }),
+      body: JSON.stringify({ title: trimmed, folder, content: initialContent }),
     });
     const data = await res.json();
     setLoading(false);

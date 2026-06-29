@@ -24,13 +24,21 @@ const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
 
 export type ViewMode = 'reading' | 'source' | 'live';
 
+interface FileSettings { syncHeadingWithFilename: boolean; newNoteLocation: 'root' | 'current' }
+
 interface NoteEditorProps {
   noteId: string;
   initialContent: string;
   viewMode: ViewMode;
+  currentTitle?: string;
   onChange?: (content: string) => void;
   onSave?: (content: string) => void;
+  // Called after the editor renames the note from its H1 (Direction B).
+  onTitleChange?: (newTitle: string, newId: string) => void;
 }
+
+// Matches the first `# Heading` line; [ \t] (not \s) keeps the match single-line.
+const H1_LINE = /^#[ \t]+(.+)$/m;
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -46,7 +54,7 @@ const TOOLBAR = [
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export default function NoteEditor({ noteId, initialContent, viewMode, onChange, onSave }: NoteEditorProps) {
+export default function NoteEditor({ noteId, initialContent, viewMode, currentTitle, onChange, onSave, onTitleChange }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const viewRef = useRef<EditorViewType | null>(null);
@@ -59,6 +67,22 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
   viewModeRef.current = viewMode;
   const router = useRouter();
   const tabsCtx = useTabsContext();
+
+  // Live values read by the stable save() callback through refs (so save never
+  // needs rebuilding when these change), mirroring the wikilink-facet pattern.
+  const { data: fileSettings } = useSWR<FileSettings>('/api/user/settings', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+  const settingsRef = useRef<FileSettings | undefined>(undefined);
+  settingsRef.current = fileSettings;
+  const currentTitleRef = useRef(currentTitle);
+  currentTitleRef.current = currentTitle;
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
+  // Loop guard: set true right after an editor-triggered rename so the next
+  // autosave doesn't immediately try to rename again before the remount lands.
+  const skipNextH1Sync = useRef(false);
 
   // Stable closures for the CM wikilink facet — they read live values via refs
   // so the editor extension never needs rebuilding.
@@ -97,6 +121,31 @@ export default function NoteEditor({ noteId, initialContent, viewMode, onChange,
       onSave?.(text);
       mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       setTimeout(() => setSaveStatus('idle'), 2000);
+
+      // Direction B — heading → filename. After the content is persisted, if the
+      // first H1 differs from the current filename title, rename the note to match.
+      if (skipNextH1Sync.current) {
+        skipNextH1Sync.current = false;
+      } else if (settingsRef.current?.syncHeadingWithFilename) {
+        const h1Title = text.match(H1_LINE)?.[1]?.trim();
+        const cur = currentTitleRef.current;
+        // Skip if there's no heading, it already matches, or it contains a path
+        // separator (which would move the note into a different folder).
+        if (h1Title && cur && h1Title !== cur && !h1Title.includes('/')) {
+          try {
+            const moveRes = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: h1Title }),
+            });
+            if (moveRes.ok) {
+              const moveData = await moveRes.json();
+              skipNextH1Sync.current = true;
+              onTitleChangeRef.current?.(h1Title, moveData.id);
+            }
+          } catch { /* best-effort; content already saved */ }
+        }
+      }
     } catch {
       setSaveStatus('error');
     }

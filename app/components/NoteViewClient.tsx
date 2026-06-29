@@ -9,6 +9,20 @@ import { useTabsContext } from '@/context/TabsContext';
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
 interface VaultsData { vaults: VaultOption[]; activeVault: string }
+interface FileSettings { syncHeadingWithFilename: boolean; newNoteLocation: 'root' | 'current' }
+
+// Matches the first `# Heading` line anywhere in the document (first occurrence
+// only — no /g). [ \t] (not \s) keeps the match on a single line.
+const H1_LINE = /^#[ \t]+(.+)$/m;
+
+// Keep the body's first H1 in sync with the note title. If an H1 exists it is
+// replaced in place; otherwise one is inserted as the first line.
+function syncHeadingWithTitle(content: string, newTitle: string): string {
+  if (H1_LINE.test(content)) {
+    return content.replace(H1_LINE, () => `# ${newTitle}`);
+  }
+  return `# ${newTitle}\n\n${content}`;
+}
 
 interface Props {
   noteId: string;
@@ -40,6 +54,11 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const lastEditMode = useRef<'source' | 'live'>('source');
   const router = useRouter();
   const tabsCtx = useTabsContext();
+
+  const { data: fileSettings } = useSWR<FileSettings>('/api/user/settings', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
 
   useEffect(() => {
     if (renamingTitle) renameInputRef.current?.select();
@@ -76,6 +95,22 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
       // Reconcile the open tab with the new id/title before navigating so the
       // tab never points at the now-deleted old note id.
       tabsCtx?.updateTab(noteId, data.id, newName);
+      // Direction A — keep the body's first H1 in sync with the new filename
+      // (Obsidian behavior). Targets data.id (the freshly-created note), so
+      // there's no _rev conflict with the just-deleted old doc.
+      if (fileSettings?.syncHeadingWithFilename) {
+        const synced = syncHeadingWithTitle(liveContent, newName);
+        if (synced !== liveContent) {
+          setLiveContent(synced);
+          try {
+            await fetch(`/api/notes/${encodeURIComponent(data.id)}/update`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: synced }),
+            });
+          } catch { /* best-effort; rename already succeeded */ }
+        }
+      }
       const newUrlId = String(data.id).replace(/\.md$/i, '');
       router.push(`/notes/${encodeURIComponent(newUrlId)}`);
       router.refresh();
@@ -211,8 +246,17 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
                 noteId={noteId}
                 viewMode={viewMode}
                 initialContent={liveContent}
+                currentTitle={title}
                 onChange={setLiveContent}
                 onSave={setLiveContent}
+                onTitleChange={(newTitle, newId) => {
+                  // Direction B — the editor renamed the file from its H1.
+                  // Reconcile tab + URL + sidebar with the new id/title.
+                  tabsCtx?.updateTab(noteId, newId, newTitle);
+                  mutate('/api/notes/tree');
+                  const newUrlId = String(newId).replace(/\.md$/i, '');
+                  router.push(`/notes/${encodeURIComponent(newUrlId)}`);
+                }}
               />
             </div>
           )}

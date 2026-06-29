@@ -150,6 +150,7 @@ export function isVaultNote(doc: any): boolean {
   if (id.startsWith('_')) return false;
   if (id === 'rexform-metadata') return false;
   if (id === 'rexform-plugins') return false;
+  if (id === 'rexform-settings') return false;
   if (id.endsWith('/.keep')) return false;
   return doc.type === 'plain' || (typeof doc.path === 'string' && doc.path.endsWith('.md'));
 }

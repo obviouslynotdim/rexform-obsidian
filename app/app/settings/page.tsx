@@ -22,6 +22,28 @@ interface PluginData {
 
 const DEFAULT_PLUGIN_DATA: PluginData = { installed: [], enabled: {} };
 
+type NewNoteLocation = 'root' | 'current';
+interface FileSettings {
+  syncHeadingWithFilename: boolean;
+  newNoteLocation: NewNoteLocation;
+}
+
+const DEFAULT_FILE_SETTINGS: FileSettings = {
+  syncHeadingWithFilename: true,
+  newNoteLocation: 'root',
+};
+
+function normaliseFileSettings(input: any): FileSettings {
+  const src = input && typeof input === 'object' ? input : {};
+  return {
+    syncHeadingWithFilename:
+      typeof src.syncHeadingWithFilename === 'boolean'
+        ? src.syncHeadingWithFilename
+        : DEFAULT_FILE_SETTINGS.syncHeadingWithFilename,
+    newNoteLocation: src.newNoteLocation === 'current' ? 'current' : 'root',
+  };
+}
+
 // ─── Credential components ────────────────────────────────────────────────────
 
 function CopyButton({ value }: { value: string }) {
@@ -667,6 +689,77 @@ function CommunityPluginsCard({
   );
 }
 
+// ─── Files & Links card ───────────────────────────────────────────────────────
+
+function FilesLinksCard({
+  settings,
+  saving,
+  onToggleSync,
+  onChangeLocation,
+}: {
+  settings: FileSettings;
+  saving: boolean;
+  onToggleSync: () => void;
+  onChangeLocation: (loc: NewNoteLocation) => void;
+}) {
+  return (
+    <Card className="p-6 mt-6">
+      <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+        Files &amp; Links
+      </h2>
+
+      {/* Row 1: Sync filename with heading */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        paddingBottom: 14, marginBottom: 14,
+        borderBottom: '1px solid var(--border)',
+      }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+            Sync filename with heading
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            When enabled, editing the # heading renames the file and renaming the file
+            updates the # heading — same as Obsidian.
+          </p>
+        </div>
+        <PluginToggle enabled={settings.syncHeadingWithFilename} onChange={onToggleSync} disabled={saving} />
+      </div>
+
+      {/* Row 2: Default location for new notes */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+            Default location for new notes
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Where new notes are created when clicking + New.
+          </p>
+        </div>
+        <select
+          value={settings.newNoteLocation}
+          onChange={(e) => onChangeLocation(e.target.value as NewNoteLocation)}
+          disabled={saving}
+          style={{
+            flexShrink: 0,
+            padding: '6px 10px',
+            borderRadius: 6,
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-primary)',
+            fontSize: 12.5,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            outline: 'none',
+          }}
+        >
+          <option value="root">Vault root</option>
+          <option value="current">Same folder as current note</option>
+        </select>
+      </div>
+    </Card>
+  );
+}
+
 // ─── Main settings page ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -681,6 +774,9 @@ export default function SettingsPage() {
 
   const [pluginData, setPluginData] = useState<PluginData>(DEFAULT_PLUGIN_DATA);
   const [pluginSaving, setPluginSaving] = useState(false);
+
+  const [fileSettings, setFileSettings] = useState<FileSettings>(DEFAULT_FILE_SETTINGS);
+  const [fileSettingsSaving, setFileSettingsSaving] = useState(false);
 
   const loadCreds = useCallback(async () => {
     setLoading(true);
@@ -716,10 +812,50 @@ export default function SettingsPage() {
     } catch {}
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/user/settings');
+      if (res.ok) setFileSettings(normaliseFileSettings(await res.json()));
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') { loadCreds(); loadPlugins(); }
-  }, [status, loadCreds, loadPlugins, router]);
+    if (status === 'authenticated') { loadCreds(); loadPlugins(); loadSettings(); }
+  }, [status, loadCreds, loadPlugins, loadSettings, router]);
+
+  const saveFileSettings = useCallback(async (next: FileSettings, original: FileSettings) => {
+    setFileSettingsSaving(true);
+    try {
+      const res = await fetch('/api/user/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) setFileSettings(original);
+    } catch {
+      setFileSettings(original);
+    } finally {
+      setFileSettingsSaving(false);
+    }
+  }, []);
+
+  const handleToggleSync = useCallback(() => {
+    setFileSettings(prev => {
+      const next: FileSettings = { ...prev, syncHeadingWithFilename: !prev.syncHeadingWithFilename };
+      saveFileSettings(next, prev);
+      return next;
+    });
+  }, [saveFileSettings]);
+
+  const handleChangeLocation = useCallback((loc: NewNoteLocation) => {
+    setFileSettings(prev => {
+      if (prev.newNoteLocation === loc) return prev;
+      const next: FileSettings = { ...prev, newNoteLocation: loc };
+      saveFileSettings(next, prev);
+      return next;
+    });
+  }, [saveFileSettings]);
 
   const savePlugins = useCallback(async (next: PluginData, original: PluginData) => {
     setPluginSaving(true);
@@ -905,6 +1041,14 @@ export default function SettingsPage() {
           onInstall={handleInstall}
           onUninstall={handleUninstall}
           onToggle={handleToggle}
+        />
+
+        {/* Files & Links */}
+        <FilesLinksCard
+          settings={fileSettings}
+          saving={fileSettingsSaving}
+          onToggleSync={handleToggleSync}
+          onChangeLocation={handleChangeLocation}
         />
       </div>
     </div>

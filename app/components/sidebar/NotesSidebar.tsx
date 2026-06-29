@@ -44,6 +44,12 @@ export default function NotesSidebar({ currentId }: Props) {
     dedupingInterval: 60_000,
   });
 
+  const { data: fileSettings } = useSWR<{ newNoteLocation?: 'root' | 'current' }>(
+    '/api/user/settings',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
+
   const notes: NoteEntry[] = data?.notes || [];
 
   // Derive the active note ID from the URL, normalising to the CouchDB ID (with .md)
@@ -161,6 +167,16 @@ export default function NotesSidebar({ currentId }: Props) {
     setCreating({ folder: '', type });
   }
 
+  // "+ New" honors the user's default-location setting. When set to 'current',
+  // the new note is created in the active note's folder; otherwise at the root.
+  function createNote() {
+    const activeFolder = fileSettings?.newNoteLocation === 'current' && activeId
+      ? (activeId.includes('/') ? activeId.split('/').slice(0, -1).join('/') : '')
+      : '';
+    setCreating({ folder: activeFolder, type: 'note' });
+    if (activeFolder) expandFolders(activeFolder);
+  }
+
   // buildTree already returns a sorted tree
   const tree = buildTree(notes);
 
@@ -213,7 +229,7 @@ export default function NotesSidebar({ currentId }: Props) {
               >⊞</button>
               <button
                 title="New note"
-                onClick={() => createAtRoot('note')}
+                onClick={createNote}
                 className="px-2 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
                 style={{ background: 'var(--accent)', color: '#fff' }}
               >+ New</button>
