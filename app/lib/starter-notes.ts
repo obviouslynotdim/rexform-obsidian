@@ -3,9 +3,7 @@ export interface StarterDocument {
   [key: string]: unknown;
 }
 
-const WELCOME_CONTENT = `# Welcome to REXFORM Notes
-
-## Your personal knowledge base
+const WELCOME_CONTENT = `## Your personal knowledge base
 
 REXFORM Notes is your private, secure knowledge base powered by Obsidian under the hood. Everything you write here syncs to your personal vault — only you can see it.
 
@@ -46,9 +44,7 @@ graph LR
 *New here? Read the [[Quick Start Guide]] next, or jump straight into [[My First Note]].*
 `;
 
-const QUICK_START_CONTENT = `# Quick Start Guide
-
-## Markdown Cheatsheet
+const QUICK_START_CONTENT = `## Markdown Cheatsheet
 
 | Syntax | Result |
 |--------|--------|
@@ -84,9 +80,7 @@ Use folder paths when naming notes:
 > **Tip:** Start simple — a flat structure often works better than deep folder hierarchies.
 `;
 
-const FIRST_NOTE_CONTENT = `# My First Note
-
-Start writing here...
+const FIRST_NOTE_CONTENT = `Start writing here...
 
 ---
 
