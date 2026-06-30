@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
 import { useTabsContext } from '@/context/TabsContext';
-import { combineFrontmatter, type Frontmatter } from '@/lib/frontmatter';
+import { combineFrontmatter, parseFrontmatter, type Frontmatter } from '@/lib/frontmatter';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 interface VaultOption { name: string; label: string; role?: string }
@@ -310,8 +310,8 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
-  // Live body content, read by the debounced properties saver (which combines it
-  // with the frontmatter) without needing to rebuild the saver on every keystroke.
+  // Live body content (frontmatter-stripped), read by the debounced properties
+  // saver without needing to rebuild the saver on every keystroke.
   const liveContentRef = useRef(content);
   useEffect(() => { liveContentRef.current = liveContent; }, [liveContent]);
 
@@ -473,14 +473,24 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
             </div>
           ) : (
             <div style={{ height: '60vh' }}>
+              {/* Pass the full document (frontmatter + body combined) so Source/Live
+                  mode shows the raw --- block. The onChange handler re-parses it so
+                  liveContent stays body-only for reading mode and the status bar. */}
               <NoteEditor
                 noteId={noteId}
                 viewMode={viewMode}
-                initialContent={liveContent}
+                initialContent={combineFrontmatter(frontmatter, liveContent)}
                 currentTitle={title}
-                frontmatter={frontmatter}
-                onChange={setLiveContent}
-                onSave={setLiveContent}
+                onChange={(fullText) => {
+                  const { content: body, frontmatter: fm } = parseFrontmatter(fullText);
+                  setLiveContent(body);
+                  setFrontmatter(fm);
+                }}
+                onSave={(fullText) => {
+                  const { content: body, frontmatter: fm } = parseFrontmatter(fullText);
+                  setLiveContent(body);
+                  setFrontmatter(fm);
+                }}
                 onTitleChange={(newTitle, newId) => {
                   // Direction B — the editor renamed the file from its H1.
                   // Reconcile tab + URL + sidebar with the new id/title.

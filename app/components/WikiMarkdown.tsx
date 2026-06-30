@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { useTabsContext } from '@/context/TabsContext';
+import { rehypeCollapsibleHeadings } from '@/lib/rehype/collapsible-headings';
 
 interface NoteStub { id: string; path: string; title?: string }
 
@@ -143,6 +144,37 @@ function Mermaid({ chart }: { chart: string }) {
   );
 }
 
+// Styles for the collapsible heading fold UI injected once per WikiMarkdown
+// render. Scoped to .rexform-fold so they don't affect other <details> elements.
+const FOLD_STYLES = `
+  details.rexform-fold > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  details.rexform-fold > summary::marker,
+  details.rexform-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .rexform-fold-chevron {
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.28);
+    flex-shrink: 0;
+    display: inline-block;
+    transition: transform 0.15s ease;
+    user-select: none;
+    line-height: 1;
+  }
+  details.rexform-fold[open] > summary .rexform-fold-chevron {
+    transform: rotate(90deg);
+  }
+  details.rexform-fold > summary:hover .rexform-fold-chevron {
+    color: rgba(255, 255, 255, 0.55);
+  }
+`;
+
 export default function WikiMarkdown({ children }: { children: string }) {
   const { data } = useSWR<{ notes: NoteStub[] }>('/api/notes/tree', fetcher, {
     revalidateOnFocus: false,
@@ -223,15 +255,19 @@ export default function WikiMarkdown({ children }: { children: string }) {
   };
 
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={components as any}
-      // react-markdown v9's default urlTransform strips non-allowlisted
-      // protocols (including our `wikilink:` sentinel) to ''. Identity transform
-      // lets wikilink: URLs reach the custom <a> renderer above.
-      urlTransform={(url) => url}
-    >
-      {processed}
-    </ReactMarkdown>
+    <>
+      <style>{FOLD_STYLES}</style>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeCollapsibleHeadings]}
+        components={components as any}
+        // react-markdown v9's default urlTransform strips non-allowlisted
+        // protocols (including our `wikilink:` sentinel) to ''. Identity transform
+        // lets wikilink: URLs reach the custom <a> renderer above.
+        urlTransform={(url) => url}
+      >
+        {processed}
+      </ReactMarkdown>
+    </>
   );
 }
