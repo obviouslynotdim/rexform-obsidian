@@ -16,7 +16,9 @@ interface FileSettings { syncHeadingWithFilename: boolean; newNoteLocation: 'roo
 const H1_LINE = /^#[ \t]+(.+)$/m;
 
 // Keep the body's first H1 in sync with the note title. If an H1 exists it is
-// replaced in place; otherwise one is inserted as the first line.
+// replaced in place; otherwise one is inserted as the first line. With the
+// title bar removed, the body's H1 *is* the visible title, so inserting one on
+// rename is the intended Obsidian behavior.
 function syncHeadingWithTitle(content: string, newTitle: string): string {
   if (H1_LINE.test(content)) {
     return content.replace(H1_LINE, () => `# ${newTitle}`);
@@ -43,13 +45,6 @@ const MODE_LABELS: Record<ViewMode, string> = {
 export default function NoteViewClient({ noteId, title, content, folder: _folder, tags }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('reading');
   const [liveContent, setLiveContent] = useState(content);
-  const [renamingTitle, setRenamingTitle] = useState(false);
-  const [renameValue, setRenameValue] = useState(title);
-  const [renameError, setRenameError] = useState('');
-  const [renaming, setRenaming] = useState(false);
-  const [titleHovered, setTitleHovered] = useState(false);
-  const renameInputRef = useRef<HTMLInputElement>(null);
-  const cancelRenameRef = useRef(false);
   const isSavingRef = useRef(false);
   const lastEditMode = useRef<'source' | 'live'>('source');
   const router = useRouter();
@@ -59,10 +54,6 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });
-
-  useEffect(() => {
-    if (renamingTitle) renameInputRef.current?.select();
-  }, [renamingTitle]);
 
   // Escape exits any editing mode back to Reading.
   useEffect(() => {
@@ -74,49 +65,48 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
     return () => document.removeEventListener('keydown', handleKey);
   }, [viewMode]);
 
-  async function handleRename() {
+  // Programmatic rename entry point. The click-to-rename title bar was removed in
+  // favour of Obsidian-style "the body's # H1 is the title"; renaming from the
+  // note view now happens via NoteEditor's Direction B (H1 edit → filename), and
+  // the sidebar still renames independently. This is kept as the underlying
+  // move-API call plus Direction A (title → H1) sync for any caller wired in
+  // later. Takes the new name as an argument now that there's no input state.
+  async function handleRename(newName: string) {
     if (isSavingRef.current) return;
+    const name = newName.trim();
+    if (!name || name === title) return;
     isSavingRef.current = true;
-    const newName = renameValue.trim();
-    if (!newName || newName === title) { setRenamingTitle(false); isSavingRef.current = false; return; }
-    setRenaming(true);
-    setRenameError('');
     const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName }),
+      body: JSON.stringify({ name }),
     });
     const data = await res.json();
-    setRenaming(false);
     isSavingRef.current = false;
-    if (res.ok) {
-      setRenamingTitle(false);
-      await mutate('/api/notes/tree');
-      // Reconcile the open tab with the new id/title before navigating so the
-      // tab never points at the now-deleted old note id.
-      tabsCtx?.updateTab(noteId, data.id, newName);
-      // Direction A — keep the body's first H1 in sync with the new filename
-      // (Obsidian behavior). Targets data.id (the freshly-created note), so
-      // there's no _rev conflict with the just-deleted old doc.
-      if (fileSettings?.syncHeadingWithFilename) {
-        const synced = syncHeadingWithTitle(liveContent, newName);
-        if (synced !== liveContent) {
-          setLiveContent(synced);
-          try {
-            await fetch(`/api/notes/${encodeURIComponent(data.id)}/update`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: synced }),
-            });
-          } catch { /* best-effort; rename already succeeded */ }
-        }
+    if (!res.ok) return;
+    await mutate('/api/notes/tree');
+    // Reconcile the open tab with the new id/title before navigating so the
+    // tab never points at the now-deleted old note id.
+    tabsCtx?.updateTab(noteId, data.id, name);
+    // Direction A — keep the body's first H1 in sync with the new filename
+    // (Obsidian behavior). Targets data.id (the freshly-created note), so
+    // there's no _rev conflict with the just-deleted old doc.
+    if (fileSettings?.syncHeadingWithFilename) {
+      const synced = syncHeadingWithTitle(liveContent, name);
+      if (synced !== liveContent) {
+        setLiveContent(synced);
+        try {
+          await fetch(`/api/notes/${encodeURIComponent(data.id)}/update`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: synced }),
+          });
+        } catch { /* best-effort; rename already succeeded */ }
       }
-      const newUrlId = String(data.id).replace(/\.md$/i, '');
-      router.push(`/notes/${encodeURIComponent(newUrlId)}`);
-      router.refresh();
-    } else {
-      setRenameError(data.error || 'Rename failed');
     }
+    const newUrlId = String(data.id).replace(/\.md$/i, '');
+    router.push(`/notes/${encodeURIComponent(newUrlId)}`);
+    router.refresh();
   }
 
   const { data: vaultsData } = useSWR<VaultsData>('/api/vaults', fetcher, {
@@ -170,59 +160,21 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
       {/* Scrollable note body — NoteViewClient owns its own scroll now. */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={{ maxWidth: '700px', margin: '0 auto', paddingTop: 40, paddingBottom: 40, paddingLeft: 32, paddingRight: 32 }}>
-          {/* Title area */}
-          <div>
-            {renamingTitle && canWrite ? (
-              <div>
-                <input
-                  ref={renameInputRef}
-                  value={renameValue}
-                  onChange={(e) => { setRenameValue(e.target.value); setRenameError(''); }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleRename();
-                    if (e.key === 'Escape') { cancelRenameRef.current = true; setRenamingTitle(false); setRenameValue(title); }
-                  }}
-                  onBlur={() => { if (!cancelRenameRef.current) handleRename(); cancelRenameRef.current = false; }}
-                  disabled={renaming}
-                  className="font-bold bg-transparent outline-none border-none w-full"
-                  style={{ fontSize: '2rem', color: '#fff', caretColor: 'var(--accent)' }}
-                />
-                {renameError && <p className="text-xs mt-1" style={{ color: '#e55' }}>{renameError}</p>}
-              </div>
-            ) : (
-              <h1
-                style={{
-                  fontSize: '2rem',
-                  fontWeight: 700,
-                  color: '#fff',
-                  cursor: canWrite ? 'text' : 'default',
-                  textDecorationLine: (canWrite && titleHovered) ? 'underline' : 'none',
-                  textDecorationStyle: 'dotted',
-                  textDecorationColor: 'rgba(255,255,255,0.35)',
-                  textUnderlineOffset: '4px',
-                  marginBottom: '8px',
-                }}
-                onMouseEnter={() => canWrite && setTitleHovered(true)}
-                onMouseLeave={() => setTitleHovered(false)}
-                onClick={() => { if (canWrite) { setRenameValue(title); setRenamingTitle(true); } }}
-              >
-                {title}
-              </h1>
-            )}
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2 py-0.5 rounded text-xs font-medium"
-                    style={{ background: 'var(--border)', color: 'var(--accent)' }}
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* No title bar — Obsidian-style: the body's first `# H1` is the title.
+              Tags still render at the top of the content area. */}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="px-2 py-0.5 rounded text-xs font-medium"
+                  style={{ background: 'var(--border)', color: 'var(--accent)' }}
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Body */}
           {viewMode === 'reading' ? (
