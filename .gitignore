@@ -34,3 +34,6 @@ rexform-testing/
 
 # ── vault/docs (old duplicate, superseded by site/) ──
 vault/docs/
+
+# ── Claude Code session summaries (local only) ──────
+docs/sessions/
