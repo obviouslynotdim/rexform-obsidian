@@ -1,6 +1,18 @@
 import type { Session } from 'next-auth';
 import { isAdminUser, getUserVaultName, getAdminVaultName, createUserVault } from './vault';
 import { getAvailableVaults, type VaultOption } from './active-vault';
+import { stripFrontmatter } from './frontmatter';
+
+// Re-export the dependency-free frontmatter helpers so they remain part of
+// couchdb's public API while staying safe to import from client components.
+export {
+  parseFrontmatter,
+  serializeFrontmatter,
+  combineFrontmatter,
+  stripFrontmatter,
+  type Frontmatter,
+  type FrontmatterValue,
+} from './frontmatter';
 
 const PROXY_URL = process.env.COUCHDB_PROXY_URL;
 const DIRECT_URL = process.env.COUCHDB_URL;
@@ -103,27 +115,6 @@ export async function fetchFromVault(
     },
     cache: 'no-store',
   });
-}
-
-export function stripFrontmatter(markdown: string): {
-  content: string;
-  frontmatter: Record<string, string>;
-} {
-  const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { content: markdown, frontmatter: {} };
-  const frontmatter: Record<string, string> = {};
-  for (const line of match[1].split('\n')) {
-    const colon = line.indexOf(':');
-    if (colon > 0) {
-      const key = line.slice(0, colon).trim();
-      const val = line
-        .slice(colon + 1)
-        .trim()
-        .replace(/^['"\[]|['"\]]$/g, '');
-      frontmatter[key] = val;
-    }
-  }
-  return { content: match[2].trim(), frontmatter };
 }
 
 export function isPageDoc(doc: any): boolean {

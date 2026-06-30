@@ -8,6 +8,7 @@ import {
   extractTitle,
   stripFrontmatter,
   AuthHeaders,
+  type Frontmatter,
 } from '@/lib/couchdb';
 import { getActiveVault } from '@/lib/active-vault';
 import Link from 'next/link';
@@ -28,7 +29,7 @@ export default async function NotePage({ params }: Props) {
   let noteId = urlId;
   let note: any = null;
   let content = '';
-  let frontmatter: Record<string, string> = {};
+  let frontmatter: Frontmatter = {};
   let error = '';
 
   // Try the URL id as-is; if not found, retry with .md suffix for clean-URL support
@@ -58,11 +59,16 @@ export default async function NotePage({ params }: Props) {
     error = 'Note not found';
   }
 
-  const title = frontmatter.title || (note ? extractTitle(note) : noteId);
+  const fmTitle = typeof frontmatter.title === 'string' ? frontmatter.title : '';
+  const title = fmTitle || (note ? extractTitle(note) : noteId);
   const folder = note?.path ? (note.path as string).split('/').slice(0, -1).join('/') : '';
-  const tags = frontmatter.tags
-    ? frontmatter.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
-    : [];
+  // Tags may be an array (new block/inline lists) or a legacy comma string.
+  const rawTags = frontmatter.tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags
+    : typeof rawTags === 'string'
+      ? rawTags.split(',').map((t) => t.trim()).filter(Boolean)
+      : [];
 
   return (
     <div className="h-full" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -83,6 +89,7 @@ export default async function NotePage({ params }: Props) {
           content={content}
           folder={folder}
           tags={tags}
+          frontmatter={frontmatter}
           mtime={note?.mtime}
           size={note?.size}
         />

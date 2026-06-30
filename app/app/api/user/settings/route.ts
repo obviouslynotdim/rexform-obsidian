@@ -17,19 +17,22 @@ function adminAuth() {
 const DOC_ID = 'rexform-settings';
 
 type NewNoteLocation = 'root' | 'current';
-interface FileSettings {
+type Locale = 'en' | 'kh';
+interface AppSettings {
   syncHeadingWithFilename: boolean;
   newNoteLocation: NewNoteLocation;
+  language: Locale;
 }
 
-const DEFAULT_SETTINGS: FileSettings = {
+const DEFAULT_SETTINGS: AppSettings = {
   syncHeadingWithFilename: true,
   newNoteLocation: 'root',
+  language: 'en',
 };
 
 // Coerce arbitrary stored/posted data into a valid settings object, filling any
 // missing or malformed fields from the defaults.
-function normalise(input: any): FileSettings {
+function normalise(input: any): AppSettings {
   const src = input && typeof input === 'object' ? input : {};
   return {
     syncHeadingWithFilename:
@@ -40,6 +43,10 @@ function normalise(input: any): FileSettings {
       src.newNoteLocation === 'current' || src.newNoteLocation === 'root'
         ? src.newNoteLocation
         : DEFAULT_SETTINGS.newNoteLocation,
+    language:
+      src.language === 'en' || src.language === 'kh'
+        ? src.language
+        : DEFAULT_SETTINGS.language,
   };
 }
 
@@ -85,17 +92,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
   // Accept either the raw settings object or a { settings: {...} } envelope.
-  const settings = normalise(body?.settings ?? body);
+  const incoming = body?.settings ?? body;
 
   const db = `vault-${session.user.id}`;
   const docUrl = `${COUCHDB_URL}/${db}/${DOC_ID}`;
   const auth = adminAuth();
 
+  // Read the existing doc for its _rev AND its current settings, so a partial
+  // POST (e.g. just { language }) merges instead of resetting other fields.
   let rev: string | undefined;
+  let existingSettings: unknown = {};
   try {
     const existing = await fetch(docUrl, { headers: { Authorization: auth }, cache: 'no-store' });
-    if (existing.ok) rev = (await existing.json())._rev;
+    if (existing.ok) {
+      const doc = await existing.json();
+      rev = doc._rev;
+      existingSettings = doc.settings;
+    }
   } catch {}
+
+  const base = existingSettings && typeof existingSettings === 'object' ? existingSettings : {};
+  const merged = incoming && typeof incoming === 'object' ? { ...base, ...incoming } : base;
+  const settings = normalise(merged);
 
   try {
     const doc: Record<string, unknown> = { _id: DOC_ID, settings };

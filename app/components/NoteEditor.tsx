@@ -15,6 +15,7 @@ import { useTabsContext } from '@/context/TabsContext';
 import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
 import { wikilinkCompletions, resolveWikilink, noteDisplayName, type NoteStub } from '@/lib/cm/wikilinkComplete';
 import { livePreview, setLivePreview, wikilinkConfig } from '@/lib/cm/livePreview';
+import { combineFrontmatter, type Frontmatter } from '@/lib/frontmatter';
 
 // CM touches the DOM at instantiation — load client-only to keep it out of SSR.
 const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
@@ -31,6 +32,9 @@ interface NoteEditorProps {
   initialContent: string;
   viewMode: ViewMode;
   currentTitle?: string;
+  // Current frontmatter, re-attached to the body on every save so editing the
+  // text never drops the note's YAML properties.
+  frontmatter?: Frontmatter;
   onChange?: (content: string) => void;
   onSave?: (content: string) => void;
   // Called after the editor renames the note from its H1 (Direction B).
@@ -54,7 +58,7 @@ const TOOLBAR = [
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export default function NoteEditor({ noteId, initialContent, viewMode, currentTitle, onChange, onSave, onTitleChange }: NoteEditorProps) {
+export default function NoteEditor({ noteId, initialContent, viewMode, currentTitle, frontmatter, onChange, onSave, onTitleChange }: NoteEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const viewRef = useRef<EditorViewType | null>(null);
@@ -80,6 +84,10 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
   currentTitleRef.current = currentTitle;
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
+  // Read by the stable save()/flush so the latest properties are always
+  // re-attached without rebuilding those closures.
+  const frontmatterRef = useRef<Frontmatter>(frontmatter ?? {});
+  frontmatterRef.current = frontmatter ?? {};
   // Loop guard: set true right after an editor-triggered rename so the next
   // autosave doesn't immediately try to rename again before the remount lands.
   const skipNextH1Sync = useRef(false);
@@ -113,7 +121,8 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text }),
+        // Re-attach frontmatter so editing the body never wipes the YAML block.
+        body: JSON.stringify({ content: combineFrontmatter(frontmatterRef.current, text) }),
       });
       if (!res.ok) throw new Error('Save failed');
       dirtyRef.current = false;
@@ -179,7 +188,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       fetch(`/api/notes/${encodeURIComponent(noteId)}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: contentRef.current }),
+        body: JSON.stringify({ content: combineFrontmatter(frontmatterRef.current, contentRef.current) }),
         keepalive: true,
       }).catch(() => {});
     };

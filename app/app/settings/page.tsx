@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { PLUGIN_REGISTRY, type PluginDefinition } from '@/lib/plugin-registry';
+import { useI18n, type Locale } from '@/lib/i18n/context';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -765,6 +766,9 @@ function FilesLinksCard({
 export default function SettingsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { t, locale, setLocale } = useI18n();
+
+  const [activeCategory, setActiveCategory] = useState('general');
 
   const [creds, setCreds] = useState<Credentials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -945,111 +949,219 @@ export default function SettingsPage() {
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
-        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading settings…</div>
+        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>{t('common.loading')}</div>
       </div>
     );
   }
 
+  // Category list — Sync only appears when the user has LiveSync credentials
+  // (admin accounts have none). 'general' is always present and is the default.
+  const categories: { id: string; label: string }[] = [
+    { id: 'general', label: t('nav.general') },
+    { id: 'account', label: t('nav.account') },
+    { id: 'editor', label: t('nav.editor') },
+    ...(creds ? [{ id: 'sync', label: t('nav.sync') }] : []),
+    { id: 'plugins', label: t('nav.communityPlugins') },
+  ];
+  const selected = categories.some((c) => c.id === activeCategory) ? activeCategory : 'general';
+
   return (
-    <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Settings</h1>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Account and sync configuration</p>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 rounded-xl border border-red-800 bg-red-900/20">
-            <p className="text-red-400 text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Account */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Account</h2>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Email</span>
-              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{session?.user?.email}</span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Role</span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={{ background: 'var(--accent)22', color: 'var(--accent)' }}
+    <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+      <div
+        style={{
+          display: 'flex',
+          maxWidth: 1040,
+          margin: '0 auto',
+          minHeight: 'calc(100vh - 56px)',
+        }}
+      >
+        {/* ── Category sidebar ── */}
+        <nav
+          style={{
+            width: 200,
+            flexShrink: 0,
+            borderRight: '1px solid var(--border)',
+            padding: '24px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <h1
+            className="text-lg font-bold"
+            style={{ color: 'var(--text-primary)', padding: '0 8px', marginBottom: 14 }}
+          >
+            {t('settings.title')}
+          </h1>
+          {categories.map((cat) => {
+            const active = cat.id === selected;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                style={{
+                  textAlign: 'left',
+                  padding: '7px 10px',
+                  borderRadius: 6,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13.5,
+                  fontWeight: active ? 600 : 400,
+                  background: active ? 'rgba(127,119,221,0.15)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                }}
               >
-                {session?.user?.isAdmin ? 'Admin' : 'Member'}
-              </span>
-            </div>
-          </div>
-        </Card>
+                {cat.label}
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* LiveSync */}
-        {creds && (
-          <Card className="p-6 mb-6">
-            <div className="flex items-start justify-between mb-1">
-              <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Connect Obsidian (LiveSync)
+        {/* ── Content panel ── */}
+        <div style={{ flex: 1, minWidth: 0, padding: 32, overflowY: 'auto', maxHeight: 'calc(100vh - 56px)' }}>
+          {error && (
+            <div className="mb-6 p-4 rounded-xl border border-red-800 bg-red-900/20">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* General */}
+          {selected === 'general' && (
+            <Card className="p-6">
+              <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+                {t('general.title')}
               </h2>
-            </div>
-            <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
-              Use these details in the{' '}
-              <span className="font-medium" style={{ color: 'var(--accent)' }}>Self-hosted LiveSync</span>{' '}
-              Obsidian plugin to sync your vault on desktop or mobile.
-            </p>
-
-            <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: 'var(--border)' }}>
-              <CredentialRow label="Server URL" value={creds.serverUrl} />
-              <CredentialRow label="Database" value={creds.database} />
-              <CredentialRow label="Username" value={creds.username} />
-              <CredentialRow label="Password" value={creds.password} secret />
-            </div>
-
-            <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--bg-base)', border: '1px solid var(--border)' }}>
-              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
-                LiveSync plugin settings
-              </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                In Obsidian → Self-hosted LiveSync → Remote Database Configuration, set:
-                <br />• <strong>URI</strong>: the Server URL above
-                <br />• <strong>Username / Password</strong>: as shown
-                <br />• <strong>Database name</strong>: the Database value above
-                <br />• Leave <strong>Passphrase</strong> empty unless you want end-to-end encryption
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                If Obsidian shows "access forbidden", click Repair to re-configure CouchDB access.
-              </p>
-              <div className="flex gap-2 flex-shrink-0">
-                <Button variant="ghost" size="sm" loading={repairing} onClick={repairConnection}>
-                  {repairing ? 'Repairing…' : 'Repair Connection'}
-                </Button>
-                <Button variant="secondary" size="sm" loading={regenerating} onClick={regenerate}>
-                  Regenerate Password
-                </Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+                    {t('general.language')}
+                  </p>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    {t('general.languageDesc')}
+                  </p>
+                </div>
+                <select
+                  value={locale}
+                  onChange={(e) => setLocale(e.target.value as Locale)}
+                  style={{
+                    flexShrink: 0,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    background: 'var(--bg-base)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                    fontSize: 12.5,
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="en">{t('general.languageEnglish')}</option>
+                  <option value="kh">{t('general.languageKhmer')}</option>
+                </select>
               </div>
-            </div>
-          </Card>
-        )}
+            </Card>
+          )}
 
-        {/* Community Plugins */}
-        <CommunityPluginsCard
-          pluginData={pluginData}
-          saving={pluginSaving}
-          onInstall={handleInstall}
-          onUninstall={handleUninstall}
-          onToggle={handleToggle}
-        />
+          {/* Account */}
+          {selected === 'account' && (
+            <Card className="p-6">
+              <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>{t('account.title')}</h2>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.email')}</span>
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{session?.user?.email}</span>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.role')}</span>
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{ background: 'var(--accent)22', color: 'var(--accent)' }}
+                  >
+                    {session?.user?.isAdmin ? t('account.admin') : t('account.member')}
+                  </span>
+                </div>
+              </div>
+            </Card>
+          )}
 
-        {/* Files & Links */}
-        <FilesLinksCard
-          settings={fileSettings}
-          saving={fileSettingsSaving}
-          onToggleSync={handleToggleSync}
-          onChangeLocation={handleChangeLocation}
-        />
+          {/* Editor (Files & Links) */}
+          {selected === 'editor' && (
+            <FilesLinksCard
+              settings={fileSettings}
+              saving={fileSettingsSaving}
+              onToggleSync={handleToggleSync}
+              onChangeLocation={handleChangeLocation}
+            />
+          )}
+
+          {/* Sync (LiveSync) */}
+          {selected === 'sync' && creds && (
+            <Card className="p-6">
+              <div className="flex items-start justify-between mb-1">
+                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {t('sync.title')}
+                </h2>
+              </div>
+              <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
+                Use these details in the{' '}
+                <span className="font-medium" style={{ color: 'var(--accent)' }}>Self-hosted LiveSync</span>{' '}
+                Obsidian plugin to sync your vault on desktop or mobile.
+              </p>
+
+              <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: 'var(--border)' }}>
+                <CredentialRow label="Server URL" value={creds.serverUrl} />
+                <CredentialRow label="Database" value={creds.database} />
+                <CredentialRow label="Username" value={creds.username} />
+                <CredentialRow label="Password" value={creds.password} secret />
+              </div>
+
+              <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--bg-base)', border: '1px solid var(--border)' }}>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  LiveSync plugin settings
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  In Obsidian → Self-hosted LiveSync → Remote Database Configuration, set:
+                  <br />• <strong>URI</strong>: the Server URL above
+                  <br />• <strong>Username / Password</strong>: as shown
+                  <br />• <strong>Database name</strong>: the Database value above
+                  <br />• Leave <strong>Passphrase</strong> empty unless you want end-to-end encryption
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  If Obsidian shows "access forbidden", click Repair to re-configure CouchDB access.
+                </p>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button variant="ghost" size="sm" loading={repairing} onClick={repairConnection}>
+                    {repairing ? t('sync.repairing') : t('sync.repair')}
+                  </Button>
+                  <Button variant="secondary" size="sm" loading={regenerating} onClick={regenerate}>
+                    {t('sync.regenerate')}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Community Plugins */}
+          {selected === 'plugins' && (
+            <CommunityPluginsCard
+              pluginData={pluginData}
+              saving={pluginSaving}
+              onInstall={handleInstall}
+              onUninstall={handleUninstall}
+              onToggle={handleToggle}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
