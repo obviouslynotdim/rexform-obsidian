@@ -314,31 +314,87 @@ function OutlineIcon() {
   );
 }
 
-function OutlinePanel({ outline, onJump }: { outline: OutlineItem[]; onJump: (o: OutlineItem) => void }) {
-  if (outline.length === 0) {
-    return <p style={{ padding: 12, fontSize: 12.5, color: 'var(--text-muted)' }}>No headings</p>;
+interface OutlineNode extends OutlineItem { children: OutlineNode[] }
+
+// Nest each heading under the nearest preceding heading of a LOWER level. Skipped
+// levels still nest sensibly (an H4 after an H2 with no H3 lands under the H2).
+function buildOutlineTree(items: OutlineItem[]): OutlineNode[] {
+  const roots: OutlineNode[] = [];
+  const stack: OutlineNode[] = [];
+  for (const it of items) {
+    const node: OutlineNode = { ...it, children: [] };
+    while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();
+    if (stack.length) stack[stack.length - 1].children.push(node);
+    else roots.push(node);
+    stack.push(node);
   }
-  const min = Math.min(...outline.map((o) => o.level));
+  return roots;
+}
+
+function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number; onJump: (o: OutlineItem) => void }) {
+  const [open, setOpen] = useState(true);
+  const hasKids = node.children.length > 0;
   return (
-    <div style={{ padding: '4px 4px 12px', overflowY: 'auto' }}>
-      {outline.map((o) => (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: depth === 0 ? 4 : 0 }}>
+        {hasKids ? (
+          <button
+            onClick={() => setOpen((o) => !o)}
+            aria-label={open ? 'Collapse' : 'Expand'}
+            style={{
+              width: 14, height: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+              color: 'var(--text-muted)', transition: 'color .12s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+          >
+            <svg
+              width="10" height="10" viewBox="0 0 10 10"
+              style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}
+            >
+              <polyline points="3,2 7,5 3,8" stroke="currentColor" strokeWidth="1.4"
+                fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        ) : (
+          <span style={{ width: 14, flexShrink: 0 }} />
+        )}
         <button
-          key={o.id}
-          onClick={() => onJump(o)}
-          title={o.text}
+          onClick={() => onJump(node)}
+          title={node.text}
           style={{
-            display: 'block', width: '100%', textAlign: 'left',
-            paddingLeft: 10 + (o.level - min) * 14,
-            paddingRight: 8, paddingTop: 3, paddingBottom: 3,
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            flex: 1, minWidth: 0, textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '2px 0',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
           onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
         >
-          {o.text}
+          {node.text}
         </button>
+      </div>
+
+      {hasKids && open && (
+        <div style={{ marginLeft: 10, borderLeft: '1px solid var(--border)', paddingLeft: 6 }}>
+          {node.children.map((c) => (
+            <OutlineRow key={c.id} node={c} depth={depth + 1} onJump={onJump} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutlinePanel({ outline, onJump }: { outline: OutlineItem[]; onJump: (o: OutlineItem) => void }) {
+  const tree = useMemo(() => buildOutlineTree(outline), [outline]);
+  if (outline.length === 0) {
+    return <p style={{ padding: 12, fontSize: 12.5, color: 'var(--text-muted)' }}>No headings</p>;
+  }
+  return (
+    <div style={{ padding: '4px 4px 12px', overflowY: 'auto' }}>
+      {tree.map((n) => (
+        <OutlineRow key={n.id} node={n} depth={0} onJump={onJump} />
       ))}
     </div>
   );
@@ -404,6 +460,40 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   useEffect(() => {
     localStorage.setItem('notes.outlineOpen', outlineOpen ? '1' : '0');
   }, [outlineOpen]);
+
+  // Resizable Outline column — width owned here, dragged from its left edge,
+  // clamped and persisted. The panel sits flush to the pane's right edge, so its
+  // width is (viewport right edge − cursor x).
+  const [outlineWidth, setOutlineWidth] = useState(240);
+  const resizingOutlineRef = useRef(false);
+  useEffect(() => {
+    const s = localStorage.getItem('notes.outlineWidth');
+    if (s) {
+      const n = parseInt(s, 10);
+      if (!Number.isNaN(n)) setOutlineWidth(Math.min(480, Math.max(180, n)));
+    }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('notes.outlineWidth', String(outlineWidth));
+  }, [outlineWidth]);
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizingOutlineRef.current) return;
+      setOutlineWidth(Math.min(480, Math.max(180, window.innerWidth - e.clientX)));
+    }
+    function onUp() {
+      if (!resizingOutlineRef.current) return;
+      resizingOutlineRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   // Smooth-scroll the reading view to a heading. Primary lookup is the ordinal
   // id; the DOM-order fallback keeps the click working even if an id ever fails
@@ -588,7 +678,13 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
           {viewMode === 'reading' ? (
             <div
               style={{ cursor: canWrite ? 'text' : 'default', minHeight: '40vh', fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}
-              onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; if (canWrite) setViewMode('source'); }}
+              onClick={(e) => {
+                const t = e.target as HTMLElement;
+                // A link navigates and a heading's collapse summary/chevron folds
+                // its section — neither should fall through to opening Source mode.
+                if (t.closest('a') || t.closest('summary')) return;
+                if (canWrite) setViewMode('source');
+              }}
             >
               {body ? (
                 <div className="prose prose-invert">
@@ -649,11 +745,26 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
           <OutlineIcon />
         </button>
 
+        {/* Drag handle to resize the Outline column (grabbed from its left edge) */}
+        {outlineOpen && (
+          <div
+            onMouseDown={() => {
+              resizingOutlineRef.current = true;
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+            }}
+            title="Drag to resize"
+            style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: 'transparent' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(127,119,221,0.3)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          />
+        )}
+
         {/* Outline column */}
         {outlineOpen && (
           <aside
             style={{
-              width: 240, flexShrink: 0, borderLeft: '1px solid var(--border)',
+              width: outlineWidth, flexShrink: 0, borderLeft: '1px solid var(--border)',
               background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
             }}
