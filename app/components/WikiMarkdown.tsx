@@ -264,7 +264,9 @@ export default function WikiMarkdown({ children }: { children: string }) {
 
   return (
     <>
-      <style>{FOLD_STYLES}</style>
+      {/* dangerouslySetInnerHTML so the `>` combinators aren't HTML-escaped on
+          the server (which mismatches the client and triggers a hydration error). */}
+      <style dangerouslySetInnerHTML={{ __html: FOLD_STYLES }} />
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeCollapsibleHeadings]}
