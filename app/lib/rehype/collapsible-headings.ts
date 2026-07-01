@@ -22,7 +22,7 @@ function makeChevron(): ElementContent {
  * The heading lives inside <summary>; sub-headings fold independently via
  * recursion. "Equal or higher priority" = numerically ≤ current level.
  */
-function wrapSections(nodes: RootContent[]): ElementContent[] {
+function wrapSections(nodes: RootContent[], counter: { n: number }): ElementContent[] {
   const result: ElementContent[] = [];
   let i = 0;
 
@@ -31,6 +31,13 @@ function wrapSections(nodes: RootContent[]): ElementContent[] {
     const level = headingLevel(node);
 
     if (level !== null) {
+      // Stamp a document-order id (`h-0`, `h-1`, …) BEFORE recursing into the
+      // body, so the ordinal matches the Outline panel's ordinal — both count
+      // headings top-to-bottom over the same source, so outline clicks resolve
+      // via getElementById without any slug/text matching.
+      const el = node as Element;
+      el.properties = { ...(el.properties ?? {}), id: `h-${counter.n++}` };
+
       // Collect everything after this heading until the next same-or-higher heading.
       const body: RootContent[] = [];
       i++;
@@ -42,7 +49,7 @@ function wrapSections(nodes: RootContent[]): ElementContent[] {
       }
 
       // Wrap sub-headings inside the collected body before building this node.
-      const wrappedBody = wrapSections(body);
+      const wrappedBody = wrapSections(body, counter);
 
       const details: ElementContent = {
         type: 'element',
@@ -73,5 +80,6 @@ function wrapSections(nodes: RootContent[]): ElementContent[] {
 }
 
 export const rehypeCollapsibleHeadings: Plugin<[], Root> = () => (tree) => {
-  tree.children = wrapSections(tree.children) as RootContent[];
+  // Fresh counter per run so ids restart at h-0 for every note render.
+  tree.children = wrapSections(tree.children, { n: 0 }) as RootContent[];
 };

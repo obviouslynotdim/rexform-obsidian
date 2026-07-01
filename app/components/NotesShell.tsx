@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import useSWR from 'swr';
 import { TabsProvider, useTabsContext } from '@/context/TabsContext';
@@ -90,9 +90,45 @@ function SearchIcon() {
 function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Resizable file/note split — the sidebar wrapper owns the width; NotesSidebar
+  // is w-full so it fills whatever we set here. Clamped and persisted.
+  const [sidebarWidth, setSidebarWidth] = useState(288); // 288px = the old w-72
+  const resizingRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
+
+  useEffect(() => {
+    const s = localStorage.getItem('notes.sidebarWidth');
+    if (s) {
+      const n = parseInt(s, 10);
+      if (!Number.isNaN(n)) setSidebarWidth(Math.min(560, Math.max(200, n)));
+    }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('notes.sidebarWidth', String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  // Drag-to-resize: the sidebar starts after the 40px icon strip, so its width
+  // is the cursor's clientX minus that offset, clamped to a sane range.
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizingRef.current) return;
+      setSidebarWidth(Math.min(560, Math.max(200, e.clientX - 40)));
+    }
+    function onUp() {
+      if (!resizingRef.current) return;
+      resizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
     revalidateOnFocus: false,
@@ -197,10 +233,32 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      {/* Sidebar */}
-      <div style={{ display: sidebarVisible ? 'flex' : 'none', flexDirection: 'column' }}>
+      {/* Sidebar — width owned here so it can be dragged; NotesSidebar is w-full. */}
+      <div
+        style={{
+          display: sidebarVisible ? 'flex' : 'none',
+          flexDirection: 'column',
+          width: sidebarWidth,
+          flexShrink: 0,
+        }}
+      >
         <NotesSidebar />
       </div>
+
+      {/* Drag handle between the sidebar and the note column */}
+      {sidebarVisible && (
+        <div
+          onMouseDown={() => {
+            resizingRef.current = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          }}
+          title="Drag to resize"
+          style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: 'transparent' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(127,119,221,0.3)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        />
+      )}
 
       {/* Main content column */}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>

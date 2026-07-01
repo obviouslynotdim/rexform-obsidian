@@ -299,6 +299,51 @@ function AddItemInput({ placeholder, onAdd }: { placeholder: string; onAdd: (val
   );
 }
 
+// ─── Outline panel ───────────────────────────────────────────────────────────
+
+interface OutlineItem { level: number; text: string; index: number; id: string }
+
+function OutlineIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <line x1="2"  y1="3.5"  x2="14" y2="3.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="4.5" y1="6.5"  x2="14" y2="6.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="4.5" y1="9.5"  x2="14" y2="9.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="2"  y1="12.5" x2="14" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function OutlinePanel({ outline, onJump }: { outline: OutlineItem[]; onJump: (o: OutlineItem) => void }) {
+  if (outline.length === 0) {
+    return <p style={{ padding: 12, fontSize: 12.5, color: 'var(--text-muted)' }}>No headings</p>;
+  }
+  const min = Math.min(...outline.map((o) => o.level));
+  return (
+    <div style={{ padding: '4px 4px 12px', overflowY: 'auto' }}>
+      {outline.map((o) => (
+        <button
+          key={o.id}
+          onClick={() => onJump(o)}
+          title={o.text}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left',
+            paddingLeft: 10 + (o.level - min) * 14,
+            paddingRight: 8, paddingTop: 3, paddingBottom: 3,
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.4,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+        >
+          {o.text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Note view ──────────────────────────────────────────────────────────────
 
 export default function NoteViewClient({ noteId, title, content, folder, frontmatter: initialFrontmatter }: Props) {
@@ -325,6 +370,51 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     const p = parseFrontmatter(doc);
     return { frontmatter: normalizeFrontmatter(p.frontmatter), content: p.content };
   }, [doc]);
+
+  // Outline — every ATX heading in the body, in document order. The ordinal
+  // `index` matches the `h-<n>` id stamped on reading-mode headings by the
+  // collapsible-headings rehype plugin, so a click resolves via getElementById.
+  // Fenced code blocks are skipped so `#comment` lines aren't treated as headings.
+  const outline = useMemo<OutlineItem[]>(() => {
+    const items: OutlineItem[] = [];
+    let inFence = false;
+    for (const ln of body.split('\n')) {
+      if (/^\s*(```|~~~)/.test(ln)) { inFence = !inFence; continue; }
+      if (inFence) continue;
+      const m = /^\s{0,3}(#{1,6})\s+(.+?)\s*$/.exec(ln);
+      if (!m) continue;
+      const idx = items.length;
+      items.push({
+        level: m[1].length,
+        text: m[2].replace(/\s*#+\s*$/, '').replace(/[*_`~]/g, '').trim(), // strip closing #, inline marks
+        index: idx,
+        id: `h-${idx}`,
+      });
+    }
+    return items;
+  }, [body]);
+
+  // Outline panel open/collapsed — Obsidian-style, closed by default until the
+  // user opens it; their choice is then persisted across reloads.
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  useEffect(() => {
+    const s = localStorage.getItem('notes.outlineOpen');
+    if (s != null) setOutlineOpen(s === '1');
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('notes.outlineOpen', outlineOpen ? '1' : '0');
+  }, [outlineOpen]);
+
+  // Smooth-scroll the reading view to a heading. Primary lookup is the ordinal
+  // id; the DOM-order fallback keeps the click working even if an id ever fails
+  // to line up. (Only resolves in reading mode, where the headings are rendered.)
+  const handleOutlineJump = useCallback((o: OutlineItem) => {
+    const headings = document.querySelectorAll<HTMLElement>(
+      '.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6'
+    );
+    const el = document.getElementById(o.id) ?? headings[o.index];
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const docSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -459,8 +549,12 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
+      {/* Note area + right-hand Outline column. The split is a non-scrolling
+          layer so the Outline toggle can pin to the pane's top-right. */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
+
       {/* Scrollable note body — NoteViewClient owns its own scroll now. */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 32px' }}>
           {/* Dim, non-editable breadcrumb: folder path + filename. Purely
               contextual — renaming still happens via the sidebar only. The
@@ -533,6 +627,49 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             </div>
           )}
         </div>
+      </div>
+
+        {/* Outline toggle — pinned to the pane's top-right (Obsidian-style).
+            Lives in the non-scrolling split layer so it stays put while the
+            note scrolls; floats over the Outline header when the panel is open. */}
+        <button
+          onClick={() => setOutlineOpen((v) => !v)}
+          title="Outline"
+          style={{
+            position: 'absolute', top: 8, right: 10, zIndex: 3,
+            width: 30, height: 30, borderRadius: 6, border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: outlineOpen ? 'rgba(255,255,255,0.10)' : 'var(--bg-base)',
+            color: outlineOpen ? '#fff' : 'var(--text-muted)',
+            transition: 'background 0.12s, color 0.12s',
+          }}
+          onMouseEnter={(e) => { if (!outlineOpen) e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          onMouseLeave={(e) => { if (!outlineOpen) e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <OutlineIcon />
+        </button>
+
+        {/* Outline column */}
+        {outlineOpen && (
+          <aside
+            style={{
+              width: 240, flexShrink: 0, borderLeft: '1px solid var(--border)',
+              background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '10px 46px 10px 12px', // right pad clears the floating toggle
+                fontSize: 12, fontWeight: 600, letterSpacing: '0.04em',
+                textTransform: 'uppercase', color: 'var(--text-secondary)', flexShrink: 0,
+              }}
+            >
+              Outline
+            </div>
+            <OutlinePanel outline={outline} onJump={handleOutlineJump} />
+          </aside>
+        )}
       </div>
 
       {/* Status bar — pinned to the bottom of the note pane, does not scroll. */}
