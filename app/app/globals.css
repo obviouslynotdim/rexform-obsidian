@@ -75,6 +75,17 @@ body {
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.3em;
 }
+/* Even, consistent gap under every H2 rule. The heading's own margin-bottom is
+   zeroed inside the collapsible-fold summary, so the visible gap would otherwise
+   depend on whatever element follows (a <p>, a <ul>, or a nested sub-heading —
+   each with a different top margin). Anchor a single fixed gap on the H2 summary
+   row and neutralize the next element's top margin so they never stack. */
+.prose details.rexform-fold > summary:has(> h2) {
+  margin-bottom: 0.8em;
+}
+.prose details.rexform-fold > summary:has(> h2) + * {
+  margin-top: 0;
+}
 .prose h3 {
   font-size: 1.25em;
 }

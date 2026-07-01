@@ -153,7 +153,9 @@ const FOLD_STYLES = `
     display: flex;
     align-items: center;
     width: 100%;
-    gap: 4px;
+    /* Anchor the chevron in the left gutter so heading text starts flush
+       with the body text edge (never shifted right by the arrow). */
+    position: relative;
   }
   details.rexform-fold > summary::marker,
   details.rexform-fold > summary::-webkit-details-marker {
@@ -165,21 +167,27 @@ const FOLD_STYLES = `
     flex: 1;
     margin: 0;
   }
+  /* Chevron lives in the left margin (out of flow), dim like Obsidian and
+     hidden until the heading row is hovered. */
   .rexform-fold-chevron {
+    position: absolute;
+    left: -2.1em;
+    top: 50%;
+    transform: translateY(-50%);
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--text-muted);
     opacity: 0;
-    flex-shrink: 0;
     display: inline-block;
-    transition: transform 0.15s ease, opacity 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.12s ease, color 0.12s ease;
     user-select: none;
     line-height: 1;
   }
   details.rexform-fold[open] > summary .rexform-fold-chevron {
-    transform: rotate(90deg);
+    transform: translateY(-50%) rotate(90deg);
   }
   details.rexform-fold > summary:hover .rexform-fold-chevron {
     opacity: 1;
+    color: var(--text-secondary);
   }
 `;
 

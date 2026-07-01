@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
@@ -145,7 +145,7 @@ function PropertiesPanel({
     setDraftValue('');
   };
 
-  if (!canWrite && !hasProps) return null;
+  if (!hasProps) return null;
 
   const labelStyle: React.CSSProperties = {
     width: 120, flexShrink: 0, fontSize: 12.5, color: 'var(--text-muted)',
@@ -303,43 +303,56 @@ function AddItemInput({ placeholder, onAdd }: { placeholder: string; onAdd: (val
 
 export default function NoteViewClient({ noteId, title, content, folder, frontmatter: initialFrontmatter }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('reading');
-  const [liveContent, setLiveContent] = useState(content);
-  const [frontmatter, setFrontmatter] = useState<Frontmatter>(() => normalizeFrontmatter(initialFrontmatter));
+  // Single source of truth: the FULL raw document (frontmatter + body). The
+  // Properties panel, the Source/Live editor, and the reading view ALL derive
+  // from this one string, so they can never desync. The editor edits it directly
+  // (raw `---` block included); the panel edits it by recombining with the body.
+  const [doc, setDoc] = useState(() =>
+    combineFrontmatter(normalizeFrontmatter(initialFrontmatter), content)
+  );
+  // Bumped only on panel / rename edits to force the editor to remount and re-read
+  // `doc`. MUST NOT bump on editor onChange — that would remount per keystroke
+  // (flicker + lost caret).
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const isSavingRef = useRef(false);
   const lastEditMode = useRef<'source' | 'live'>('source');
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
-  // Live body content (frontmatter-stripped), read by the debounced properties
-  // saver without needing to rebuild the saver on every keystroke.
-  const liveContentRef = useRef(content);
-  useEffect(() => { liveContentRef.current = liveContent; }, [liveContent]);
+  // Derived frontmatter + body — the only readers of `doc`'s parts. Reading mode
+  // and the status-bar counts use `body` (never `doc`, else raw YAML would show).
+  const { frontmatter, content: body } = useMemo(() => {
+    const p = parseFrontmatter(doc);
+    return { frontmatter: normalizeFrontmatter(p.frontmatter), content: p.content };
+  }, [doc]);
 
-  const fmSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const docSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: fileSettings } = useSWR<FileSettings>('/api/user/settings', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });
 
-  // Persist frontmatter by re-combining it with the current body and saving the
-  // whole document — this is the round-trip that stops edits from wiping YAML.
-  const persistFrontmatter = useCallback((fm: Frontmatter) => {
-    if (fmSaveTimer.current) clearTimeout(fmSaveTimer.current);
-    fmSaveTimer.current = setTimeout(() => {
-      const body = combineFrontmatter(fm, liveContentRef.current);
+  // Debounced persistence of the WHOLE document. Used by the panel; the editor
+  // has its own autosave. PUTting the full doc is the round-trip that stops a
+  // panel edit from dropping the body and a body edit from wiping the YAML.
+  const persistDoc = useCallback((fullDoc: string) => {
+    if (docSaveTimer.current) clearTimeout(docSaveTimer.current);
+    docSaveTimer.current = setTimeout(() => {
       fetch(`/api/notes/${encodeURIComponent(noteId)}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: body }),
+        body: JSON.stringify({ content: fullDoc }),
       }).catch(() => {});
     }, 600);
   }, [noteId]);
 
   const handleFrontmatterChange = useCallback((next: Frontmatter) => {
-    setFrontmatter(next);
-    persistFrontmatter(next);
-  }, [persistFrontmatter]);
+    const nextDoc = combineFrontmatter(next, body);
+    setDoc(nextDoc);
+    setEditorEpoch((e) => e + 1);
+    persistDoc(nextDoc);
+  }, [body, persistDoc]);
 
   // Escape exits any editing mode back to Reading.
   useEffect(() => {
@@ -379,14 +392,16 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     // there's no _rev conflict with the just-deleted old doc. Frontmatter is
     // re-attached so the rename doesn't drop it.
     if (fileSettings?.syncHeadingWithFilename) {
-      const synced = syncHeadingWithTitle(liveContent, name);
-      if (synced !== liveContent) {
-        setLiveContent(synced);
+      const synced = syncHeadingWithTitle(body, name);
+      if (synced !== body) {
+        const syncedDoc = combineFrontmatter(frontmatter, synced);
+        setDoc(syncedDoc);
+        setEditorEpoch((e) => e + 1);
         try {
           await fetch(`/api/notes/${encodeURIComponent(data.id)}/update`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: combineFrontmatter(frontmatter, synced) }),
+            body: JSON.stringify({ content: syncedDoc }),
           });
         } catch { /* best-effort; rename already succeeded */ }
       }
@@ -431,8 +446,8 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   );
   const backlinkCount = blData?.backlinks?.length ?? 0;
 
-  const wordCount = liveContent.trim() ? liveContent.trim().split(/\s+/).filter(Boolean).length : 0;
-  const charCount = liveContent.length;
+  const wordCount = body.trim() ? body.trim().split(/\s+/).filter(Boolean).length : 0;
+  const charCount = body.length;
 
   function handleModeChange(mode: ViewMode) {
     // Viewers can't edit, so Source / Live Preview are unavailable to them.
@@ -481,9 +496,9 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
               style={{ cursor: canWrite ? 'text' : 'default', minHeight: '40vh', fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}
               onClick={(e) => { if ((e.target as HTMLElement).closest('a')) return; if (canWrite) setViewMode('source'); }}
             >
-              {liveContent ? (
+              {body ? (
                 <div className="prose prose-invert">
-                  <WikiMarkdown>{liveContent}</WikiMarkdown>
+                  <WikiMarkdown>{body}</WikiMarkdown>
                 </div>
               ) : (
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -493,24 +508,19 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             </div>
           ) : (
             <div style={{ height: '60vh' }}>
-              {/* Pass the full document (frontmatter + body combined) so Source/Live
-                  mode shows the raw --- block. The onChange handler re-parses it so
-                  liveContent stays body-only for reading mode and the status bar. */}
+              {/* The editor owns the FULL raw document (frontmatter + body). Its
+                  onChange feeds `doc` directly — no split — so the raw `---` block
+                  is editable in Source and `doc` stays the single source of truth.
+                  `key` remounts it only when the panel/rename mutates `doc`
+                  out-of-band (editorEpoch), never on a keystroke. */}
               <NoteEditor
+                key={editorEpoch}
                 noteId={noteId}
                 viewMode={viewMode}
-                initialContent={combineFrontmatter(frontmatter, liveContent)}
+                initialContent={doc}
                 currentTitle={title}
-                onChange={(fullText) => {
-                  const { content: body, frontmatter: fm } = parseFrontmatter(fullText);
-                  setLiveContent(body);
-                  setFrontmatter(fm);
-                }}
-                onSave={(fullText) => {
-                  const { content: body, frontmatter: fm } = parseFrontmatter(fullText);
-                  setLiveContent(body);
-                  setFrontmatter(fm);
-                }}
+                onChange={setDoc}
+                onSave={setDoc}
                 onTitleChange={(newTitle, newId) => {
                   // Direction B — the editor renamed the file from its H1.
                   // Reconcile tab + URL + sidebar with the new id/title.
