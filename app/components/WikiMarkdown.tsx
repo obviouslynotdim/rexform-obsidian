@@ -151,19 +151,27 @@ const FOLD_STYLES = `
     list-style: none;
     cursor: pointer;
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    width: 100%;
     gap: 4px;
   }
   details.rexform-fold > summary::marker,
   details.rexform-fold > summary::-webkit-details-marker {
     display: none;
   }
+  /* Let the heading fill the row so its prose border-bottom (the divider
+     under H1/H2) spans the full column width, not just the text. */
+  details.rexform-fold > summary > :is(h1, h2, h3, h4, h5, h6) {
+    flex: 1;
+    margin: 0;
+  }
   .rexform-fold-chevron {
-    font-size: 9px;
-    color: rgba(255, 255, 255, 0.28);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.9);
+    opacity: 0;
     flex-shrink: 0;
     display: inline-block;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, opacity 0.15s ease;
     user-select: none;
     line-height: 1;
   }
@@ -171,7 +179,7 @@ const FOLD_STYLES = `
     transform: rotate(90deg);
   }
   details.rexform-fold > summary:hover .rexform-fold-chevron {
-    color: rgba(255, 255, 255, 0.55);
+    opacity: 1;
   }
 `;
 

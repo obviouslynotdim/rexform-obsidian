@@ -301,7 +301,7 @@ function AddItemInput({ placeholder, onAdd }: { placeholder: string; onAdd: (val
 
 // ─── Note view ──────────────────────────────────────────────────────────────
 
-export default function NoteViewClient({ noteId, title, content, folder: _folder, frontmatter: initialFrontmatter }: Props) {
+export default function NoteViewClient({ noteId, title, content, folder, frontmatter: initialFrontmatter }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('reading');
   const [liveContent, setLiveContent] = useState(content);
   const [frontmatter, setFrontmatter] = useState<Frontmatter>(() => normalizeFrontmatter(initialFrontmatter));
@@ -447,13 +447,33 @@ export default function NoteViewClient({ noteId, title, content, folder: _folder
       {/* Scrollable note body — NoteViewClient owns its own scroll now. */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 32px' }}>
-          {/* No title bar — Obsidian-style: the body's first `# H1` is the title.
-              Frontmatter properties render above it in an editable panel. */}
-          <PropertiesPanel
-            frontmatter={frontmatter}
-            canWrite={canWrite}
-            onChange={handleFrontmatterChange}
-          />
+          {/* Dim, non-editable breadcrumb: folder path + filename. Purely
+              contextual — renaming still happens via the sidebar only. The
+              body's `# H1` below is ordinary markdown content, not connected
+              to the filename (no sync). */}
+          <div
+            style={{
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.5)',
+              marginBottom: 16,
+              userSelect: 'none',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {[...folder.split('/').filter(Boolean), title].join(' / ')}
+          </div>
+
+          {/* Properties panel — hidden in Source mode, where the raw `---`
+              block in the editor is already the frontmatter UI. */}
+          {viewMode !== 'source' && (
+            <PropertiesPanel
+              frontmatter={frontmatter}
+              canWrite={canWrite}
+              onChange={handleFrontmatterChange}
+            />
+          )}
 
           {/* Body */}
           {viewMode === 'reading' ? (
