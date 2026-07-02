@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
 import { useTabsContext } from '@/context/TabsContext';
+import { useRightPanel } from '@/context/RightPanelContext';
+import { type OutlineItem } from '@/components/OutlinePanel';
 import { combineFrontmatter, parseFrontmatter, type Frontmatter } from '@/lib/frontmatter';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -299,108 +301,9 @@ function AddItemInput({ placeholder, onAdd }: { placeholder: string; onAdd: (val
   );
 }
 
-// ─── Outline panel ───────────────────────────────────────────────────────────
-
-interface OutlineItem { level: number; text: string; index: number; id: string }
-
-function OutlineIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <line x1="2"  y1="3.5"  x2="14" y2="3.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="4.5" y1="6.5"  x2="14" y2="6.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="4.5" y1="9.5"  x2="14" y2="9.5"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <line x1="2"  y1="12.5" x2="14" y2="12.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-interface OutlineNode extends OutlineItem { children: OutlineNode[] }
-
-// Nest each heading under the nearest preceding heading of a LOWER level. Skipped
-// levels still nest sensibly (an H4 after an H2 with no H3 lands under the H2).
-function buildOutlineTree(items: OutlineItem[]): OutlineNode[] {
-  const roots: OutlineNode[] = [];
-  const stack: OutlineNode[] = [];
-  for (const it of items) {
-    const node: OutlineNode = { ...it, children: [] };
-    while (stack.length && stack[stack.length - 1].level >= node.level) stack.pop();
-    if (stack.length) stack[stack.length - 1].children.push(node);
-    else roots.push(node);
-    stack.push(node);
-  }
-  return roots;
-}
-
-function OutlineRow({ node, depth, onJump }: { node: OutlineNode; depth: number; onJump: (o: OutlineItem) => void }) {
-  const [open, setOpen] = useState(true);
-  const hasKids = node.children.length > 0;
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: depth === 0 ? 4 : 0 }}>
-        {hasKids ? (
-          <button
-            onClick={() => setOpen((o) => !o)}
-            aria-label={open ? 'Collapse' : 'Expand'}
-            style={{
-              width: 14, height: 14, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-              color: 'var(--text-muted)', transition: 'color .12s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-          >
-            <svg
-              width="10" height="10" viewBox="0 0 10 10"
-              style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}
-            >
-              <polyline points="3,2 7,5 3,8" stroke="currentColor" strokeWidth="1.4"
-                fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        ) : (
-          <span style={{ width: 14, flexShrink: 0 }} />
-        )}
-        <button
-          onClick={() => onJump(node)}
-          title={node.text}
-          style={{
-            flex: 1, minWidth: 0, textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer',
-            color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '2px 0',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
-        >
-          {node.text}
-        </button>
-      </div>
-
-      {hasKids && open && (
-        <div style={{ marginLeft: 10, borderLeft: '1px solid var(--border)', paddingLeft: 6 }}>
-          {node.children.map((c) => (
-            <OutlineRow key={c.id} node={c} depth={depth + 1} onJump={onJump} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OutlinePanel({ outline, onJump }: { outline: OutlineItem[]; onJump: (o: OutlineItem) => void }) {
-  const tree = useMemo(() => buildOutlineTree(outline), [outline]);
-  if (outline.length === 0) {
-    return <p style={{ padding: 12, fontSize: 12.5, color: 'var(--text-muted)' }}>No headings</p>;
-  }
-  return (
-    <div style={{ padding: '4px 4px 12px', overflowY: 'auto' }}>
-      {tree.map((n) => (
-        <OutlineRow key={n.id} node={n} depth={0} onJump={onJump} />
-      ))}
-    </div>
-  );
-}
-
 // ─── Note view ──────────────────────────────────────────────────────────────
+// (The Outline panel itself moved to components/OutlinePanel.tsx — it renders
+// in NotesShell's right column; this file publishes the data via context.)
 
 export default function NoteViewClient({ noteId, title, content, folder, frontmatter: initialFrontmatter }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('reading');
@@ -450,51 +353,6 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     return items;
   }, [body]);
 
-  // Outline panel open/collapsed — Obsidian-style, closed by default until the
-  // user opens it; their choice is then persisted across reloads.
-  const [outlineOpen, setOutlineOpen] = useState(false);
-  useEffect(() => {
-    const s = localStorage.getItem('notes.outlineOpen');
-    if (s != null) setOutlineOpen(s === '1');
-  }, []);
-  useEffect(() => {
-    localStorage.setItem('notes.outlineOpen', outlineOpen ? '1' : '0');
-  }, [outlineOpen]);
-
-  // Resizable Outline column — width owned here, dragged from its left edge,
-  // clamped and persisted. The panel sits flush to the pane's right edge, so its
-  // width is (viewport right edge − cursor x).
-  const [outlineWidth, setOutlineWidth] = useState(240);
-  const resizingOutlineRef = useRef(false);
-  useEffect(() => {
-    const s = localStorage.getItem('notes.outlineWidth');
-    if (s) {
-      const n = parseInt(s, 10);
-      if (!Number.isNaN(n)) setOutlineWidth(Math.min(480, Math.max(180, n)));
-    }
-  }, []);
-  useEffect(() => {
-    localStorage.setItem('notes.outlineWidth', String(outlineWidth));
-  }, [outlineWidth]);
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!resizingOutlineRef.current) return;
-      setOutlineWidth(Math.min(480, Math.max(180, window.innerWidth - e.clientX)));
-    }
-    function onUp() {
-      if (!resizingOutlineRef.current) return;
-      resizingOutlineRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, []);
-
   // Smooth-scroll the reading view to a heading. Primary lookup is the ordinal
   // id; the DOM-order fallback keeps the click working even if an id ever fails
   // to line up. (Only resolves in reading mode, where the headings are rendered.)
@@ -505,6 +363,19 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     const el = document.getElementById(o.id) ?? headings[o.index];
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  // Publish the outline (+ noteId for backlinks) to NotesShell's right column.
+  // `setPanel` is useState's stable setter, so this effect re-runs only when the
+  // outline/note actually change — depending on the context VALUE would loop
+  // (publish → new context value → effect re-runs → publish …).
+  const setPanel = useRightPanel()?.setPanel;
+  useEffect(() => {
+    setPanel?.({ noteId, outline, onJump: handleOutlineJump });
+  }, [setPanel, noteId, outline, handleOutlineJump]);
+  useEffect(() => {
+    if (!setPanel) return;
+    return () => setPanel(null); // leaving the note → right column empties
+  }, [setPanel]);
 
   const docSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -639,12 +510,10 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* Note area + right-hand Outline column. The split is a non-scrolling
-          layer so the Outline toggle can pin to the pane's top-right. */}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-
-      {/* Scrollable note body — NoteViewClient owns its own scroll now. */}
-      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+      {/* Scrollable note body — NoteViewClient owns its own scroll. The Outline
+          + Backlinks now live in NotesShell's right column (a real flex sibling),
+          so nothing floats over or covers the note. */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 32px' }}>
           {/* Dim, non-editable breadcrumb: folder path + filename. Purely
               contextual — renaming still happens via the sidebar only. The
@@ -723,64 +592,6 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             </div>
           )}
         </div>
-      </div>
-
-        {/* Outline toggle — pinned to the pane's top-right (Obsidian-style).
-            Lives in the non-scrolling split layer so it stays put while the
-            note scrolls; floats over the Outline header when the panel is open. */}
-        <button
-          onClick={() => setOutlineOpen((v) => !v)}
-          title="Outline"
-          style={{
-            position: 'absolute', top: 8, right: 10, zIndex: 3,
-            width: 30, height: 30, borderRadius: 6, border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: outlineOpen ? 'rgba(255,255,255,0.10)' : 'var(--bg-base)',
-            color: outlineOpen ? '#fff' : 'var(--text-muted)',
-            transition: 'background 0.12s, color 0.12s',
-          }}
-          onMouseEnter={(e) => { if (!outlineOpen) e.currentTarget.style.color = 'var(--text-secondary)'; }}
-          onMouseLeave={(e) => { if (!outlineOpen) e.currentTarget.style.color = 'var(--text-muted)'; }}
-        >
-          <OutlineIcon />
-        </button>
-
-        {/* Drag handle to resize the Outline column (grabbed from its left edge) */}
-        {outlineOpen && (
-          <div
-            onMouseDown={() => {
-              resizingOutlineRef.current = true;
-              document.body.style.cursor = 'col-resize';
-              document.body.style.userSelect = 'none';
-            }}
-            title="Drag to resize"
-            style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: 'transparent' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(127,119,221,0.3)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          />
-        )}
-
-        {/* Outline column */}
-        {outlineOpen && (
-          <aside
-            style={{
-              width: outlineWidth, flexShrink: 0, borderLeft: '1px solid var(--border)',
-              background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                padding: '10px 46px 10px 12px', // right pad clears the floating toggle
-                fontSize: 12, fontWeight: 600, letterSpacing: '0.04em',
-                textTransform: 'uppercase', color: 'var(--text-secondary)', flexShrink: 0,
-              }}
-            >
-              Outline
-            </div>
-            <OutlinePanel outline={outline} onJump={handleOutlineJump} />
-          </aside>
-        )}
       </div>
 
       {/* Status bar — pinned to the bottom of the note pane, does not scroll. */}

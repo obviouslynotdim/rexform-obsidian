@@ -123,9 +123,9 @@ export default function TabBar() {
   return (
     <div
       style={{
-        height: 36,
-        background: '#1a1b26',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        // Height/background/border are owned by the header row in NotesShell,
+        // which also holds the right-panel toggle to the right of the tabs.
+        height: '100%',
         display: 'flex',
         alignItems: 'stretch',
         overflowX: 'auto',

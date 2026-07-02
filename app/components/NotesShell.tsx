@@ -3,10 +3,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import useSWR from 'swr';
 import { TabsProvider, useTabsContext } from '@/context/TabsContext';
+import { RightPanelProvider, useRightPanel } from '@/context/RightPanelContext';
 import TabBar from '@/components/TabBar';
 import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
 import SearchModal from '@/components/SearchModal';
+import OutlinePanel, { OutlineIcon } from '@/components/OutlinePanel';
+import BacklinksPanel from '@/components/BacklinksPanel';
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ─── Icon strip SVGs ──────────────────────────────────────────────────────────
@@ -85,6 +88,41 @@ function SearchIcon() {
   );
 }
 
+// ─── Right sidebar content (Outline + Backlinks) ─────────────────────────────
+// Its own component so only IT re-renders when the note view republishes the
+// outline (per keystroke in edit modes) — the rest of the shell stays put.
+
+const panelHeaderStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  fontSize: 12, fontWeight: 600, letterSpacing: '0.04em',
+  textTransform: 'uppercase', color: 'var(--text-secondary)', flexShrink: 0,
+};
+
+function RightSidebarContent() {
+  const panel = useRightPanel()?.panel ?? null;
+  if (!panel) {
+    return (
+      <p style={{ padding: '14px 12px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+        Open a note to see its outline and backlinks.
+      </p>
+    );
+  }
+  return (
+    <>
+      <div style={panelHeaderStyle}>Outline</div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <OutlinePanel outline={panel.outline} onJump={panel.onJump} />
+      </div>
+      <div style={{ ...panelHeaderStyle, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        Backlinks
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <BacklinksPanel noteId={panel.noteId} />
+      </div>
+    </>
+  );
+}
+
 // ─── Shell inner (needs to be inside TabsProvider to call useTabsContext) ─────
 
 function NotesShellInner({ children }: { children: React.ReactNode }) {
@@ -94,6 +132,11 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   // is w-full so it fills whatever we set here. Clamped and persisted.
   const [sidebarWidth, setSidebarWidth] = useState(288); // 288px = the old w-72
   const resizingRef = useRef(false);
+  // Right panel (Outline + Backlinks) — a real flex column reserved in the row,
+  // never an overlay. Open state + width persisted, mirrored from the left split.
+  const [rightOpen, setRightOpen] = useState(true);
+  const [rightWidth, setRightWidth] = useState(280);
+  const resizingRightRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
@@ -104,21 +147,38 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
       const n = parseInt(s, 10);
       if (!Number.isNaN(n)) setSidebarWidth(Math.min(560, Math.max(200, n)));
     }
+    const ro = localStorage.getItem('notes.rightOpen');
+    if (ro != null) setRightOpen(ro === '1');
+    const rw = Number(localStorage.getItem('notes.rightWidth'));
+    if (rw >= 200 && rw <= 460) setRightWidth(rw);
   }, []);
   useEffect(() => {
     localStorage.setItem('notes.sidebarWidth', String(sidebarWidth));
   }, [sidebarWidth]);
+  useEffect(() => {
+    localStorage.setItem('notes.rightOpen', rightOpen ? '1' : '0');
+  }, [rightOpen]);
+  useEffect(() => {
+    localStorage.setItem('notes.rightWidth', String(rightWidth));
+  }, [rightWidth]);
 
   // Drag-to-resize: the sidebar starts after the 40px icon strip, so its width
-  // is the cursor's clientX minus that offset, clamped to a sane range.
+  // is the cursor's clientX minus that offset. The right panel is flush to the
+  // viewport's right edge, so its width is (viewport width − cursor x). Both
+  // clamped to sane ranges.
   useEffect(() => {
     function onMove(e: MouseEvent) {
-      if (!resizingRef.current) return;
-      setSidebarWidth(Math.min(560, Math.max(200, e.clientX - 40)));
+      if (resizingRef.current) {
+        setSidebarWidth(Math.min(560, Math.max(200, e.clientX - 40)));
+      }
+      if (resizingRightRef.current) {
+        setRightWidth(Math.min(460, Math.max(200, window.innerWidth - e.clientX)));
+      }
     }
     function onUp() {
-      if (!resizingRef.current) return;
+      if (!resizingRef.current && !resizingRightRef.current) return;
       resizingRef.current = false;
+      resizingRightRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
@@ -260,13 +320,68 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Main content column */}
+      {/* Main content column — flex:1 minWidth:0 so it SHRINKS to make room for
+          the right panel instead of being covered by it. */}
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, overflow: 'hidden' }}>
-        <TabBar />
+        {/* Header row: tabs + top-right controls (Obsidian-style). The right-
+            panel toggle lives HERE, in the flow — never floating over the note. */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'stretch',
+            height: 36,
+            flexShrink: 0,
+            background: '#1a1b26',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TabBar />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', padding: '0 6px', flexShrink: 0 }}>
+            <IconButton
+              icon={<OutlineIcon />}
+              active={rightOpen}
+              onClick={() => setRightOpen(v => !v)}
+              tooltip="Outline & backlinks"
+            />
+          </div>
+        </div>
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           {children}
         </div>
       </div>
+
+      {/* Right panel — a normal flex child with reserved width beside MAIN.
+          When closed, it (and its handle) unmounts so MAIN reclaims the width. */}
+      {rightOpen && (
+        <>
+          {/* Drag handle — the left-split handle mirrored */}
+          <div
+            onMouseDown={() => {
+              resizingRightRef.current = true;
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+            }}
+            title="Drag to resize"
+            style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: 'transparent', borderLeft: '1px solid rgba(255,255,255,0.06)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(127,119,221,0.3)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          />
+          <div
+            style={{
+              width: rightWidth,
+              flexShrink: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-surface)',
+            }}
+          >
+            <RightSidebarContent />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -274,7 +389,9 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
 export default function NotesShell({ children }: { children: React.ReactNode }) {
   return (
     <TabsProvider>
-      <NotesShellInner>{children}</NotesShellInner>
+      <RightPanelProvider>
+        <NotesShellInner>{children}</NotesShellInner>
+      </RightPanelProvider>
     </TabsProvider>
   );
 }
