@@ -98,6 +98,7 @@ export default function FileItem({
       <div
         tabIndex={0}
         title={tooltip}
+        data-note-id={node.id}
         draggable={canWrite && !renaming}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move';

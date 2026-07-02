@@ -84,6 +84,30 @@ export default function NotesSidebar({ currentId }: Props) {
   // Clear move state on navigation
   useEffect(() => { setMoving(null); }, [pathname]);
 
+  // "Reveal file in navigation" from the note's ⋮ menu: expand the note's
+  // ancestor folders, then scroll its row into view once they've rendered.
+  useEffect(() => {
+    function onReveal(e: Event) {
+      const id = (e as CustomEvent).detail?.id as string | undefined;
+      if (!id) return;
+      const note = notes.find((n) => n.id === id || n.id === id + '.md');
+      if (note) {
+        const ancestors = getAncestorFolders(note.path);
+        if (ancestors.length > 0) {
+          setExpanded((prev) => new Set([...Array.from(prev), ...ancestors]));
+        }
+      }
+      const targetId = note?.id ?? id;
+      setTimeout(() => {
+        document
+          .querySelector(`[data-note-id="${CSS.escape(targetId)}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 60);
+    }
+    window.addEventListener('rexform:reveal-note', onReveal);
+    return () => window.removeEventListener('rexform:reveal-note', onReveal);
+  }, [notes]);
+
   const toggleExpand = useCallback((path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);

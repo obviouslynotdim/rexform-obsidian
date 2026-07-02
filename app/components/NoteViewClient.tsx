@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
 import KanbanView from './KanbanView';
+import NoteMenu from './NoteMenu';
 import { isKanbanFrontmatter } from '@/lib/kanban';
 import { useTabsContext } from '@/context/TabsContext';
 import { useRightPanel } from '@/context/RightPanelContext';
@@ -325,6 +326,12 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
+  // Inline breadcrumb rename, started from the ⋮ menu. The cancel ref keeps
+  // the input's blur-commit from firing after Escape/Enter already settled it.
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const renameSettled = useRef(false);
+
   // Derived frontmatter + body — the only readers of `doc`'s parts. Reading mode
   // and the status-bar counts use `body` (never `doc`, else raw YAML would show).
   const { frontmatter, content: body } = useMemo(() => {
@@ -479,6 +486,16 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     router.refresh();
   }
 
+  // Delete from the ⋮ menu — same API the sidebar uses, plus tab cleanup.
+  async function handleDelete() {
+    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/delete`, { method: 'DELETE' });
+    if (!res.ok) { alert('Failed to delete note.'); return; }
+    tabsCtx?.closeTab(noteId);
+    mutate('/api/notes/tree');
+    router.push('/notes');
+  }
+
   const { data: vaultsData } = useSWR<VaultsData>('/api/vaults', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
@@ -524,6 +541,65 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   }
   const activeMode = viewMode;
 
+  const commitRename = () => {
+    if (renameSettled.current) { renameSettled.current = false; return; }
+    setRenamingTitle(false);
+    handleRename(renameValue);
+  };
+
+  // Breadcrumb (folder path + filename) with the ⋮ "More options" menu on the
+  // right — shared by the prose layout and the kanban layout. The filename
+  // becomes an inline input while renaming.
+  const folderParts = folder.split('/').filter(Boolean);
+  const breadcrumbRow = (
+    <>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {renamingTitle ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%' }}>
+            {folderParts.length > 0 && <span>{folderParts.join(' / ')}&nbsp;/&nbsp;</span>}
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  renameSettled.current = true; // suppress the blur commit
+                  setRenamingTitle(false);
+                  handleRename(renameValue);
+                }
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  renameSettled.current = true;
+                  setRenamingTitle(false);
+                }
+              }}
+              onBlur={commitRename}
+              style={{
+                background: 'var(--bg-base)',
+                border: '1px solid var(--accent)',
+                borderRadius: 4,
+                outline: 'none',
+                color: 'var(--text-primary)',
+                fontSize: 13,
+                padding: '1px 6px',
+                width: 220,
+              }}
+            />
+          </span>
+        ) : (
+          [...folderParts, title].join(' / ')
+        )}
+      </div>
+      <NoteMenu
+        noteId={noteId}
+        title={title}
+        canWrite={canWrite}
+        onRename={() => { setRenameValue(title); renameSettled.current = false; setRenamingTitle(true); }}
+        onDelete={handleDelete}
+      />
+    </>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
@@ -534,12 +610,12 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div
             style={{
+              display: 'flex', alignItems: 'center', gap: 8,
               fontSize: 13, color: 'rgba(255,255,255,0.5)', padding: '16px 24px 0',
-              userSelect: 'none', overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', flexShrink: 0,
+              userSelect: 'none', flexShrink: 0,
             }}
           >
-            {[...folder.split('/').filter(Boolean), title].join(' / ')}
+            {breadcrumbRow}
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
             <KanbanView body={body} canWrite={canWrite} onBodyChange={handleKanbanBodyChange} />
@@ -548,22 +624,19 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
       ) : (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 32px' }}>
-          {/* Dim, non-editable breadcrumb: folder path + filename. Purely
-              contextual — renaming still happens via the sidebar only. The
-              body's `# H1` below is ordinary markdown content, not connected
-              to the filename (no sync). */}
+          {/* Dim breadcrumb: folder path + filename, with the ⋮ note menu on
+              the right. Renaming happens inline here via the menu (or from
+              the sidebar). */}
           <div
             style={{
+              display: 'flex', alignItems: 'center', gap: 8,
               fontSize: 13,
               color: 'rgba(255,255,255,0.5)',
               marginBottom: 16,
               userSelect: 'none',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
             }}
           >
-            {[...folder.split('/').filter(Boolean), title].join(' / ')}
+            {breadcrumbRow}
           </div>
 
           {/* Properties panel — hidden in Source mode, where the raw `---`

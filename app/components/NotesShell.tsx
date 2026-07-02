@@ -9,6 +9,8 @@ import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
 import SearchModal from '@/components/SearchModal';
 import OutlinePanel, { OutlineIcon } from '@/components/OutlinePanel';
+import BacklinksPanel from '@/components/BacklinksPanel';
+import CalendarPanel from '@/components/CalendarPanel';
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ─── Icon strip SVGs ──────────────────────────────────────────────────────────
@@ -87,30 +89,88 @@ function SearchIcon() {
   );
 }
 
-// ─── Right sidebar content (Outline + Backlinks) ─────────────────────────────
+function BacklinkIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <path
+        d="M6.5 9.5L9.5 6.5M7.5 4.5l1.2-1.2a2.5 2.5 0 0 1 3.5 3.5L11 8M8.5 11.5l-1.2 1.2a2.5 2.5 0 0 1-3.5-3.5L5 8"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ─── Right sidebar content (Outline / Backlinks / Calendar) ──────────────────
 // Its own component so only IT re-renders when the note view republishes the
 // outline (per keystroke in edit modes) — the rest of the shell stays put.
 
-const panelHeaderStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  fontSize: 12, fontWeight: 600, letterSpacing: '0.04em',
-  textTransform: 'uppercase', color: 'var(--text-secondary)', flexShrink: 0,
-};
+type RightTab = 'outline' | 'backlinks' | 'calendar';
 
-function RightSidebarContent() {
+function RightSidebarContent({ calendarOn }: { calendarOn: boolean }) {
   const panel = useRightPanel()?.panel ?? null;
-  if (!panel) {
-    return (
-      <p style={{ padding: '14px 12px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-        Open a note to see its outline.
-      </p>
-    );
-  }
+  const [tab, setTab] = useState<RightTab>('outline');
+
+  useEffect(() => {
+    const t = localStorage.getItem('notes.rightTab');
+    if (t === 'outline' || t === 'backlinks' || t === 'calendar') setTab(t);
+  }, []);
+  const pick = (t: RightTab) => {
+    setTab(t);
+    localStorage.setItem('notes.rightTab', t);
+  };
+
+  // Calendar tab survives in storage but falls back while the plugin is off.
+  const active: RightTab = tab === 'calendar' && !calendarOn ? 'outline' : tab;
+
+  const placeholder = (text: string) => (
+    <p style={{ padding: '14px 12px', fontSize: 12.5, color: 'var(--text-muted)' }}>{text}</p>
+  );
+
   return (
     <>
-      <div style={panelHeaderStyle}>Outline</div>
+      {/* Icon tabs — same 36px height as the main tab row so they align. */}
+      <div
+        style={{
+          height: 36, flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 2,
+          padding: '0 6px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
+        <IconButton
+          icon={<OutlineIcon />}
+          active={active === 'outline'}
+          onClick={() => pick('outline')}
+          tooltip="Outline"
+        />
+        <IconButton
+          icon={<BacklinkIcon />}
+          active={active === 'backlinks'}
+          onClick={() => pick('backlinks')}
+          tooltip="Backlinks"
+        />
+        {calendarOn && (
+          <IconButton
+            icon={<CalendarIcon />}
+            active={active === 'calendar'}
+            onClick={() => pick('calendar')}
+            tooltip="Calendar"
+          />
+        )}
+      </div>
+
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <OutlinePanel outline={panel.outline} onJump={panel.onJump} />
+        {active === 'outline' && (
+          panel
+            ? <OutlinePanel outline={panel.outline} onJump={panel.onJump} />
+            : placeholder('Open a note to see its outline.')
+        )}
+        {active === 'backlinks' && (
+          panel
+            ? <BacklinksPanel noteId={panel.noteId} />
+            : placeholder('Open a note to see its backlinks.')
+        )}
+        {active === 'calendar' && <CalendarPanel />}
       </div>
     </>
   );
@@ -204,8 +264,14 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
         setSearchOpen(v => !v);
       }
     };
+    // Fired by the note's ⋮ menu ("Search notes") — same modal as Ctrl+K.
+    const openSearch = () => setSearchOpen(true);
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('rexform:open-search', openSearch);
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('rexform:open-search', openSearch);
+    };
   }, []);
 
   return (
@@ -337,7 +403,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
               icon={<OutlineIcon />}
               active={rightOpen}
               onClick={() => setRightOpen(v => !v)}
-              tooltip="Outline"
+              tooltip="Right panel (Outline · Backlinks · Calendar)"
             />
           </div>
         </div>
@@ -372,7 +438,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
               background: 'var(--bg-surface)',
             }}
           >
-            <RightSidebarContent />
+            <RightSidebarContent calendarOn={installed.includes('calendar') && !!enabled['calendar']} />
           </div>
         </>
       )}
