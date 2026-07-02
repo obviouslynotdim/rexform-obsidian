@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import Logo from '@/components/ui/Logo';
+import { useSettingsModal } from '@/context/SettingsModalContext';
 
 export default function Navbar() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const settingsModal = useSettingsModal();
   const loading = status === 'loading';
 
   const navLink = (href: string, label: React.ReactNode) => {
@@ -39,7 +41,17 @@ export default function Navbar() {
           {navLink('/dashboard', 'Dashboard')}
           {navLink('/notes', 'Notes')}
           {session.user?.isAdmin && navLink('/admin', 'Admin')}
-          {navLink('/settings', 'Settings')}
+          {/* Settings opens the modal overlay, not a route */}
+          <button
+            onClick={() => settingsModal?.openSettings()}
+            className="px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5"
+            style={{
+              color: settingsModal?.open ? 'var(--accent)' : 'var(--text-secondary)',
+              fontWeight: settingsModal?.open ? 500 : 400,
+            }}
+          >
+            Settings
+          </button>
           {navLink(
             '/search',
             <span className="flex items-center gap-1.5">

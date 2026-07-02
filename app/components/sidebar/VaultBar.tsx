@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
+import { useSettingsModal } from '@/context/SettingsModalContext';
 import type { VaultsData } from './types';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -11,6 +12,7 @@ export default function VaultBar() {
   const [switching, setSwitching] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const settingsModal = useSettingsModal();
 
   const { data } = useSWR<VaultsData>('/api/vaults', fetcher, {
     revalidateOnFocus: false,
@@ -134,7 +136,7 @@ export default function VaultBar() {
         </button>
 
         <button
-          onClick={() => router.push('/settings')}
+          onClick={() => settingsModal?.openSettings()}
           title="Settings"
           style={{
             width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',

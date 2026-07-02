@@ -125,9 +125,10 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   // is w-full so it fills whatever we set here. Clamped and persisted.
   const [sidebarWidth, setSidebarWidth] = useState(288); // 288px = the old w-72
   const resizingRef = useRef(false);
-  // Right panel (Outline + Backlinks) — a real flex column reserved in the row,
-  // never an overlay. Open state + width persisted, mirrored from the left split.
-  const [rightOpen, setRightOpen] = useState(true);
+  // Right panel (Outline) — a real flex column reserved in the row, never an
+  // overlay. Closed by default (Obsidian-style); open state + width persisted,
+  // mirrored from the left split.
+  const [rightOpen, setRightOpen] = useState(false);
   const [rightWidth, setRightWidth] = useState(280);
   const resizingRightRef = useRef(false);
   const router = useRouter();

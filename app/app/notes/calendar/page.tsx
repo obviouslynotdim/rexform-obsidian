@@ -1,5 +1,5 @@
 'use client';
-import { useRouter } from 'next/navigation';
+import { useSettingsModal } from '@/context/SettingsModalContext';
 
 function CalendarIllustration() {
   return (
@@ -22,7 +22,7 @@ function CalendarIllustration() {
 }
 
 export default function CalendarPage() {
-  const router = useRouter();
+  const settingsModal = useSettingsModal();
 
   return (
     <div
@@ -77,7 +77,7 @@ export default function CalendarPage() {
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           You can disable this plugin in{' '}
           <button
-            onClick={() => router.push('/settings')}
+            onClick={() => settingsModal?.openSettings('plugins')}
             style={{
               background: 'none',
               border: 'none',

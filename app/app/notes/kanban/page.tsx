@@ -1,5 +1,5 @@
 'use client';
-import { useRouter } from 'next/navigation';
+import { useSettingsModal } from '@/context/SettingsModalContext';
 
 function KanbanIllustration() {
   return (
@@ -18,7 +18,7 @@ function KanbanIllustration() {
 }
 
 export default function KanbanPage() {
-  const router = useRouter();
+  const settingsModal = useSettingsModal();
 
   return (
     <div
@@ -73,7 +73,7 @@ export default function KanbanPage() {
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           You can disable this plugin in{' '}
           <button
-            onClick={() => router.push('/settings')}
+            onClick={() => settingsModal?.openSettings('plugins')}
             style={{
               background: 'none',
               border: 'none',
