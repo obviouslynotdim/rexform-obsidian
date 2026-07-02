@@ -66,29 +66,34 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+// One credential as a compact single-line row: label · mono value · actions.
 function CredentialRow({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [visible, setVisible] = useState(!secret);
   return (
-    <div className="py-3 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
-      <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>{label}</p>
-      <div className="flex items-center gap-2">
-        <code
-          className="flex-1 px-3 py-1.5 rounded-lg text-sm font-mono truncate"
-          style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+    <div className="flex items-center gap-3 py-2.5 border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
+      <span
+        className="text-xs font-medium flex-shrink-0"
+        style={{ color: 'var(--text-secondary)', width: 96 }}
+      >
+        {label}
+      </span>
+      <code
+        className="flex-1 min-w-0 text-[12.5px] font-mono truncate"
+        style={{ color: 'var(--text-primary)', background: 'transparent' }}
+        title={secret && !visible ? undefined : value}
+      >
+        {secret && !visible ? '••••••••••••••••' : value}
+      </code>
+      {secret && (
+        <button
+          onClick={() => setVisible(v => !v)}
+          className="px-2 py-0.5 rounded text-xs flex-shrink-0 hover:bg-white/5"
+          style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
         >
-          {secret && !visible ? '••••••••••••••••' : value}
-        </code>
-        {secret && (
-          <button
-            onClick={() => setVisible(v => !v)}
-            className="px-2 py-1 rounded text-xs flex-shrink-0 hover:bg-white/5"
-            style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-          >
-            {visible ? 'Hide' : 'Show'}
-          </button>
-        )}
-        <CopyButton value={value} />
-      </div>
+          {visible ? 'Hide' : 'Show'}
+        </button>
+      )}
+      <CopyButton value={value} />
     </div>
   );
 }
@@ -1578,40 +1583,84 @@ export default function SettingsModal() {
           {/* Sync (LiveSync) */}
           {selected === 'sync' && creds && (
             <Card className="p-6">
-              <div className="flex items-start justify-between mb-1">
-                <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {t('sync.title')}
-                </h2>
+              {/* Header — icon + title + one-line subtitle */}
+              <div className="flex items-center gap-3 mb-6">
+                <div
+                  className="flex items-center justify-center flex-shrink-0"
+                  style={{
+                    width: 42, height: 42, borderRadius: 10,
+                    background: 'rgba(127,119,221,0.15)',
+                    border: '1px solid rgba(127,119,221,0.35)',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  <LiveSyncPluginIcon size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {t('sync.title')}
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Sync this vault with the Obsidian app on desktop or mobile.
+                  </p>
+                </div>
               </div>
-              <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)' }}>
-                Use these details in the{' '}
-                <span className="font-medium" style={{ color: 'var(--accent)' }}>Self-hosted LiveSync</span>{' '}
-                Obsidian plugin to sync your vault on desktop or mobile.
-              </p>
 
-              <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: 'var(--border)' }}>
+              {/* Credentials */}
+              <p
+                className="text-xs font-semibold uppercase tracking-wider mb-2"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Database credentials
+              </p>
+              <div
+                className="rounded-xl border px-4 mb-6"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-base)' }}
+              >
                 <CredentialRow label="Server URL" value={creds.serverUrl} />
                 <CredentialRow label="Database" value={creds.database} />
                 <CredentialRow label="Username" value={creds.username} />
                 <CredentialRow label="Password" value={creds.password} secret />
               </div>
 
-              <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--bg-base)', border: '1px solid var(--border)' }}>
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
-                  LiveSync plugin settings
-                </p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  In Obsidian → Self-hosted LiveSync → Remote Database Configuration, set:
-                  <br />• <strong>URI</strong>: the Server URL above
-                  <br />• <strong>Username / Password</strong>: as shown
-                  <br />• <strong>Database name</strong>: the Database value above
-                  <br />• Leave <strong>Passphrase</strong> empty unless you want end-to-end encryption
-                </p>
+              {/* Setup steps */}
+              <p
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Setup in Obsidian
+              </p>
+              <div className="mb-6">
+                {[
+                  <>Install the <span className="font-medium" style={{ color: 'var(--accent)' }}>Self-hosted LiveSync</span> community plugin.</>,
+                  <>Open <strong>Remote Database Configuration</strong> and enter the URI (Server URL), username, password and database name above.</>,
+                  <>Leave <strong>Passphrase</strong> empty unless you want end-to-end encryption.</>,
+                ].map((step, i) => (
+                  <div key={i} className="flex items-start gap-3 mb-2.5 last:mb-0">
+                    <span
+                      className="flex items-center justify-center flex-shrink-0 font-semibold"
+                      style={{
+                        width: 18, height: 18, borderRadius: '50%', fontSize: 10.5,
+                        background: 'rgba(127,119,221,0.15)', color: 'var(--accent)',
+                        marginTop: 1,
+                      }}
+                    >
+                      {i + 1}
+                    </span>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)', margin: 0 }}>
+                      {step}
+                    </p>
+                  </div>
+                ))}
               </div>
 
-              <div className="flex items-center justify-between gap-3 flex-wrap">
+              {/* Troubleshooting */}
+              <div
+                className="flex items-center justify-between gap-3 flex-wrap border-t pt-4"
+                style={{ borderColor: 'var(--border)' }}
+              >
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  If Obsidian shows "access forbidden", click Repair to re-configure CouchDB access.
+                  Seeing &ldquo;access forbidden&rdquo; in Obsidian? Repair re-configures database access.
                 </p>
                 <div className="flex gap-2 flex-shrink-0">
                   <Button variant="ghost" size="sm" loading={repairing} onClick={repairConnection}>
