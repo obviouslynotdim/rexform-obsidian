@@ -10,6 +10,7 @@ import InlineInput from './InlineInput';
 import ContextMenu from './ContextMenu';
 import FolderPicker from './FolderPicker';
 import VaultBar from './VaultBar';
+import { starterBoardDoc } from '@/lib/kanban';
 import type { NoteEntry, VaultsData, ContextMenuState, CreatingState } from './types';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -49,6 +50,14 @@ export default function NotesSidebar({ currentId }: Props) {
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   );
+
+  // Kanban plugin state — gates the "New Kanban board" context-menu action.
+  const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const kanbanEnabled =
+    (pluginsData?.installed ?? []).includes('kanban') && !!pluginsData?.enabled?.kanban;
 
   const notes: NoteEntry[] = data?.notes || [];
 
@@ -167,6 +176,20 @@ export default function NotesSidebar({ currentId }: Props) {
     setCreating({ folder: '', type });
   }
 
+  // Creates a seeded starter board at the vault root and opens it. Naming is
+  // delegated to the create API ("Untitled Board", "Untitled Board 1", …).
+  async function createKanbanBoard() {
+    const res = await fetch('/api/notes/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Untitled Board', folder: '', content: starterBoardDoc() }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    mutate();
+    router.push(`/notes/${encodeURIComponent(data.id)}`);
+  }
+
   // "+ New" honors the user's default-location setting. When set to 'current',
   // the new note is created in the active note's folder; otherwise at the root.
   function createNote() {
@@ -257,6 +280,7 @@ export default function NotesSidebar({ currentId }: Props) {
             type: 'root', id: '', name: '', path: '',
             onNewNote: () => createAtRoot('note'),
             onNewFolder: () => createAtRoot('folder'),
+            onNewKanban: kanbanEnabled ? createKanbanBoard : undefined,
           });
         }}
         onDragOver={(e) => {

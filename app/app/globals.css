@@ -173,3 +173,12 @@ body {
   background: var(--bg-surface);
   font-weight: 600;
 }
+
+/* Kanban board — card delete button appears on hover only */
+.kanban-card .kanban-card-delete {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.kanban-card:hover .kanban-card-delete {
+  opacity: 1;
+}

@@ -45,7 +45,7 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
-  const hasCreateGroup = !!(menu.onNewNote || menu.onNewFolder);
+  const hasCreateGroup = !!(menu.onNewNote || menu.onNewFolder || menu.onNewKanban);
   const hasGraphGroup = !!menu.onOpenGraph;
   const hasEditGroup = !!(menu.onRename || (menu.type === 'file' && menu.onMove));
   const hasDeleteGroup = !!menu.onDelete;
@@ -83,6 +83,14 @@ export default function ContextMenu({ menu, onClose }: ContextMenuProps) {
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           onClick={() => { menu.onNewFolder!(); onClose(); }}
         >New Folder here</button>
+      )}
+      {menu.onNewKanban && (
+        <button
+          style={itemStyle}
+          onMouseEnter={(e) => { e.currentTarget.style.background = hoverBg; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          onClick={() => { menu.onNewKanban!(); onClose(); }}
+        >New Kanban board</button>
       )}
 
       {/* Graph group */}

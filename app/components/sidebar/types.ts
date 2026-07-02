@@ -18,6 +18,7 @@ export interface ContextMenuState {
   onMove?: () => void;
   onNewNote?: () => void;
   onNewFolder?: () => void;
+  onNewKanban?: () => void;
   onOpenGraph?: () => void;
 }
 

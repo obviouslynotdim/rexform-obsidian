@@ -4,6 +4,8 @@ import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
+import KanbanView from './KanbanView';
+import { isKanbanFrontmatter } from '@/lib/kanban';
 import { useTabsContext } from '@/context/TabsContext';
 import { useRightPanel } from '@/context/RightPanelContext';
 import { type OutlineItem } from '@/components/OutlinePanel';
@@ -405,6 +407,21 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     persistDoc(nextDoc);
   }, [body, persistDoc]);
 
+  // A `kanban-plugin` frontmatter key marks the note as a Kanban board —
+  // reading mode renders the board instead of prose. Source/Live still edit
+  // the raw markdown (Obsidian's "open as markdown" equivalent).
+  const isKanban = isKanbanFrontmatter(frontmatter);
+
+  // Board mutations flow the same way as Properties-panel edits: recombine
+  // with the untouched frontmatter, update the single `doc`, persist the
+  // whole document (debounced), and remount the editor for next open.
+  const handleKanbanBodyChange = useCallback((nextBody: string) => {
+    const nextDoc = combineFrontmatter(frontmatter, nextBody);
+    setDoc(nextDoc);
+    setEditorEpoch((e) => e + 1);
+    persistDoc(nextDoc);
+  }, [frontmatter, persistDoc]);
+
   // Escape exits any editing mode back to Reading.
   useEffect(() => {
     if (viewMode === 'reading') return;
@@ -510,9 +527,25 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-      {/* Scrollable note body — NoteViewClient owns its own scroll. The Outline
-          + Backlinks now live in NotesShell's right column (a real flex sibling),
-          so nothing floats over or covers the note. */}
+      {/* Kanban boards get the full pane width (the board owns its own
+          horizontal scroll) — reading mode only; Source/Live in the branch
+          below still edit the raw markdown, Obsidian's "open as markdown". */}
+      {isKanban && viewMode === 'reading' ? (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={{
+              fontSize: 13, color: 'rgba(255,255,255,0.5)', padding: '16px 24px 0',
+              userSelect: 'none', overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+          >
+            {[...folder.split('/').filter(Boolean), title].join(' / ')}
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <KanbanView body={body} canWrite={canWrite} onBodyChange={handleKanbanBodyChange} />
+          </div>
+        </div>
+      ) : (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{ width: '100%', maxWidth: 860, margin: '0 auto', padding: '40px 32px' }}>
           {/* Dim, non-editable breadcrumb: folder path + filename. Purely
@@ -594,6 +627,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
           )}
         </div>
       </div>
+      )}
 
       {/* Status bar — pinned to the bottom of the note pane, does not scroll. */}
       <div style={{
