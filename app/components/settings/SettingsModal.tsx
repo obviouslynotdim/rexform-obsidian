@@ -195,6 +195,56 @@ function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onCha
   );
 }
 
+// Top-right install notice (Obsidian-style): spinner + "Installing plugin
+// …" while the (simulated) install runs, with a progress bar sweeping left to
+// right; flips to a ✓ "installed" state just before it disappears.
+export const INSTALL_DELAY_MS = 1400;
+
+function InstallToast({ name, done }: { name: string; done: boolean }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', top: 70, right: 20, zIndex: 11000,
+        width: 280,
+        background: '#1e2030',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: 10,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.5)',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+        {done ? (
+          <svg width="15" height="15" viewBox="0 0 15 15" style={{ flexShrink: 0 }}>
+            <circle cx="7.5" cy="7.5" r="6.5" fill="rgba(74,222,128,0.15)" stroke="#4ade80" strokeWidth="1.2" />
+            <polyline points="4.5,7.8 6.7,10 10.5,5.5" stroke="#4ade80" strokeWidth="1.4"
+              fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg width="15" height="15" viewBox="0 0 15 15" className="animate-spin" style={{ flexShrink: 0 }}>
+            <circle cx="7.5" cy="7.5" r="6" stroke="rgba(255,255,255,0.15)" strokeWidth="2" fill="none" />
+            <path d="M13.5 7.5a6 6 0 0 0-6-6" stroke="var(--accent)" strokeWidth="2" fill="none" strokeLinecap="round" />
+          </svg>
+        )}
+        <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.85)', minWidth: 0 }}>
+          {done ? <>Plugin &ldquo;{name}&rdquo; installed</> : <>Installing plugin &ldquo;{name}&rdquo;…</>}
+        </span>
+      </div>
+      {/* Progress track — fill animates left → right for the install duration */}
+      <div style={{ height: 3, background: 'rgba(255,255,255,0.06)' }}>
+        <div
+          style={{
+            height: '100%',
+            background: done ? '#4ade80' : 'var(--accent)',
+            width: done ? '100%' : undefined,
+            animation: done ? undefined : `rf-progress ${INSTALL_DELAY_MS}ms linear forwards`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // × close button shared by the browse modal's grid header and detail header.
 function CloseBtn({ onClick }: { onClick: () => void }) {
   return (
@@ -400,6 +450,7 @@ function PluginDetail({
   plugin,
   installed,
   enabled,
+  installing,
   onInstall,
   onUninstall,
   onToggle,
@@ -407,6 +458,7 @@ function PluginDetail({
   plugin: PluginDefinition;
   installed: boolean;
   enabled: boolean;
+  installing: boolean;
   onInstall: () => void;
   onUninstall: () => void;
   onToggle: () => void;
@@ -468,11 +520,23 @@ function PluginDetail({
         {!installed ? (
           <button
             onClick={onInstall}
-            style={primaryBtn}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-hover)'; }}
+            disabled={installing}
+            style={{
+              ...primaryBtn,
+              opacity: installing ? 0.75 : 1,
+              cursor: installing ? 'default' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}
+            onMouseEnter={e => { if (!installing) (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent-hover)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--accent)'; }}
           >
-            Install
+            {installing && (
+              <svg width="11" height="11" viewBox="0 0 15 15" className="animate-spin">
+                <circle cx="7.5" cy="7.5" r="6" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" fill="none" />
+                <path d="M13.5 7.5a6 6 0 0 0-6-6" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+              </svg>
+            )}
+            {installing ? 'Installing…' : 'Install'}
           </button>
         ) : (
           <>
@@ -518,6 +582,7 @@ function BrowseModal({
   open,
   onClose,
   pluginData,
+  installingId,
   onInstall,
   onUninstall,
   onToggle,
@@ -525,6 +590,7 @@ function BrowseModal({
   open: boolean;
   onClose: () => void;
   pluginData: PluginData;
+  installingId: string | null;
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
   onToggle: (id: string) => void;
@@ -792,6 +858,7 @@ function BrowseModal({
                 plugin={detailPlugin}
                 installed={installed.includes(detailPlugin.id)}
                 enabled={!!pluginData.enabled[detailPlugin.id]}
+                installing={installingId === detailPlugin.id}
                 onInstall={() => onInstall(detailPlugin.id)}
                 onUninstall={() => onUninstall(detailPlugin.id)}
                 onToggle={() => onToggle(detailPlugin.id)}
@@ -879,19 +946,27 @@ function BrowseModal({
                         e.stopPropagation(); // don't also open the detail view
                         if (!isInstalled) onInstall(plugin.id);
                       }}
-                      disabled={isInstalled}
+                      disabled={isInstalled || installingId === plugin.id}
                       style={{
                         padding: '7px 16px',
                         borderRadius: 6, border: 'none',
-                        cursor: isInstalled ? 'default' : 'pointer',
+                        cursor: isInstalled || installingId === plugin.id ? 'default' : 'pointer',
                         fontSize: 12.5, fontWeight: 500,
                         background: isInstalled ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
                         color: isInstalled ? 'rgba(255,255,255,0.4)' : '#fff',
+                        opacity: installingId === plugin.id ? 0.75 : 1,
                         transition: 'background 0.15s',
                         alignSelf: 'flex-start',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
                       }}
                     >
-                      {isInstalled ? 'Installed ✓' : 'Install'}
+                      {installingId === plugin.id && (
+                        <svg width="11" height="11" viewBox="0 0 15 15" className="animate-spin">
+                          <circle cx="7.5" cy="7.5" r="6" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" fill="none" />
+                          <path d="M13.5 7.5a6 6 0 0 0-6-6" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+                        </svg>
+                      )}
+                      {isInstalled ? 'Installed ✓' : installingId === plugin.id ? 'Installing…' : 'Install'}
                     </button>
                   </div>
                 );
@@ -910,12 +985,14 @@ function BrowseModal({
 function CommunityPluginsCard({
   pluginData,
   saving,
+  installingId,
   onInstall,
   onUninstall,
   onToggle,
 }: {
   pluginData: PluginData;
   saving: boolean;
+  installingId: string | null;
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
   onToggle: (id: string) => void;
@@ -949,6 +1026,7 @@ function CommunityPluginsCard({
         open={browseOpen}
         onClose={() => setBrowseOpen(false)}
         pluginData={pluginData}
+        installingId={installingId}
         onInstall={onInstall}
         onUninstall={onUninstall}
         onToggle={onToggle}
@@ -1191,6 +1269,12 @@ export default function SettingsModal() {
 
   const [pluginData, setPluginData] = useState<PluginData>(DEFAULT_PLUGIN_DATA);
   const [pluginSaving, setPluginSaving] = useState(false);
+  // Install runs behind a short simulated delay (spinner in the button + the
+  // top-right toast). The ref mirrors pluginData so the delayed commit reads
+  // fresh state even if something else changed during the delay.
+  const [installing, setInstalling] = useState<{ id: string; name: string; done: boolean } | null>(null);
+  const pluginDataRef = useRef(pluginData);
+  useEffect(() => { pluginDataRef.current = pluginData; }, [pluginData]);
 
   const [fileSettings, setFileSettings] = useState<FileSettings>(DEFAULT_FILE_SETTINGS);
   const [fileSettingsSaving, setFileSettingsSaving] = useState(false);
@@ -1320,14 +1404,25 @@ export default function SettingsModal() {
   // POSTs — the second lost the CouchDB _rev race (409) and reverted the
   // toggle even though the first save persisted.
   const handleInstall = useCallback((id: string) => {
-    if (pluginData.installed.includes(id)) return;
-    const next: PluginData = {
-      installed: [...pluginData.installed, id],
-      enabled: { ...pluginData.enabled, [id]: true },
-    };
-    setPluginData(next);
-    savePlugins(next, pluginData);
-  }, [pluginData, savePlugins]);
+    if (pluginDataRef.current.installed.includes(id) || installing) return;
+    const name = PLUGIN_REGISTRY.find(p => p.id === id)?.name ?? id;
+    setInstalling({ id, name, done: false });
+    // Simulated install: commit + persist after the delay, show the ✓ state
+    // briefly, then drop the toast.
+    setTimeout(() => {
+      const original = pluginDataRef.current;
+      if (!original.installed.includes(id)) {
+        const next: PluginData = {
+          installed: [...original.installed, id],
+          enabled: { ...original.enabled, [id]: true },
+        };
+        setPluginData(next);
+        savePlugins(next, original);
+      }
+      setInstalling({ id, name, done: true });
+      setTimeout(() => setInstalling(null), 1100);
+    }, INSTALL_DELAY_MS);
+  }, [installing, savePlugins]);
 
   const handleUninstall = useCallback((id: string) => {
     const { [id]: _removed, ...restEnabled } = pluginData.enabled;
@@ -1379,7 +1474,13 @@ export default function SettingsModal() {
     }
   };
 
-  if (!open || status === 'unauthenticated') return null;
+  // The toast outlives the modal — closing settings mid-install keeps the
+  // notice (and the delayed commit) running.
+  const toast = installing
+    ? <InstallToast name={installing.name} done={installing.done} />
+    : null;
+
+  if (!open || status === 'unauthenticated') return toast;
 
   const busy = status === 'loading' || loading;
 
@@ -1398,7 +1499,9 @@ export default function SettingsModal() {
   const selected = categories.some((c) => c.id === activeCategory) ? activeCategory : 'general';
 
   return (
-    // Scrim — covers the whole app; click outside the panel closes.
+    <>
+    {toast}
+    {/* Scrim — covers the whole app; click outside the panel closes. */}
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 9000,
@@ -1679,6 +1782,7 @@ export default function SettingsModal() {
             <CommunityPluginsCard
               pluginData={pluginData}
               saving={pluginSaving}
+              installingId={installing && !installing.done ? installing.id : null}
               onInstall={handleInstall}
               onUninstall={handleUninstall}
               onToggle={handleToggle}
@@ -1689,5 +1793,6 @@ export default function SettingsModal() {
         </div>
       </div>
     </div>
+    </>
   );
 }
