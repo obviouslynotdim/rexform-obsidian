@@ -28,16 +28,57 @@ function unquote(raw: string): string {
   return s;
 }
 
-// Quote a scalar only when YAML would otherwise mis-parse it (contains a colon,
-// comment char, structural punctuation, leading indicator, or edge whitespace).
-function quoteIfNeeded(value: string): string {
-  if (value === '') return '""';
-  const needsQuote =
-    /[:#\[\]{},&*!|>'"%@`]/.test(value) ||
-    /^\s|\s$/.test(value) ||
-    /^[-?]/.test(value);
-  if (needsQuote) return '"' + value.replace(/"/g, '\\"') + '"';
-  return value;
+// Scalars YAML/Obsidian read as a non-string type stay bare on serialize:
+// ISO dates (2026-05-29), numbers, booleans. Everything else is a string and
+// gets double-quoted for consistency ("Week 1", "In Progress").
+function isBareScalar(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) || // ISO date
+    /^-?\d+(\.\d+)?$/.test(value) ||     // int / float
+    value === 'true' ||
+    value === 'false'
+  );
+}
+
+function serializeScalar(value: string): string {
+  if (value !== '' && isBareScalar(value)) return value;
+  return '"' + value.replace(/"/g, '\\"') + '"';
+}
+
+// Inline-array items stay bare (spaces are fine: [Week 1, saas]) unless they'd
+// break the `[a, b]` syntax — a comma, ':', brackets, quotes, or edge whitespace.
+function serializeArrayItem(item: string): string {
+  if (item === '' || /[,:\[\]"']/.test(item) || /^\s|\s$/.test(item)) {
+    return '"' + item.replace(/"/g, '\\"') + '"';
+  }
+  return item;
+}
+
+// Split the inside of an inline `[...]` on commas, but NOT commas inside a
+// quoted item — `[a, "b, c"]` is two items. Keeps quotes on each piece so
+// unquote() strips/unescapes them uniformly afterwards.
+function splitInlineItems(inner: string): string[] {
+  const items: string[] = [];
+  let cur = '';
+  let quote: '"' | "'" | null = null;
+  for (let k = 0; k < inner.length; k++) {
+    const ch = inner[k];
+    if (quote) {
+      if (ch === '\\' && inner[k + 1] === '"') { cur += '\\"'; k++; continue; }
+      if (ch === quote) quote = null;
+      cur += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      cur += ch;
+    } else if (ch === ',') {
+      items.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  items.push(cur);
+  return items.map((s) => unquote(s)).filter((s) => s !== '');
 }
 
 /**
@@ -87,16 +128,10 @@ export function parseFrontmatter(markdown: string): {
       continue;
     }
 
-    // Inline array `[a, b]`.
+    // Inline array `[a, b]` — quote-aware, so `["b, c"]` stays one item.
     if (rest.startsWith('[') && rest.endsWith(']')) {
       const inner = rest.slice(1, -1).trim();
-      frontmatter[key] =
-        inner === ''
-          ? []
-          : inner
-              .split(',')
-              .map((s) => unquote(s))
-              .filter((s) => s !== '');
+      frontmatter[key] = inner === '' ? [] : splitInlineItems(inner);
       i++;
       continue;
     }
@@ -121,14 +156,10 @@ export function serializeFrontmatter(frontmatter: Frontmatter): string {
   for (const key of keys) {
     const val = frontmatter[key];
     if (Array.isArray(val)) {
-      if (val.length === 0) {
-        lines.push(`${key}: []`);
-      } else {
-        lines.push(`${key}:`);
-        for (const item of val) lines.push(`  - ${quoteIfNeeded(item)}`);
-      }
+      // Always inline `[a, b, c]` — never block lists (`- item` per line).
+      lines.push(`${key}: [${val.map(serializeArrayItem).join(', ')}]`);
     } else {
-      lines.push(`${key}: ${quoteIfNeeded(val)}`);
+      lines.push(`${key}: ${serializeScalar(val)}`);
     }
   }
   lines.push('---');

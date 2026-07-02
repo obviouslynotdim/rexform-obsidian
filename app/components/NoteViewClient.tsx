@@ -543,24 +543,25 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             />
           )}
 
-          {/* Body */}
+          {/* Body — body clicks do nothing; the click-to-Source entry points are
+              the heading TEXT (via WikiMarkdown's onHeadingClick — the fold
+              chevron stays fold-only) and the empty-note placeholder. */}
           {viewMode === 'reading' ? (
-            <div
-              style={{ cursor: canWrite ? 'text' : 'default', minHeight: '40vh', fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}
-              onClick={(e) => {
-                const t = e.target as HTMLElement;
-                // A link navigates and a heading's collapse summary/chevron folds
-                // its section — neither should fall through to opening Source mode.
-                if (t.closest('a') || t.closest('summary')) return;
-                if (canWrite) setViewMode('source');
-              }}
-            >
+            <div style={{ minHeight: '40vh', fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}>
               {body ? (
                 <div className="prose prose-invert">
-                  <WikiMarkdown>{body}</WikiMarkdown>
+                  <WikiMarkdown
+                    onHeadingClick={canWrite ? () => setViewMode('source') : undefined}
+                  >
+                    {body}
+                  </WikiMarkdown>
                 </div>
               ) : (
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <p
+                  className="text-sm"
+                  onClick={canWrite ? () => setViewMode('source') : undefined}
+                  style={{ color: 'var(--text-muted)', cursor: canWrite ? 'pointer' : 'default' }}
+                >
                   {canWrite ? 'Click to start writing…' : 'No content.'}
                 </p>
               )}

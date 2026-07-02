@@ -120,9 +120,18 @@ body {
 }
 .prose blockquote {
   border-left: 3px solid var(--accent);
-  padding-left: 1rem;
+  padding: 0.15em 0 0.15em 1rem;
   color: var(--text-secondary);
   margin: 1em 0;
+}
+/* Consecutive `> lines` each render on their own line inside ONE blockquote:
+   markdown soft breaks survive as literal \n text nodes in the DOM, and
+   pre-line turns them into visual line breaks. Scoped to blockquotes only —
+   normal paragraphs keep standard soft-break joining. */
+.prose blockquote p {
+  white-space: pre-line;
+  line-height: 1.75;
+  margin: 0.25em 0;
 }
 .prose ul,
 .prose ol {

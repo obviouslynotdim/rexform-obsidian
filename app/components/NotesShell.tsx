@@ -9,7 +9,6 @@ import NotesSidebar from '@/components/NotesSidebar';
 import IconButton from '@/components/ui/IconButton';
 import SearchModal from '@/components/SearchModal';
 import OutlinePanel, { OutlineIcon } from '@/components/OutlinePanel';
-import BacklinksPanel from '@/components/BacklinksPanel';
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ─── Icon strip SVGs ──────────────────────────────────────────────────────────
@@ -103,7 +102,7 @@ function RightSidebarContent() {
   if (!panel) {
     return (
       <p style={{ padding: '14px 12px', fontSize: 12.5, color: 'var(--text-muted)' }}>
-        Open a note to see its outline and backlinks.
+        Open a note to see its outline.
       </p>
     );
   }
@@ -112,12 +111,6 @@ function RightSidebarContent() {
       <div style={panelHeaderStyle}>Outline</div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <OutlinePanel outline={panel.outline} onJump={panel.onJump} />
-      </div>
-      <div style={{ ...panelHeaderStyle, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        Backlinks
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <BacklinksPanel noteId={panel.noteId} />
       </div>
     </>
   );
@@ -343,7 +336,7 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
               icon={<OutlineIcon />}
               active={rightOpen}
               onClick={() => setRightOpen(v => !v)}
-              tooltip="Outline & backlinks"
+              tooltip="Outline"
             />
           </div>
         </div>

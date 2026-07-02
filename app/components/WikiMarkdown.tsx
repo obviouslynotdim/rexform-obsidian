@@ -191,7 +191,14 @@ const FOLD_STYLES = `
   }
 `;
 
-export default function WikiMarkdown({ children }: { children: string }) {
+interface WikiMarkdownProps {
+  children: string;
+  /** Fired when the TEXT of a heading is clicked (the fold chevron is separate
+      and only folds). NoteViewClient passes "switch to Source mode" here. */
+  onHeadingClick?: () => void;
+}
+
+export default function WikiMarkdown({ children, onHeadingClick }: WikiMarkdownProps) {
   const { data } = useSWR<{ notes: NoteStub[] }>('/api/notes/tree', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
@@ -201,7 +208,39 @@ export default function WikiMarkdown({ children }: { children: string }) {
   const processed = preprocessWikilinks(children);
   const tabsCtx = useTabsContext();
 
+  // Split the heading's click targets: the collapse chevron (and only it)
+  // folds via the parent <summary>'s native toggle; a click on the heading
+  // TEXT preventDefaults that toggle and instead invokes onHeadingClick
+  // (→ Source mode when writable). With no handler (viewers, previews) the
+  // text click does nothing — folding stays chevron-only either way.
+  const heading = (Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') =>
+    function HeadingRenderer({ node: _node, children: hChildren, ...props }: any) {
+      return (
+        <Tag
+          {...props}
+          onClick={(e: React.MouseEvent) => {
+            // A wikilink inside a heading must still navigate (the anchor owns
+            // the click's default action, so it doesn't fold either).
+            if ((e.target as HTMLElement).closest('a')) return;
+            e.preventDefault();   // cancels the <summary> fold toggle
+            e.stopPropagation();
+            onHeadingClick?.();
+          }}
+          style={{ cursor: onHeadingClick ? 'pointer' : undefined }}
+        >
+          {hChildren}
+        </Tag>
+      );
+    };
+
   const components = {
+    h1: heading('h1'),
+    h2: heading('h2'),
+    h3: heading('h3'),
+    h4: heading('h4'),
+    h5: heading('h5'),
+    h6: heading('h6'),
+
     a: ({ href, children: linkChildren, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => {
       if (href?.startsWith('wikilink:')) {
         const name = decodeURIComponent(href.slice('wikilink:'.length));
