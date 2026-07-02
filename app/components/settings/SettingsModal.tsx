@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { mutate as swrMutate } from 'swr';
 import { useSession } from 'next-auth/react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -135,11 +136,25 @@ function GitLabPluginIcon({ size = 20 }: { size?: number }) {
   );
 }
 
+function LiveSyncPluginIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      <path
+        d="M16.5 10a6.5 6.5 0 0 1-11.1 4.6M3.5 10a6.5 6.5 0 0 1 11.1-4.6"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"
+      />
+      <path d="M14.2 3.2v2.6h-2.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.8 16.8v-2.6h2.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
   switch (id) {
     case 'kanban':   return <KanbanPluginIcon size={size} />;
     case 'calendar': return <CalendarPluginIcon size={size} />;
     case 'gitlab':   return <GitLabPluginIcon size={size} />;
+    case 'livesync': return <LiveSyncPluginIcon size={size} />;
     default:         return null;
   }
 }
@@ -172,6 +187,84 @@ function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onCha
         boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
       }} />
     </button>
+  );
+}
+
+// × close button shared by the browse modal's grid header and detail header.
+function CloseBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Close"
+      style={{
+        width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+        background: 'transparent', border: 'none', cursor: 'pointer',
+        color: 'rgba(255,255,255,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 20, lineHeight: 1, padding: 0,
+        transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+        (e.currentTarget as HTMLButtonElement).style.color = '#fff';
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+        (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)';
+      }}
+    >
+      ×
+    </button>
+  );
+}
+
+// Custom checkbox styled like the search fields (same fill + border) instead
+// of the native browser control. Checked → accent fill with a check mark.
+function FilterCheckbox({
+  checked,
+  onChange,
+  label,
+  style,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex', alignItems: 'center', gap: 7,
+        fontSize: 12, color: 'rgba(255,255,255,0.55)',
+        cursor: 'pointer', userSelect: 'none', flexShrink: 0,
+        ...style,
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        style={{ display: 'none' }}
+      />
+      <span style={{
+        width: 15, height: 15, borderRadius: 4, flexShrink: 0,
+        background: checked ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
+        border: `1px solid ${checked ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'background 0.15s, border-color 0.15s',
+      }}>
+        {checked && (
+          <svg width="9" height="9" viewBox="0 0 9 9">
+            <polyline
+              points="1.5,4.5 3.5,6.5 7.5,2"
+              stroke="#fff" strokeWidth="1.5" fill="none"
+              strokeLinecap="round" strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </span>
+      {label}
+    </label>
   );
 }
 
@@ -483,7 +576,10 @@ function BrowseModal({
     >
       <div
         style={{
-          width: 680, maxHeight: '80vh',
+          // Same footprint as the settings panel underneath, so opening
+          // Browse reads as a view swap rather than a smaller popup.
+          width: 'min(1040px, calc(100vw - 48px))',
+          height: 'min(720px, calc(100vh - 80px))',
           background: '#16213e',
           borderRadius: 12,
           border: '1px solid rgba(255,255,255,0.1)',
@@ -492,110 +588,211 @@ function BrowseModal({
           overflow: 'hidden',
         }}
       >
-        {/* Header */}
-        <div style={{
-          padding: '18px 20px 14px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-            {detailPlugin && (
-              <button
-                onClick={() => setDetailId(null)}
-                title="Back to all plugins"
-                style={{
-                  width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'rgba(255,255,255,0.55)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, lineHeight: 1, padding: 0,
-                  transition: 'color 0.15s',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.55)'; }}
-              >
-                ←
-              </button>
-            )}
-            <span style={{
-              fontSize: 16, fontWeight: 600, color: '#fff',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {detailPlugin ? detailPlugin.name : 'Browse community plugins'}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 28, height: 28, borderRadius: 6,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'rgba(255,255,255,0.5)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, lineHeight: 1, padding: 0,
-              transition: 'background 0.15s, color 0.15s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
-              (e.currentTarget as HTMLButtonElement).style.color = '#fff';
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-              (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.5)';
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Search + filter — list view only */}
+        {/* Header + search bar — grid view only. The detail view has no
+            modal-wide header: the left pane starts with its own search and
+            the ← / plugin name / × sit inside the right pane, aligned with
+            the description. */}
         {!detailPlugin && (
-          <div style={{
-            padding: '12px 20px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <input
-              ref={inputRef}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search community plugins..."
-              style={{
-                flex: 1, minWidth: 0, boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 8,
-                padding: '8px 12px',
-                fontSize: 13, color: '#fff', outline: 'none',
-              }}
-            />
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 12, color: 'rgba(255,255,255,0.55)',
-              cursor: 'pointer', flexShrink: 0, userSelect: 'none',
+          <>
+            <div style={{
+              padding: '18px 20px 14px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexShrink: 0,
+            }}>
+              <span style={{
+                fontSize: 16, fontWeight: 600, color: '#fff',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                Browse community plugins
+              </span>
+              <CloseBtn onClick={onClose} />
+            </div>
+            <div style={{
+              padding: '12px 20px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              flexShrink: 0,
+              display: 'flex', alignItems: 'center', gap: 12,
             }}>
               <input
-                type="checkbox"
-                checked={installedOnly}
-                onChange={e => setInstalledOnly(e.target.checked)}
-                style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                ref={inputRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search community plugins..."
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 13, color: '#fff', outline: 'none',
+                }}
               />
-              Show installed only
-            </label>
-          </div>
+              <FilterCheckbox
+                checked={installedOnly}
+                onChange={setInstalledOnly}
+                label="Show installed only"
+              />
+            </div>
+          </>
         )}
 
-        {/* Detail view or plugin grid */}
+        {/* Detail view (Obsidian-style two-pane: list on the left, README on
+            the right) or the full-width plugin grid */}
         {detailPlugin ? (
-          <PluginDetail
-            plugin={detailPlugin}
-            installed={installed.includes(detailPlugin.id)}
-            enabled={!!pluginData.enabled[detailPlugin.id]}
-            onInstall={() => onInstall(detailPlugin.id)}
-            onUninstall={() => onUninstall(detailPlugin.id)}
-            onToggle={() => onToggle(detailPlugin.id)}
-          />
+          <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+            {/* Left pane — search + filter + plugin list */}
+            <div
+              style={{
+                width: 250, flexShrink: 0,
+                borderRight: '1px solid rgba(255,255,255,0.08)',
+                display: 'flex', flexDirection: 'column', minHeight: 0,
+              }}
+            >
+              <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search community plugins..."
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    padding: '7px 10px',
+                    fontSize: 12.5, color: '#fff', outline: 'none',
+                    marginBottom: 8,
+                  }}
+                />
+                <FilterCheckbox
+                  checked={installedOnly}
+                  onChange={setInstalledOnly}
+                  label="Show installed only"
+                  style={{ fontSize: 11.5, marginBottom: 6 }}
+                />
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '0 0 4px' }}>
+                  {filtered.length === PLUGIN_REGISTRY.length
+                    ? `${PLUGIN_REGISTRY.length} plugins`
+                    : `Showing ${filtered.length} of ${PLUGIN_REGISTRY.length} plugins`}
+                </p>
+              </div>
+              <div style={{ overflowY: 'auto', flex: 1, padding: '0 8px 12px' }}>
+                {filtered.length === 0 ? (
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', padding: '8px 6px', margin: 0 }}>
+                    No plugins match.
+                  </p>
+                ) : (
+                  filtered.map(p => {
+                    const active = p.id === detailPlugin.id;
+                    const isInstalled = installed.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setDetailId(p.id)}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'flex-start', gap: 9,
+                          padding: '9px 10px', marginBottom: 6,
+                          borderRadius: 8, cursor: 'pointer',
+                          border: `1px solid ${active ? 'rgba(127,119,221,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                          background: active ? 'rgba(127,119,221,0.14)' : 'rgba(255,255,255,0.03)',
+                          textAlign: 'left',
+                          transition: 'background 0.12s, border-color 0.12s',
+                        }}
+                        onMouseEnter={e => {
+                          if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
+                        }}
+                        onMouseLeave={e => {
+                          if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.03)';
+                        }}
+                      >
+                        <span style={{
+                          width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                          background: 'rgba(255,255,255,0.06)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: isInstalled ? 'var(--accent)' : 'rgba(255,255,255,0.45)',
+                        }}>
+                          <PluginIcon id={p.id} size={14} />
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{
+                              flex: 1, minWidth: 0,
+                              fontSize: 12.5, fontWeight: 600,
+                              color: active ? '#fff' : 'rgba(255,255,255,0.85)',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {p.name}
+                            </span>
+                            {isInstalled && (
+                              <span
+                                title="Installed"
+                                style={{
+                                  width: 6, height: 6, borderRadius: '50%',
+                                  background: 'var(--accent)', flexShrink: 0,
+                                }}
+                              />
+                            )}
+                          </span>
+                          <span style={{
+                            fontSize: 11, lineHeight: 1.45,
+                            color: active ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.45)',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}>
+                            {p.description}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Right pane — ← / name / × header aligned with the README below */}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 16px 10px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                flexShrink: 0,
+              }}>
+                <button
+                  onClick={() => setDetailId(null)}
+                  title="Back to all plugins"
+                  style={{
+                    width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.55)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, lineHeight: 1, padding: 0,
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.55)'; }}
+                >
+                  ←
+                </button>
+                <span style={{
+                  flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: '#fff',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {detailPlugin.name}
+                </span>
+                <CloseBtn onClick={onClose} />
+              </div>
+              <PluginDetail
+                plugin={detailPlugin}
+                installed={installed.includes(detailPlugin.id)}
+                enabled={!!pluginData.enabled[detailPlugin.id]}
+                onInstall={() => onInstall(detailPlugin.id)}
+                onUninstall={() => onUninstall(detailPlugin.id)}
+                onToggle={() => onToggle(detailPlugin.id)}
+              />
+            </div>
+          </div>
         ) : (
         <div style={{ overflowY: 'auto', flex: 1, padding: 20 }}>
           {filtered.length === 0 ? (
@@ -608,7 +805,7 @@ function BrowseModal({
                 : <>No plugins match &ldquo;{search}&rdquo;</>}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               {filtered.map(plugin => {
                 const isInstalled = installed.includes(plugin.id);
                 return (
@@ -1074,22 +1271,20 @@ export default function SettingsModal() {
     }
   }, []);
 
+  // Same StrictMode rule as the plugin handlers below: saves happen outside
+  // the setState updater.
   const handleToggleSync = useCallback(() => {
-    setFileSettings(prev => {
-      const next: FileSettings = { ...prev, syncHeadingWithFilename: !prev.syncHeadingWithFilename };
-      saveFileSettings(next, prev);
-      return next;
-    });
-  }, [saveFileSettings]);
+    const next: FileSettings = { ...fileSettings, syncHeadingWithFilename: !fileSettings.syncHeadingWithFilename };
+    setFileSettings(next);
+    saveFileSettings(next, fileSettings);
+  }, [fileSettings, saveFileSettings]);
 
   const handleChangeLocation = useCallback((loc: NewNoteLocation) => {
-    setFileSettings(prev => {
-      if (prev.newNoteLocation === loc) return prev;
-      const next: FileSettings = { ...prev, newNoteLocation: loc };
-      saveFileSettings(next, prev);
-      return next;
-    });
-  }, [saveFileSettings]);
+    if (fileSettings.newNoteLocation === loc) return;
+    const next: FileSettings = { ...fileSettings, newNoteLocation: loc };
+    setFileSettings(next);
+    saveFileSettings(next, fileSettings);
+  }, [fileSettings, saveFileSettings]);
 
   const savePlugins = useCallback(async (next: PluginData, original: PluginData) => {
     setPluginSaving(true);
@@ -1099,7 +1294,15 @@ export default function SettingsModal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ installed: next.installed, enabled: next.enabled }),
       });
-      if (!res.ok) setPluginData(original);
+      if (!res.ok) {
+        setPluginData(original);
+      } else {
+        // Push the saved state into the shared SWR cache so consumers outside
+        // the modal (icon strip in NotesShell, sidebar context menu) update
+        // immediately — their 30s dedupe would otherwise show stale state
+        // until a refresh.
+        swrMutate('/api/user/plugins', next, { revalidate: false });
+      }
     } catch {
       setPluginData(original);
     } finally {
@@ -1107,43 +1310,38 @@ export default function SettingsModal() {
     }
   }, []);
 
+  // NOTE: savePlugins must be called OUTSIDE the setState updater. React 18
+  // StrictMode double-invokes updaters in dev, which fired two concurrent
+  // POSTs — the second lost the CouchDB _rev race (409) and reverted the
+  // toggle even though the first save persisted.
   const handleInstall = useCallback((id: string) => {
-    setPluginData(prev => {
-      const original = prev;
-      if (prev.installed.includes(id)) return prev;
-      const next: PluginData = {
-        installed: [...prev.installed, id],
-        enabled: { ...prev.enabled, [id]: true },
-      };
-      savePlugins(next, original);
-      return next;
-    });
-  }, [savePlugins]);
+    if (pluginData.installed.includes(id)) return;
+    const next: PluginData = {
+      installed: [...pluginData.installed, id],
+      enabled: { ...pluginData.enabled, [id]: true },
+    };
+    setPluginData(next);
+    savePlugins(next, pluginData);
+  }, [pluginData, savePlugins]);
 
   const handleUninstall = useCallback((id: string) => {
-    setPluginData(prev => {
-      const original = prev;
-      const { [id]: _removed, ...restEnabled } = prev.enabled;
-      const next: PluginData = {
-        installed: prev.installed.filter(i => i !== id),
-        enabled: restEnabled,
-      };
-      savePlugins(next, original);
-      return next;
-    });
-  }, [savePlugins]);
+    const { [id]: _removed, ...restEnabled } = pluginData.enabled;
+    const next: PluginData = {
+      installed: pluginData.installed.filter(i => i !== id),
+      enabled: restEnabled,
+    };
+    setPluginData(next);
+    savePlugins(next, pluginData);
+  }, [pluginData, savePlugins]);
 
   const handleToggle = useCallback((id: string) => {
-    setPluginData(prev => {
-      const original = prev;
-      const next: PluginData = {
-        ...prev,
-        enabled: { ...prev.enabled, [id]: !prev.enabled[id] },
-      };
-      savePlugins(next, original);
-      return next;
-    });
-  }, [savePlugins]);
+    const next: PluginData = {
+      ...pluginData,
+      enabled: { ...pluginData.enabled, [id]: !pluginData.enabled[id] },
+    };
+    setPluginData(next);
+    savePlugins(next, pluginData);
+  }, [pluginData, savePlugins]);
 
   const regenerate = async () => {
     if (!confirm('Regenerate password? Your current LiveSync connection will stop working until you update it in Obsidian.')) return;
@@ -1180,13 +1378,16 @@ export default function SettingsModal() {
 
   const busy = status === 'loading' || loading;
 
-  // Category list — Sync only appears when the user has LiveSync credentials
-  // (admin accounts have none). 'general' is always present and is the default.
+  // Category list — Sync appears when the user has LiveSync credentials (admin
+  // accounts have none) AND the Self-hosted LiveSync community plugin is
+  // installed + enabled. 'general' is always present and is the default.
+  const liveSyncOn =
+    pluginData.installed.includes('livesync') && !!pluginData.enabled['livesync'];
   const categories: { id: string; label: string }[] = [
     { id: 'general', label: t('nav.general') },
     { id: 'account', label: t('nav.account') },
     { id: 'editor', label: t('nav.editor') },
-    ...(creds ? [{ id: 'sync', label: t('nav.sync') }] : []),
+    ...(creds && liveSyncOn ? [{ id: 'sync', label: t('nav.sync') }] : []),
     { id: 'plugins', label: t('nav.communityPlugins') },
   ];
   const selected = categories.some((c) => c.id === activeCategory) ? activeCategory : 'general';

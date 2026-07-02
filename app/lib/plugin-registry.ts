@@ -1,5 +1,5 @@
 export interface PluginDefinition {
-  id: 'kanban' | 'calendar' | 'gitlab';
+  id: 'kanban' | 'calendar' | 'gitlab' | 'livesync';
   name: string;
   description: string;
   /** Markdown "how to use" body shown in the browse detail view. */
@@ -67,6 +67,27 @@ kanban-plugin: basic
 ## Daily note format
 
 Daily notes are named \`YYYY-MM-DD.md\` and live in your vault like any other note — link to them with \`[[2026-07-02]]\`.`,
+  },
+  {
+    id: 'livesync',
+    name: 'Self-hosted LiveSync',
+    author: 'REXFORM',
+    version: '1.0.0',
+    description: 'Sync this vault with the Obsidian desktop/mobile app',
+    category: 'integration',
+    longDescription: `Two-way sync between this web vault and Obsidian, powered by the Self-hosted LiveSync community plugin and this workspace's CouchDB.
+
+## How to use
+
+1. **Enable** the plugin — a **Sync** tab appears in Settings with your personal database credentials.
+2. In Obsidian, install the **Self-hosted LiveSync** community plugin.
+3. Copy the server URL, database name, username and password from the Sync tab into LiveSync's *Remote Database Configuration*.
+4. Edits made here and in Obsidian merge automatically — notes, folders and Kanban boards alike.
+
+## Notes
+
+- Credentials are unique to your account; regenerating the password disconnects existing devices until they're updated.
+- Disabling the plugin only hides the Sync tab — devices already syncing keep working.`,
   },
   {
     id: 'gitlab',
