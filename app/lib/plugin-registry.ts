@@ -140,16 +140,17 @@ Speech recognition needs a browser that supports the Web Speech API (Chrome and 
     version: '1.0.0',
     description: 'Link notes to GitLab issues, epics and milestones',
     category: 'integration',
-    longDescription: `Connect your vault to GitLab and reference work items directly from your notes.
+    longDescription: `Browse GitLab issues from your projects and turn them into notes — keep design docs, meeting notes and research attached to the work they describe.
 
 ## How to use
 
 1. **Enable** the plugin — the GitLab icon appears in the left icon strip.
-2. Browse issues, epics and milestones from your configured GitLab projects.
-3. Link a note to a work item to keep design docs, meeting notes and research attached to the work they describe.
+2. Open it and **connect** with a personal access token (\`read_api\` scope), created under *GitLab → User settings → Access tokens*. Self-hosted GitLab instances work too — just change the host.
+3. Pick a project, then filter and search its issues.
+4. On any issue: **Copy link** puts a markdown link on your clipboard, and **+ Note** creates a note in your \`GitLab/\` folder seeded with the issue's description and properties.
 
-## Requirements
+## Security
 
-A GitLab account with access to the REXFORM group. Authentication is handled by your existing session.`,
+Your token is stored encrypted and used only server-side — the browser never talks to GitLab directly. Disconnecting removes it.`,
   },
 ];
