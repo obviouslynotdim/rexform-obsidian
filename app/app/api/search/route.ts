@@ -27,13 +27,27 @@ export async function GET(req: NextRequest) {
     const { db } = await resolveVault(session, req.nextUrl.searchParams.get('vault'));
     const data = await getAllNotes(auth, db);
     const lower = q.toLowerCase();
+    const rows: any[] = data.rows || [];
 
-    const results = (data.rows || [])
+    // LiveSync stores chunked note bodies in h:<hash> docs whose .data holds
+    // the text. Those docs are already in this _all_docs response, so index
+    // them once and assemble multi-chunk notes without extra requests.
+    const chunkData = new Map<string, string>();
+    for (const row of rows) {
+      const d = row.doc;
+      if (d && typeof d._id === 'string' && d._id.startsWith('h:') && typeof d.data === 'string') {
+        chunkData.set(d._id, d.data);
+      }
+    }
+
+    const results = rows
       .map((row: any) => row.doc)
       .filter((doc: any) => isPageDoc(doc))
       .map((doc: any) => {
         const title = extractTitle(doc);
-        const rawBody = doc.body || doc.content || doc.text || '';
+        const children: string[] = Array.isArray(doc.children) ? doc.children : [];
+        const assembled = children.map((id) => chunkData.get(id) ?? '').join('');
+        const rawBody = assembled || doc.body || doc.content || doc.text || '';
         const { content: bodyContent } = stripFrontmatter(rawBody);
         const titleMatch = title.toLowerCase().includes(lower);
         const pathMatch = (doc.path || '').toLowerCase().includes(lower);
