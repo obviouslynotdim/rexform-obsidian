@@ -200,17 +200,18 @@ export default function NotesSidebar({ currentId }: Props) {
     setCreating({ folder: '', type });
   }
 
-  // Creates a seeded starter board at the vault root and opens it. Naming is
-  // delegated to the create API ("Untitled Board", "Untitled Board 1", …).
-  async function createKanbanBoard() {
+  // Creates a seeded starter board in the given folder ('' = vault root) and
+  // opens it. Naming is delegated to the create API ("Untitled Board", …).
+  async function createKanbanBoard(folder = '') {
     const res = await fetch('/api/notes/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Untitled Board', folder: '', content: starterBoardDoc() }),
+      body: JSON.stringify({ title: 'Untitled Board', folder, content: starterBoardDoc() }),
     });
     if (!res.ok) return;
     const data = await res.json();
     mutate();
+    if (folder) expandFolders(folder);
     router.push(`/notes/${encodeURIComponent(data.id)}`);
   }
 
@@ -253,7 +254,7 @@ export default function NotesSidebar({ currentId }: Props) {
 
   // Shared props passed down to tree items
   const sharedChildProps = { activeId, canWrite, setMoving, onMoved: handleMoved, onDeleted: handleDeleted, dragging, setDragging, setContextMenu, onDropOnFolder: handleDropOnFolder, setCreating };
-  const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder, onFolderMoved: handleFolderMove };
+  const sharedFolderProps = { ...sharedChildProps, expanded, toggleExpand, creating, setCreating, onCreated: handleCreated, onFolderRenamed: handleFolderRenamed, onFolderDeleted: handleFolderDeleted, onDropOnFolder: handleDropOnFolder, onFolderMoved: handleFolderMove, onNewKanbanInFolder: kanbanEnabled ? createKanbanBoard : undefined };
 
   return (
     <div

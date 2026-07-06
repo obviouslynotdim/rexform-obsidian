@@ -25,13 +25,16 @@ interface FolderItemProps {
   onDropOnFolder: (targetFolder: string, noteId: string) => void;
   onFolderMoved?: (sourcePath: string, targetParent: string) => void;
   setContextMenu: (menu: ContextMenuState | null) => void;
+  // Present only while the Kanban plugin is enabled — creates a board in the
+  // given folder. Gates the "New Kanban board" context-menu entry.
+  onNewKanbanInFolder?: (folder: string) => void;
 }
 
 export default function FolderItem({
   node, depth, activeId, expanded, toggleExpand, creating, setCreating,
   canWrite, onCreated, setMoving, onMoved, onDeleted,
   onFolderRenamed, onFolderDeleted, dragging, setDragging,
-  onDropOnFolder, onFolderMoved, setContextMenu,
+  onDropOnFolder, onFolderMoved, setContextMenu, onNewKanbanInFolder,
 }: FolderItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState('');
@@ -64,6 +67,9 @@ export default function FolderItem({
         onDelete: () => setConfirmDeleteFolder(true),
         onNewNote: () => openAndCreate('note'),
         onNewFolder: () => openAndCreate('folder'),
+        onNewKanban: onNewKanbanInFolder
+          ? () => { if (!isOpen) toggleExpand(node.path); onNewKanbanInFolder(node.path); }
+          : undefined,
       } : {}),
     };
   }
@@ -118,7 +124,7 @@ export default function FolderItem({
     ...sharedChildProps,
     expanded, toggleExpand, creating, setCreating,
     onCreated, onFolderRenamed, onFolderDeleted, onDropOnFolder,
-    onFolderMoved,
+    onFolderMoved, onNewKanbanInFolder,
   };
 
   return (
