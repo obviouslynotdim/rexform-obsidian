@@ -13,7 +13,7 @@
 | **Single admin account** | `ADMIN_USER_ID` is one UUID. There is no multi-admin role system. All admin panel access is gated on this single identity. |
 | **Notes not encrypted at rest** | Notes are stored as plaintext JSON in CouchDB. Enabling Obsidian LiveSync's E2E encryption would break the web editor and server-side search. |
 | **Vault-level permissions only** | Access control is per-vault. There is no per-note ACL — all notes in a shared vault share the same role. |
-| **No rate limiting** | API routes have no rate limiting. An authenticated user could hammer the CouchDB proxy. |
+| **Rate limiting is in-memory, per-IP** | Middleware enforces per-IP windows (10 auth POSTs/min, 120 auth GETs/min, 600 API writes/min) but counters live in process memory — they reset on redeploy and would need a shared store (Redis) with multiple instances. Per-IP keys also mean users behind one NAT share a bucket, and there is no per-account lockout. |
 | **Single Keto instance** | If Keto goes down, shared vault permission checks fall back gracefully to the active vault cookie, but membership changes fail. |
 
 ---
@@ -31,7 +31,7 @@ Web workspace with tabs and resizable panels, sidebar file tree with folders/dra
 | **Production SMTP** | Connect Kratos courier to a real email provider; enforce email verification before vault access |
 | **Indexed search** | Replace the per-query `_all_docs` scan with a CouchDB Mango index or an external search service; lift the 1,000-doc scan cap |
 | **Multi-admin support** | Replace single `ADMIN_USER_ID` with a Keto-backed `admin` role |
-| **Rate limiting** | Add rate limiting middleware on auth routes and write-heavy API routes |
+| **Per-account login lockout** | Complement the per-IP rate limit with per-identity attempt tracking (survives IP rotation; needs a shared store) |
 | **Per-user obsidian-remote** | Provision a separate `linuxserver/obsidian` container per user, each mounted to their vault. Currently blocked by Railway's dynamic service provisioning complexity. |
 | **CM6 Live Preview Phase B** | Deeper WYSIWYG behaviours deferred from the initial Live Preview work |
 | **Backlinks panel in right sidebar** | Backlinks currently render as a right-panel tab; richer unlinked-mentions view deferred |
