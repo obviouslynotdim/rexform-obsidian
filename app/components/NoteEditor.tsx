@@ -9,7 +9,7 @@ import type { EditorView as EditorViewType } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
 import {
-  autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap,
+  autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion,
 } from '@codemirror/autocomplete';
 import { useTabsContext } from '@/context/TabsContext';
 import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
@@ -229,6 +229,10 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       { key: 'Mod-s', preventDefault: true, run: () => { manualSaveRef.current(); return true; } },
       ...closeBracketsKeymap,
       ...completionKeymap,
+      // Obsidian-style: Tab accepts the highlighted completion (e.g. in the
+      // [[wikilink]] popup). Returns false when no popup is open, falling
+      // through to indentWithTab below.
+      { key: 'Tab', run: acceptCompletion },
       ...historyKeymap,
       ...defaultKeymap,
       indentWithTab,

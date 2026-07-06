@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchFromVault, isVaultNote, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
+import { updatePathBacklinks } from '@/lib/wikilink-rewrite';
 
 // Normalize a wikilink target the same way resolveWikilink does on the client:
 // case-insensitive, hyphens/underscores treated as spaces.
@@ -251,6 +252,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     void updateBacklinks(oldTitle, newTitle, auth, db, skipIds).catch(() => {
       // best-effort — rename already succeeded
     });
+  }
+
+  // Same best-effort pass for path-qualified links ([[folder/Note]]) when the
+  // note changed folders — bare-title links are covered above, so this helper
+  // only touches links containing '/'.
+  if (oldFolder !== newFolder) {
+    void updatePathBacklinks(
+      [{ oldPath: oldId.replace(/\.md$/i, ''), newPath: newId.replace(/\.md$/i, '') }],
+      auth,
+      db
+    ).catch(() => {});
   }
 
   return NextResponse.json({ id: newId });

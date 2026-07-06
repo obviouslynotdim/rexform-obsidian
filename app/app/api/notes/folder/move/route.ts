@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchFromVault, isVaultNote, isFolderMarker, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
+import { updatePathBacklinks, type PathPair } from '@/lib/wikilink-rewrite';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
     .filter((doc: any) => doc._id.startsWith(cleanSource + '/'));
 
   let moved = 0;
+  const movedPairs: PathPair[] = [];
 
   // Move notes: copy note + chunks to new path, delete originals
   for (const note of affectedNotes) {
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest) {
       await fetchFromVault(`${encodeURIComponent(chunk._id)}?rev=${chunk._rev}`, { method: 'DELETE' }, auth, db);
     }));
     await fetchFromVault(`${encodeURIComponent(oldId)}?rev=${note._rev}`, { method: 'DELETE' }, auth, db);
+    movedPairs.push({ oldPath: oldId.replace(/\.md$/i, ''), newPath: newId.replace(/\.md$/i, '') });
     moved++;
   }
 
@@ -144,6 +147,11 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* non-critical */ }
   }
+
+  // Best-effort: rewrite [[old-path/Note]] path-qualified wikilinks across the
+  // vault so they keep resolving. Fired un-awaited so it never blocks the
+  // response; the move itself already succeeded.
+  void updatePathBacklinks(movedPairs, auth, db).catch(() => {});
 
   return NextResponse.json({ moved });
 }

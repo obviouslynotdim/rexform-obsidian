@@ -53,10 +53,14 @@ export function wikilinkCompletions(notesRef: { current: NoteStub[] }): Completi
           label: name,
           detail: folder,
           // Replace the typed `[[partial` with a complete `[[name]]` and drop
-          // the caret just after the closing brackets.
+          // the caret just after the closing brackets. closeBrackets() auto-
+          // inserts `]]` when `[[` is typed, so swallow any `]`s already
+          // sitting after the cursor or the result doubles up: `[[name]]]]`.
           apply: (view: any, _completion: unknown, from: number, to: number) => {
+            const after = view.state.doc.sliceString(to, to + 2);
+            const extra = after === ']]' ? 2 : after.startsWith(']') ? 1 : 0;
             view.dispatch({
-              changes: { from, to, insert: `[[${name}]]` },
+              changes: { from, to: to + extra, insert: `[[${name}]]` },
               selection: { anchor: from + name.length + 4 },
             });
           },

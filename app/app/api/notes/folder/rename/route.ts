@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { fetchFromVault, getAllNotes, isVaultNote, AuthHeaders } from '@/lib/couchdb';
 import { resolveVault } from '@/lib/active-vault';
+import { updatePathBacklinks, type PathPair } from '@/lib/wikilink-rewrite';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
 
   let renamed = 0;
   const errors: string[] = [];
+  const movedPairs: PathPair[] = [];
 
   for (const note of affected) {
     const oldId: string = note._id;
@@ -81,8 +83,14 @@ export async function POST(req: NextRequest) {
       await fetchFromVault(`${encodeURIComponent(chunk._id)}?rev=${chunk._rev}`, { method: 'DELETE' }, auth, db);
     }));
     await fetchFromVault(`${encodeURIComponent(oldId)}?rev=${note._rev}`, { method: 'DELETE' }, auth, db);
+    movedPairs.push({ oldPath: oldId.replace(/\.md$/i, ''), newPath: newId.replace(/\.md$/i, '') });
     renamed++;
   }
+
+  // Best-effort: rewrite [[old-folder/Note]] path-qualified wikilinks across
+  // the vault so they keep resolving. Fired un-awaited so it never blocks the
+  // response; the rename itself already succeeded.
+  void updatePathBacklinks(movedPairs, auth, db).catch(() => {});
 
   return NextResponse.json({ renamed, errors: errors.length ? errors : undefined });
 }

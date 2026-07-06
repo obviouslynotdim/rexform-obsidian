@@ -9,7 +9,7 @@
 | **`obsidian-remote` is single-user** | KasmVNC provides one browser session. Multiple users cannot have separate browser Obsidian instances. This service is admin-only tooling. |
 | **Kratos session token not refreshed** | `kratosSessionToken` in the NextAuth JWT is not refreshed when it expires. Long-lived sessions may experience 401s from Oathkeeper on admin vault reads. Writes and all user-vault operations are unaffected. |
 | **Search is a full scan, not indexed** | `/api/search` matches title, path, and body content (chunked LiveSync notes are assembled from the same `_all_docs` response), but every query scans the whole vault — no CouchDB Mango index or external search service. The scan is also capped at 1,000 docs (notes + chunks combined). |
-| **Folder rename doesn't rewrite wikilinks** | Renaming a single note rewrites `[[links]]` to it (best-effort, background), but renaming or moving a *folder* does not — links using folder-qualified paths can break. |
+| **Wikilink rewriting is best-effort** | Renames and moves (note or folder) rewrite affected `[[links]]` in a background pass that is not transactional: it scans up to 5,000 docs, skips docs on write conflicts, and can be cut short if the serverless runtime terminates after the response. |
 | **Single admin account** | `ADMIN_USER_ID` is one UUID. There is no multi-admin role system. All admin panel access is gated on this single identity. |
 | **Notes not encrypted at rest** | Notes are stored as plaintext JSON in CouchDB. Enabling Obsidian LiveSync's E2E encryption would break the web editor and server-side search. |
 | **Vault-level permissions only** | Access control is per-vault. There is no per-note ACL — all notes in a shared vault share the same role. |
