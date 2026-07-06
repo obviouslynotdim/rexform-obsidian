@@ -154,12 +154,38 @@ function LiveSyncPluginIcon({ size = 20 }: { size?: number }) {
   );
 }
 
+function PdfPluginIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      <path
+        d="M4 2.5h7.5L16 7v10a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 17V4a1.5 1.5 0 0 1 1.5-1.5Z"
+        stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"
+      />
+      <path d="M11.5 2.5V7H16" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M6.5 11h7M6.5 14h4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SpeechPluginIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      <rect x="7" y="2" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="10" y1="15" x2="10" y2="18" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="7.5" y1="18" x2="12.5" y2="18" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
   switch (id) {
     case 'kanban':   return <KanbanPluginIcon size={size} />;
     case 'calendar': return <CalendarPluginIcon size={size} />;
     case 'gitlab':   return <GitLabPluginIcon size={size} />;
     case 'livesync': return <LiveSyncPluginIcon size={size} />;
+    case 'pdf':      return <PdfPluginIcon size={size} />;
+    case 'speech':   return <SpeechPluginIcon size={size} />;
     default:         return null;
   }
 }

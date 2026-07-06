@@ -20,7 +20,7 @@
 
 ## Shipped Since This List Was First Written (Phases 6–23)
 
-Web workspace with tabs and resizable panels, sidebar file tree with folders/drag-and-drop/context menus, CodeMirror 6 Live Preview + Source editor modes, wikilinks with autocomplete + backlinks + D3 knowledge graph, Ctrl+K full-text quick switcher, YAML frontmatter round-trip + Properties panel, collapsible headings, Mermaid diagrams, onboarding flow, settings modal with i18n (en/kh), community plugin system, and native plugins: Kanban boards, Calendar, GitLab Work Items, LiveSync.
+Web workspace with tabs and resizable panels, sidebar file tree with folders/drag-and-drop/context menus, CodeMirror 6 Live Preview + Source editor modes, wikilinks with autocomplete + backlinks + D3 knowledge graph, Ctrl+K full-text quick switcher, YAML frontmatter round-trip + Properties panel, collapsible headings, Mermaid diagrams, onboarding flow, settings modal with i18n (en/kh), community plugin system, and native plugins: Kanban boards, Calendar, GitLab Work Items, LiveSync, PDF Export, Speech (read aloud + dictation).
 
 ---
 

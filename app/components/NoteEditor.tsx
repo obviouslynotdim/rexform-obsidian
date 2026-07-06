@@ -74,6 +74,65 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });
+
+  // Speech plugin gates the toolbar's dictation (speech-to-text) button.
+  const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const speechOn =
+    (pluginsData?.installed ?? []).includes('speech') && !!pluginsData?.enabled?.speech;
+
+  // Dictation via the Web Speech API: final transcripts are inserted at the
+  // cursor. The recognizer lives in a ref; `dictating` drives the button UI.
+  const [dictating, setDictating] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const toggleDictation = () => {
+    if (dictating) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      alert('Speech recognition is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+    rec.onresult = (e: any) => {
+      let text = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) text += e.results[i][0].transcript;
+      }
+      text = text.trim();
+      if (!text) return;
+      const view = viewRef.current;
+      if (!view) return;
+      const { from, to } = view.state.selection.main;
+      // Pad with a space when gluing onto a non-whitespace character.
+      const charBefore = from > 0 ? view.state.sliceDoc(from - 1, from) : '';
+      const insert = (charBefore && !/\s/.test(charBefore) ? ' ' : '') + text + ' ';
+      view.dispatch({
+        changes: { from, to, insert },
+        selection: { anchor: from + insert.length },
+      });
+    };
+    rec.onend = () => {
+      recognitionRef.current = null;
+      setDictating(false);
+    };
+    rec.onerror = () => {
+      // onend fires after onerror; state cleanup happens there.
+    };
+    recognitionRef.current = rec;
+    rec.start();
+    setDictating(true);
+  };
+  useEffect(() => {
+    return () => recognitionRef.current?.stop();
+  }, []);
   const settingsRef = useRef<FileSettings | undefined>(undefined);
   settingsRef.current = fileSettings;
   const currentTitleRef = useRef(currentTitle);
@@ -303,6 +362,21 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
             {btn.label}
           </button>
         ))}
+
+        {speechOn && (
+          <button
+            title={dictating ? 'Stop dictation' : 'Dictate (speech-to-text)'}
+            onClick={toggleDictation}
+            className="px-2 py-1 rounded text-xs font-medium hover:opacity-80 transition-opacity"
+            style={{
+              background: dictating ? 'rgba(248,113,113,0.18)' : 'var(--border)',
+              color: dictating ? '#f87171' : 'var(--text-primary)',
+              minWidth: 28,
+            }}
+          >
+            {dictating ? '🎤 …' : '🎤'}
+          </button>
+        )}
 
         <div className="flex-1" />
 

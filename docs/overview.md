@@ -13,7 +13,7 @@ Users can connect the Obsidian desktop or mobile app directly to their vault via
 - **Web workspace** — sidebar file tree (folders, drag-and-drop, context menus), tabs per vault, resizable panels, Ctrl+K quick switcher with full-text search
 - **Editor** — Reading, Live Preview (CodeMirror 6 inline WYSIWYG), and Source modes; YAML frontmatter round-trip with a collapsible Properties panel; collapsible headings; Mermaid diagrams
 - **Wikilinks & graph** — `[[wikilinks]]` with autocomplete, backlinks panel, vault-wide and folder-scoped D3 graph
-- **Plugins** — Obsidian-style community plugin browser; native plugins: Kanban (markdown-backed boards, Obsidian Kanban-plugin compatible), Calendar, GitLab Work Items, Self-hosted LiveSync
+- **Plugins** — Obsidian-style community plugin browser; native plugins: Kanban (markdown-backed boards, Obsidian Kanban-plugin compatible), Calendar, GitLab Work Items, Self-hosted LiveSync, PDF Export, Speech (read aloud + dictation)
 - **LiveSync integration** — per-user CouchDB credentials for direct Obsidian app sync
 - **Admin panel** — user management, vault provisioning, suspension, shared vault administration
 - **Obsidian-remote** — browser-based Obsidian desktop for admin vault browsing

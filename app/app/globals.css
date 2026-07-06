@@ -188,3 +188,52 @@ body {
   from { width: 0%; }
   to   { width: 100%; }
 }
+
+/* PDF Export plugin — the print portal is invisible on screen; when printing,
+   the whole app is hidden and only the portal renders, light-themed. */
+.print-export {
+  display: none;
+}
+@media print {
+  /* Zero page margins so the browser prints no header/footer margin boxes
+     (date, tab title, URL, page numbers) — the export container carries the
+     visual margin instead, Obsidian-style. */
+  @page {
+    margin: 0;
+  }
+  body > *:not(.print-export) {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  .print-export {
+    display: block !important;
+    background: #fff;
+    color: #111;
+    padding: 20mm 18mm;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .print-export,
+  .print-export * {
+    color: #111 !important;
+    background: transparent !important;
+    border-color: #bbb !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+  .print-export a {
+    text-decoration: underline;
+  }
+  .print-export pre,
+  .print-export code {
+    background: #f4f4f4 !important;
+  }
+  .print-export h1, .print-export h2, .print-export h3 {
+    page-break-after: avoid;
+  }
+  .print-export pre, .print-export table, .print-export blockquote {
+    page-break-inside: avoid;
+  }
+}

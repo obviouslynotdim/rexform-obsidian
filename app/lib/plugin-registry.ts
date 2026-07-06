@@ -1,5 +1,5 @@
 export interface PluginDefinition {
-  id: 'kanban' | 'calendar' | 'gitlab' | 'livesync';
+  id: 'kanban' | 'calendar' | 'gitlab' | 'livesync' | 'pdf' | 'speech';
   name: string;
   description: string;
   /** Markdown "how to use" body shown in the browse detail view. */
@@ -67,6 +67,50 @@ kanban-plugin: basic
 ## Daily note format
 
 Daily notes are named \`YYYY-MM-DD.md\` and live in your vault like any other note — link to them with \`[[2026-07-02]]\`.`,
+  },
+  {
+    id: 'pdf',
+    name: 'PDF Export',
+    author: 'REXFORM',
+    version: '1.0.0',
+    description: 'Export notes as PDF documents',
+    category: 'productivity',
+    longDescription: `Export any note as a print-ready PDF straight from the browser.
+
+## How to use
+
+1. **Enable** the plugin.
+2. Open a note and choose **Export to PDF** from its ⋮ menu.
+3. Your browser's print dialog opens with a clean, light-themed render of the note — pick **Save as PDF** as the destination.
+
+## Notes
+
+- The export uses the Reading view: wikilinks, tables, code blocks and Mermaid diagrams render as on screen.
+- YAML frontmatter (Properties) is omitted — only the note body is exported.`,
+  },
+  {
+    id: 'speech',
+    name: 'Speech',
+    author: 'REXFORM',
+    version: '1.0.0',
+    description: 'Read notes aloud and dictate text into the editor',
+    category: 'productivity',
+    longDescription: `Text-to-speech and speech-to-text powered by your browser's built-in speech engine — nothing leaves your machine except what your browser's speech service processes.
+
+## Read aloud (text-to-speech)
+
+1. **Enable** the plugin.
+2. Open a note and choose **Read aloud** from its ⋮ menu; choose **Stop reading** to cancel.
+
+## Dictation (speech-to-text)
+
+1. Open a note in **Source** or **Live Preview** mode.
+2. Click the microphone button in the editor toolbar and start speaking — recognized text is inserted at the cursor.
+3. Click the button again to stop.
+
+## Requirements
+
+Speech recognition needs a browser that supports the Web Speech API (Chrome and Edge work best) and microphone permission for this site.`,
   },
   {
     id: 'livesync',

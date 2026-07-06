@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import NoteEditor, { type ViewMode } from './NoteEditor';
@@ -32,6 +33,22 @@ function syncHeadingWithTitle(content: string, newTitle: string): string {
     return content.replace(H1_LINE, () => `# ${newTitle}`);
   }
   return `# ${newTitle}\n\n${content}`;
+}
+
+// Rough markdown → plain text for the Speech plugin's Read Aloud: drop code
+// blocks and images, unwrap links/wikilinks to their visible text, strip the
+// syntax characters a voice would otherwise read out.
+function markdownToPlainText(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_m, target, alias) => alias || target)
+    .replace(/^#{1,6}[ \t]+/gm, '')
+    .replace(/[*_>~|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // Old notes stored tags as a comma string ("saas, rexform"); the panel works in
@@ -503,6 +520,61 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
 
+  // Plugin gating for the ⋮ menu extras (PDF Export, Speech). Same SWR key as
+  // NotesShell/NotesSidebar, so no extra request is made.
+  const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const pluginOn = (id: string) =>
+    (pluginsData?.installed ?? []).includes(id) && !!pluginsData?.enabled?.[id];
+  const pdfOn = pluginOn('pdf');
+  const speechOn = pluginOn('speech');
+
+  // PDF Export — render the note into a print-only portal (light theme, body
+  // only) and open the browser's print dialog; "Save as PDF" does the rest.
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (!printing) return;
+    const done = () => setPrinting(false);
+    window.addEventListener('afterprint', done);
+    // Give the portal a beat to paint (and Mermaid diagrams a chance to render).
+    const t = setTimeout(() => window.print(), 300);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('afterprint', done);
+    };
+  }, [printing]);
+
+  // Read Aloud — browser TTS over a plain-text version of the body.
+  const [speaking, setSpeaking] = useState(false);
+  const toggleReadAloud = useCallback(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      alert('Text-to-speech is not supported in this browser.');
+      return;
+    }
+    if (synth.speaking) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const text = markdownToPlainText(body);
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    synth.speak(utterance);
+    setSpeaking(true);
+  }, [body]);
+  // Stop speech when the note changes or unmounts.
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+      setSpeaking(false);
+    };
+  }, [noteId]);
+
   // Ctrl/Cmd+E toggles Reading <-> last edit mode (Obsidian behavior).
   // Separate from the Escape effect above so it stays mounted in every mode.
   useEffect(() => {
@@ -596,6 +668,9 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
         canWrite={canWrite}
         onRename={() => { setRenameValue(title); renameSettled.current = false; setRenamingTitle(true); }}
         onDelete={handleDelete}
+        onExportPdf={pdfOn ? () => setPrinting(true) : undefined}
+        onReadAloud={speechOn ? toggleReadAloud : undefined}
+        readingAloud={speaking}
       />
     </>
   );
@@ -758,6 +833,18 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
           })}
         </div>
       </div>
+
+      {/* PDF Export print portal — hidden on screen; @media print in
+          globals.css hides the app and shows only this, light-themed. */}
+      {printing && createPortal(
+        <div className="print-export">
+          <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 18 }}>{title}</h1>
+          <div className="prose">
+            <WikiMarkdown>{body}</WikiMarkdown>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

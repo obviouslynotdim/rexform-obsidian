@@ -13,6 +13,11 @@ interface Props {
   canWrite: boolean;
   onRename: () => void;
   onDelete: () => void;
+  /** Present only while the PDF Export plugin is enabled. */
+  onExportPdf?: () => void;
+  /** Present only while the Speech plugin is enabled. */
+  onReadAloud?: () => void;
+  readingAloud?: boolean;
 }
 
 const itemStyle: React.CSSProperties = {
@@ -51,7 +56,9 @@ function MenuItem({
   );
 }
 
-export default function NoteMenu({ noteId, title, canWrite, onRename, onDelete }: Props) {
+export default function NoteMenu({
+  noteId, title, canWrite, onRename, onDelete, onExportPdf, onReadAloud, readingAloud,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -145,6 +152,21 @@ export default function NoteMenu({ noteId, title, canWrite, onRename, onDelete }
             label={copied === 'link' ? 'Copied ✓' : 'Copy wikilink'}
             onClick={() => copy('link', `[[${title}]]`)}
           />
+
+          {(onExportPdf || onReadAloud) && (
+            <>
+              <div style={sepStyle} />
+              {onExportPdf && (
+                <MenuItem label="Export to PDF" onClick={() => { close(); onExportPdf(); }} />
+              )}
+              {onReadAloud && (
+                <MenuItem
+                  label={readingAloud ? 'Stop reading' : 'Read aloud'}
+                  onClick={() => { close(); onReadAloud(); }}
+                />
+              )}
+            </>
+          )}
 
           {canWrite && (
             <>
