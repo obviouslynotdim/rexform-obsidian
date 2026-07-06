@@ -37,7 +37,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const [flowId, setFlowId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,9 +47,9 @@ function LoginForm() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      window.location.href = '/notes';
+      window.location.href = session?.user?.isAdmin ? '/admin' : '/notes';
     }
-  }, [status]);
+  }, [status, session]);
 
   useEffect(() => {
     initFlow()
@@ -74,7 +74,9 @@ function LoginForm() {
       setError(result.error);
       initFlow().then(setFlowId).catch(() => {});
     } else {
-      window.location.href = '/notes';
+      // '/' lets the middleware route by role — /admin for admins, /notes
+      // otherwise (the fresh session isn't readable client-side yet here).
+      window.location.href = '/';
     }
   }
 

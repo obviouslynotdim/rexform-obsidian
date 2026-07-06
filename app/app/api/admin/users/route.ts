@@ -35,8 +35,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10));
-  const limit = Math.min(100, Math.max(1, parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)));
+  const sp = req.nextUrl.searchParams;
+  const page = Math.max(1, parseInt(sp.get('page') ?? '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(sp.get('limit') ?? '20', 10)));
+  const search = (sp.get('search') ?? '').trim().toLowerCase();
+  const stateFilter = sp.get('state') ?? 'all';   // all | active | suspended
+  const vaultFilter = sp.get('vault') ?? 'all';   // all | has | none
 
   try {
     const { data: identities } = await kratosAdmin.listIdentities({ perPage: 500 });
@@ -61,14 +65,49 @@ export async function GET(req: NextRequest) {
       return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     });
 
-    const total = allUsers.length;
+    // Global stats — always over the full user list, not the filtered page.
+    const stats = {
+      total: allUsers.length,
+      activeVaults: allUsers.filter((u) => u.vault.exists).length,
+      suspended: allUsers.filter((u) => !u.isAdmin && u.state !== 'active').length,
+      missingVaults: allUsers.filter((u) => !u.vault.exists && !u.isAdmin).length,
+    };
+
+    // Search + filters run over ALL users, then paginate the result.
+    let filtered = allUsers;
+    if (search) {
+      filtered = filtered.filter(
+        (u) => u.email.toLowerCase().includes(search) || u.id.toLowerCase().includes(search)
+      );
+    }
+    if (stateFilter === 'active') filtered = filtered.filter((u) => u.state === 'active');
+    if (stateFilter === 'suspended') filtered = filtered.filter((u) => u.state !== 'active');
+    if (vaultFilter === 'has') filtered = filtered.filter((u) => u.vault.exists);
+    if (vaultFilter === 'none') filtered = filtered.filter((u) => !u.vault.exists);
+
+    const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
     const safePage = Math.min(page, totalPages);
     const skip = (safePage - 1) * limit;
-    const users = allUsers.slice(skip, skip + limit);
+    const users = filtered.slice(skip, skip + limit);
 
-    return NextResponse.json({ users, total, page: safePage, totalPages });
+    return NextResponse.json({ users, total, page: safePage, totalPages, stats });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    const msg = String(e?.message ?? e);
+    const code = String(e?.code ?? e?.cause?.code ?? '');
+    if (/ENOTFOUND|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT/i.test(msg + ' ' + code)) {
+      const adminUrl = process.env.KRATOS_ADMIN_URL || 'http://localhost:4434';
+      return NextResponse.json(
+        {
+          error:
+            `Cannot reach the Kratos admin API at ${adminUrl}. ` +
+            `Railway-internal hostnames (…railway.internal) only resolve inside Railway's private network, ` +
+            `so user management works on the deployed app but not in local development. ` +
+            `To manage users locally, point KRATOS_ADMIN_URL in app/.env.local at a reachable Kratos admin endpoint.`,
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -57,7 +57,9 @@ const PUBLIC_PREFIXES = ['/api/auth', '/api/hooks'];
 const authMiddleware = withAuth(
   function middleware(req) {
     if (req.nextUrl.pathname === '/' && req.nextauth.token) {
-      return NextResponse.redirect(new URL('/notes', req.url));
+      // Admins land on the admin panel; everyone else on their notes.
+      const dest = (req.nextauth.token as { isAdmin?: boolean }).isAdmin ? '/admin' : '/notes';
+      return NextResponse.redirect(new URL(dest, req.url));
     }
   },
   {

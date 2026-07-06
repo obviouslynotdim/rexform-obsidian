@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -31,6 +31,13 @@ interface User {
   vault: VaultInfo;
 }
 
+interface Stats {
+  total: number;
+  activeVaults: number;
+  suspended: number;
+  missingVaults: number;
+}
+
 type ActionState = 'idle' | 'loading' | 'done' | 'error';
 
 function formatDate(iso: string | null) {
@@ -40,13 +47,54 @@ function formatDate(iso: string | null) {
   });
 }
 
+function useDebounced(value: string, ms: number): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+// ─── Small UI atoms ───────────────────────────────────────────────────────────
+
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: color + '22', color }}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+      style={{ background: color + '1e', color, border: `1px solid ${color}33` }}
     >
       {children}
+    </span>
+  );
+}
+
+function StatusDot({ active }: { active: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: active ? '#4ade80' : '#f87171' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'currentColor' }} />
+      {active ? 'Active' : 'Suspended'}
+    </span>
+  );
+}
+
+function Avatar({ email }: { email: string }) {
+  const letter = (email[0] ?? '?').toUpperCase();
+  // Stable hue per email so avatars are distinguishable but consistent.
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return (
+    <span
+      className="flex items-center justify-center flex-shrink-0 rounded-full text-xs font-semibold"
+      style={{
+        width: 30, height: 30,
+        background: `hsla(${hue}, 45%, 55%, 0.18)`,
+        color: `hsl(${hue}, 65%, 72%)`,
+        border: `1px solid hsla(${hue}, 45%, 60%, 0.3)`,
+      }}
+    >
+      {letter}
     </span>
   );
 }
@@ -55,12 +103,12 @@ function CopyIdButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(id); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="flex-shrink-0 px-1.5 py-0.5 rounded text-xs transition-colors hover:bg-white/5"
-      style={{ color: copied ? '#4ade80' : 'var(--text-muted)', border: '1px solid var(--border)' }}
+      onClick={() => { navigator.clipboard.writeText(id); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+      className="admin-copy-id flex-shrink-0 px-1.5 rounded text-[11px] transition-colors hover:bg-white/5"
+      style={{ color: copied ? '#4ade80' : 'var(--text-muted)' }}
       title="Copy user ID"
     >
-      {copied ? '✓' : 'Copy'}
+      {copied ? '✓ copied' : 'copy'}
     </button>
   );
 }
@@ -80,25 +128,121 @@ function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   );
 }
 
+// ─── Row actions menu (⋯) ─────────────────────────────────────────────────────
+// Fixed-position dropdown so it never gets clipped by the table container.
+
+interface MenuItem {
+  label: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+function RowMenu({ items }: { items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e: MouseEvent) {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      if (btnRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    const closeOnScroll = () => setOpen(false);
+    document.addEventListener('mousedown', close);
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnScroll);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnScroll);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={() => {
+          const r = btnRef.current?.getBoundingClientRect();
+          if (r) setPos({ x: r.right, y: r.bottom + 4 });
+          setOpen((o) => !o);
+        }}
+        title="Actions"
+        className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-white/10"
+        style={{
+          border: '1px solid var(--border)',
+          background: open ? 'rgba(255,255,255,0.08)' : 'transparent',
+          color: open ? '#fff' : 'var(--text-muted)',
+          cursor: 'pointer',
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor">
+          <circle cx="2.5" cy="7" r="1.3" />
+          <circle cx="7" cy="7" r="1.3" />
+          <circle cx="11.5" cy="7" r="1.3" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed', top: pos.y, left: pos.x, transform: 'translateX(-100%)',
+            zIndex: 100, minWidth: 180, padding: '4px 0',
+            background: '#1e2030', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          {items.map((item) => (
+            <button
+              key={item.label}
+              disabled={item.disabled}
+              onClick={() => { setOpen(false); item.onClick(); }}
+              className="block w-full text-left px-3.5 py-1.5 text-[13px] transition-colors disabled:opacity-40"
+              style={{
+                background: 'transparent', border: 'none',
+                color: item.danger ? '#f87171' : 'rgba(255,255,255,0.82)',
+                cursor: item.disabled ? 'default' : 'pointer',
+              }}
+              onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 const selectStyle: React.CSSProperties = {
   background: 'var(--bg-surface)',
   borderColor: 'var(--border)',
   color: 'var(--text-primary)',
 };
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function AdminPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [userTotal, setUserTotal] = useState(0);
   const [userTotalPages, setUserTotalPages] = useState(1);
   const [adminPage, setAdminPage] = useState(1);
   const USER_PAGE_LIMIT = 20;
   const [loading, setLoading] = useState(true);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [error, setError] = useState('');
   const [actions, setActions] = useState<Record<string, ActionState>>({});
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounced(search, 300);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [vaultFilter, setVaultFilter] = useState<'all' | 'has' | 'none'>('all');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -113,24 +257,32 @@ export default function AdminPage() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const load = useCallback(async (page = adminPage) => {
-    setLoading(true);
+  const load = useCallback(async (page: number, opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/admin/users?page=${page}&limit=${USER_PAGE_LIMIT}`);
-      if (res.status === 403) { router.replace('/dashboard'); return; }
+      const qs = new URLSearchParams({
+        page: String(page),
+        limit: String(USER_PAGE_LIMIT),
+        state: statusFilter,
+        vault: vaultFilter,
+      });
+      if (debouncedSearch.trim()) qs.set('search', debouncedSearch.trim());
+      const res = await fetch(`/api/admin/users?${qs}`);
+      if (res.status === 403) { router.replace('/notes'); return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load');
       setUsers(data.users);
+      setStats(data.stats ?? null);
       setUserTotal(data.total ?? 0);
       setUserTotalPages(data.totalPages ?? 1);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
+      setInitialLoaded(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, adminPage]);
+  }, [router, debouncedSearch, statusFilter, vaultFilter]);
 
   const loadSharedVaults = useCallback(async () => {
     setSharedVaultsLoading(true);
@@ -143,6 +295,18 @@ export default function AdminPage() {
       setSharedVaultsLoading(false);
     }
   }, []);
+
+  // Initial load + reload on search/filter changes (page resets to 1).
+  useEffect(() => {
+    if (status === 'unauthenticated') { router.replace('/login'); return; }
+    if (status !== 'authenticated') return;
+    setAdminPage(1);
+    load(1);
+  }, [status, load, router]);
+
+  useEffect(() => {
+    if (status === 'authenticated') loadSharedVaults();
+  }, [status, loadSharedVaults]);
 
   const createSharedVault = async () => {
     if (!newVaultName.trim()) return;
@@ -166,99 +330,60 @@ export default function AdminPage() {
     }
   };
 
-  useEffect(() => {
-    if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') { load(); loadSharedVaults(); }
-  }, [status, load, loadSharedVaults, router]);
-
   const provision = async (userId: string) => {
     setActions((p) => ({ ...p, [userId]: 'loading' }));
-    setActionErrors((p) => { const n = { ...p }; delete n[userId]; return n; });
     try {
       const res = await fetch(`/api/admin/users/${userId}/provision`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
       setActions((p) => ({ ...p, [userId]: 'done' }));
-      await load();
+      showToast('Vault provisioned', 'success');
+      await load(adminPage, { quiet: true });
     } catch (e: any) {
       setActions((p) => ({ ...p, [userId]: 'error' }));
-      setActionErrors((p) => ({ ...p, [userId]: e.message }));
-    }
-  };
-
-  const deleteUser = async (userId: string, email: string) => {
-    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault database, and CouchDB credentials. This cannot be undone.`)) return;
-    setActions((p) => ({ ...p, [`del-${userId}`]: 'loading' }));
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/vault`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      if (!data.success) {
-        const failed = Object.entries(data.results as Record<string, string>)
-          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
-          .map(([k]) => k).join(', ');
-        showToast(`Partial delete — failed steps: ${failed}`, 'error');
-      } else {
-        showToast('User deleted', 'success');
-      }
-      setActions((p) => ({ ...p, [`del-${userId}`]: 'done' }));
-      await load();
-    } catch (e: any) {
-      setActions((p) => ({ ...p, [`del-${userId}`]: 'error' }));
-      setActionErrors((p) => ({ ...p, [`del-${userId}`]: e.message }));
-    }
-  };
-
-  const deleteVault = async (userId: string, email: string) => {
-    if (!confirm(`Delete vault for ${email}?\n\nThis removes their CouchDB database and credentials but keeps their account. They can re-provision later.`)) return;
-    setActions((p) => ({ ...p, [`delvault-${userId}`]: 'loading' }));
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/vault-db`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      if (!data.success) {
-        const failed = Object.entries(data.results as Record<string, string>)
-          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
-          .map(([k]) => k).join(', ');
-        showToast(`Partial delete — failed steps: ${failed}`, 'error');
-      } else {
-        showToast('Vault deleted', 'success');
-      }
-      setActions((p) => ({ ...p, [`delvault-${userId}`]: 'done' }));
-      await load();
-    } catch (e: any) {
-      setActions((p) => ({ ...p, [`delvault-${userId}`]: 'error' }));
-      setActionErrors((p) => ({ ...p, [`delvault-${userId}`]: e.message }));
-    }
-  };
-
-  const deleteSharedVault = async (vaultId: string, vaultName: string) => {
-    if (!confirm(`Delete shared vault "${vaultName}"?\n\nThis removes the database and all member permissions. This cannot be undone.`)) return;
-    setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'loading' }));
-    try {
-      const res = await fetch(`/api/admin/vaults/${vaultId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      if (!data.success) {
-        const failed = Object.entries(data.results as Record<string, string>)
-          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
-          .map(([k]) => k).join(', ');
-        showToast(`Partial delete — failed steps: ${failed}`, 'error');
-      } else {
-        showToast(`Vault "${vaultName}" deleted`, 'success');
-      }
-      setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'done' }));
-      await loadSharedVaults();
-    } catch (e: any) {
-      setActions((p) => ({ ...p, [`delsvault-${vaultId}`]: 'error' }));
       showToast(e.message, 'error');
     }
   };
 
+  async function runDelete(url: string, key: string, successMsg: string, after: () => Promise<void>) {
+    setActions((p) => ({ ...p, [key]: 'loading' }));
+    try {
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (data.success === false) {
+        const failed = Object.entries(data.results as Record<string, string>)
+          .filter(([, v]) => v !== 'ok' && v !== 'not_found')
+          .map(([k]) => k).join(', ');
+        showToast(`Partial delete — failed steps: ${failed}`, 'error');
+      } else {
+        showToast(successMsg, 'success');
+      }
+      setActions((p) => ({ ...p, [key]: 'done' }));
+      await after();
+    } catch (e: any) {
+      setActions((p) => ({ ...p, [key]: 'error' }));
+      showToast(e.message, 'error');
+    }
+  }
+
+  const deleteUser = (userId: string, email: string) => {
+    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault database, and CouchDB credentials. This cannot be undone.`)) return;
+    runDelete(`/api/admin/users/${userId}/vault`, `del-${userId}`, 'User deleted', () => load(adminPage, { quiet: true }));
+  };
+
+  const deleteVault = (userId: string, email: string) => {
+    if (!confirm(`Delete vault for ${email}?\n\nThis removes their CouchDB database and credentials but keeps their account. They can re-provision later.`)) return;
+    runDelete(`/api/admin/users/${userId}/vault-db`, `delvault-${userId}`, 'Vault deleted', () => load(adminPage, { quiet: true }));
+  };
+
+  const deleteSharedVault = (vaultId: string, vaultName: string) => {
+    if (!confirm(`Delete shared vault "${vaultName}"?\n\nThis removes the database and all member permissions. This cannot be undone.`)) return;
+    runDelete(`/api/admin/vaults/${vaultId}`, `delsvault-${vaultId}`, `Vault "${vaultName}" deleted`, loadSharedVaults);
+  };
+
   const toggleState = async (userId: string, currentState: string) => {
     const newState = currentState === 'active' ? 'inactive' : 'active';
-    const key = `sus-${userId}`;
-    setActions((p) => ({ ...p, [key]: 'loading' }));
     // Optimistic update
     setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, state: newState } : u));
     try {
@@ -269,32 +394,14 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed');
-      setActions((p) => ({ ...p, [key]: 'idle' }));
-      showToast(
-        newState === 'inactive' ? 'User suspended' : 'User reactivated',
-        'success'
-      );
+      showToast(newState === 'inactive' ? 'User suspended' : 'User reactivated', 'success');
     } catch (e: any) {
-      // Revert optimistic update on failure
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, state: currentState } : u));
-      setActions((p) => ({ ...p, [key]: 'error' }));
       showToast(e.message, 'error');
     }
   };
 
-  // Client-side filtering
-  const filteredUsers = users.filter((u) => {
-    if (search && !u.email.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter === 'active' && u.state !== 'active') return false;
-    if (statusFilter === 'suspended' && u.state === 'active') return false;
-    if (vaultFilter === 'has' && !u.vault.exists) return false;
-    if (vaultFilter === 'none' && u.vault.exists) return false;
-    return true;
-  });
-
-  const suspendedCount = users.filter((u) => !u.isAdmin && u.state !== 'active').length;
-
-  if (status === 'loading' || loading) {
+  if (status === 'loading' || (!initialLoaded && loading)) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
         <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading admin panel…</div>
@@ -302,9 +409,22 @@ export default function AdminPage() {
     );
   }
 
+  const statCards = [
+    { label: 'Total Users', value: stats?.total ?? userTotal },
+    { label: 'Active Vaults', value: stats?.activeVaults ?? 0 },
+    { label: 'Suspended', value: stats?.suspended ?? 0 },
+    { label: 'Missing Vaults', value: stats?.missingVaults ?? 0 },
+  ];
+
   return (
     <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
+      {/* Copy-id affordance appears on row hover only */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .admin-user-row .admin-copy-id { opacity: 0; transition: opacity 0.12s; }
+        .admin-user-row:hover .admin-copy-id { opacity: 1; }
+        .admin-user-row:hover { background: rgba(255,255,255,0.025); }
+      ` }} />
 
       <div className="max-w-5xl mx-auto">
 
@@ -315,28 +435,24 @@ export default function AdminPage() {
               Admin Panel
             </h1>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {userTotal} registered {userTotal === 1 ? 'user' : 'users'}
+              Manage users, vaults and shared workspaces
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => load()}>
+          <Button variant="ghost" size="sm" onClick={() => { load(adminPage); loadSharedVaults(); }}>
             ↻ Refresh
           </Button>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 rounded-xl border border-red-800 bg-red-900/20">
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="mb-6 p-4 rounded-xl border" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.07)' }}>
+            <p className="text-sm font-medium mb-1" style={{ color: '#f87171' }}>Couldn&apos;t load users</p>
+            <p className="text-xs leading-relaxed" style={{ color: 'rgba(248,113,113,0.8)' }}>{error}</p>
           </div>
         )}
 
         {/* Stats row */}
         <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            { label: 'Total Users', value: users.length },
-            { label: 'Active Vaults', value: users.filter((u) => u.vault.exists).length },
-            { label: 'Suspended', value: suspendedCount },
-            { label: 'Missing Vaults', value: users.filter((u) => !u.vault.exists && !u.isAdmin).length },
-          ].map((stat) => (
+          {statCards.map((stat) => (
             <Card key={stat.label} className="p-5">
               <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{stat.label}</p>
               <p className="text-3xl font-bold" style={{ color: 'var(--accent)' }}>{stat.value}</p>
@@ -347,14 +463,14 @@ export default function AdminPage() {
         {/* User table */}
         <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
 
-          {/* Filters */}
+          {/* Filters — applied server-side across ALL users, not just this page */}
           <div
             className="flex gap-3 p-3 border-b"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
           >
             <input
               type="text"
-              placeholder="Search by email…"
+              placeholder="Search by email or user ID…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="flex-1 px-3 py-1.5 rounded-lg border text-sm outline-none"
@@ -382,13 +498,13 @@ export default function AdminPage() {
             </select>
           </div>
 
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ opacity: loading ? 0.55 : 1, transition: 'opacity 0.15s' }}>
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                {['Email', 'Registered', 'Vault', 'Docs', 'Actions'].map((h) => (
+                {['User', 'Registered', 'Vault', 'Status', ''].map((h, i) => (
                   <th
-                    key={h}
-                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                    key={i}
+                    className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider"
                     style={{ color: 'var(--text-secondary)' }}
                   >
                     {h}
@@ -397,135 +513,93 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.map((user, i) => {
-                const provKey = user.id;
-                const delKey = `del-${user.id}`;
-                const delVaultKey = `delvault-${user.id}`;
-                const susKey = `sus-${user.id}`;
-                const provState = actions[provKey] ?? 'idle';
-                const delState = actions[delKey] ?? 'idle';
-                const delVaultState = actions[delVaultKey] ?? 'idle';
-                const susState = actions[susKey] ?? 'idle';
-                const rowErr = actionErrors[provKey] || actionErrors[delKey] || actionErrors[delVaultKey];
+              {users.map((user) => {
                 const isSelf = user.id === session?.user?.id;
+                const busy =
+                  actions[user.id] === 'loading' ||
+                  actions[`del-${user.id}`] === 'loading' ||
+                  actions[`delvault-${user.id}`] === 'loading';
+
+                const menuItems: MenuItem[] = [];
+                if (!user.isAdmin && !isSelf) {
+                  menuItems.push({
+                    label: user.state === 'active' ? 'Suspend user' : 'Reactivate user',
+                    onClick: () => toggleState(user.id, user.state),
+                  });
+                }
+                if (!user.isAdmin && !user.vault.exists) {
+                  menuItems.push({ label: 'Provision vault', onClick: () => provision(user.id) });
+                }
+                if (!user.isAdmin && user.vault.exists) {
+                  menuItems.push({ label: 'Delete vault…', danger: true, onClick: () => deleteVault(user.id, user.email) });
+                }
+                if (!user.isAdmin) {
+                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email) });
+                }
 
                 return (
                   <tr
                     key={user.id}
-                    style={{
-                      background: i % 2 === 0 ? 'var(--bg-base)' : 'var(--bg-surface)',
-                      borderBottom: '1px solid var(--border)',
-                    }}
+                    className="admin-user-row"
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                   >
-                    {/* Email */}
+                    {/* User */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span style={{ color: 'var(--text-primary)' }}>{user.email}</span>
-                        {user.isAdmin && <Badge color="var(--accent)">admin</Badge>}
-                        {user.state !== 'active' && (
-                          <Badge color="#f87171">{user.state}</Badge>
-                        )}
-                        {/* Suspend / Reactivate toggle — next to state badge */}
-                        {!user.isAdmin && !isSelf && (
-                          <button
-                            onClick={() => toggleState(user.id, user.state)}
-                            disabled={susState === 'loading'}
-                            className="px-2 py-0.5 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
-                            style={
-                              user.state === 'active'
-                                ? { background: '#7f1d1d22', color: '#f87171', border: '1px solid #f8717144' }
-                                : { background: '#14532d22', color: '#4ade80', border: '1px solid #4ade8044' }
-                            }
-                          >
-                            {susState === 'loading'
-                              ? '…'
-                              : user.state === 'active'
-                              ? 'Suspend'
-                              : 'Reactivate'}
-                          </button>
-                        )}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar email={user.email} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="truncate" style={{ color: 'var(--text-primary)', maxWidth: 260 }}>
+                              {user.email}
+                            </span>
+                            {user.isAdmin && <Badge color="#7F77DD">admin</Badge>}
+                            {isSelf && !user.isAdmin && <Badge color="#60a5fa">you</Badge>}
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[11px] font-mono truncate" style={{ color: 'var(--text-muted)', maxWidth: 230 }}>
+                              {user.id}
+                            </span>
+                            <CopyIdButton id={user.id} />
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <p className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)', maxWidth: 260 }}>
-                          {user.id}
-                        </p>
-                        <CopyIdButton id={user.id} />
-                      </div>
-                      {rowErr && (
-                        <p className="text-xs mt-1" style={{ color: '#f87171' }}>{rowErr}</p>
-                      )}
                     </td>
 
                     {/* Registered */}
-                    <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>
+                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
                       {formatDate(user.createdAt)}
                     </td>
 
-                    {/* Vault status */}
-                    <td className="px-4 py-3">
+                    {/* Vault */}
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {user.isAdmin ? (
-                        <Badge color="var(--accent)">obsidian</Badge>
+                        <Badge color="#7F77DD">obsidian</Badge>
                       ) : user.vault.exists ? (
-                        <Badge color="#4ade80">✓ active</Badge>
+                        <div>
+                          <span style={{ color: 'var(--text-secondary)' }}>{user.vault.docCount} docs</span>
+                          {user.vault.sizeBytes > 0 && (
+                            <span className="text-xs ml-1.5" style={{ color: 'var(--text-muted)' }}>
+                              · {formatBytes(user.vault.sizeBytes)}
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <Badge color="#f87171">✗ missing</Badge>
+                        <Badge color="#fbbf24">no vault</Badge>
                       )}
                     </td>
 
-                    {/* Docs + size */}
-                    <td className="px-4 py-3">
-                      {user.isAdmin ? (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      ) : user.vault.exists ? (
-                        <>
-                          <p style={{ color: 'var(--text-secondary)' }}>{user.vault.docCount} docs</p>
-                          {user.vault.sizeBytes > 0 && (
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              {formatBytes(user.vault.sizeBytes)}
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
-                      )}
+                    {/* Status */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <StatusDot active={user.state === 'active'} />
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {!user.isAdmin && !user.vault.exists && (
-                          <Button
-                            size="sm"
-                            loading={provState === 'loading'}
-                            onClick={() => provision(user.id)}
-                          >
-                            {provState === 'loading' ? 'Creating…' : 'Provision'}
-                          </Button>
-                        )}
-                        {!user.isAdmin && user.vault.exists && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            loading={delVaultState === 'loading'}
-                            onClick={() => deleteVault(user.id, user.email)}
-                          >
-                            {delVaultState === 'loading' ? 'Deleting…' : 'Delete Vault'}
-                          </Button>
-                        )}
-                        {!user.isAdmin && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            loading={delState === 'loading'}
-                            onClick={() => deleteUser(user.id, user.email)}
-                          >
-                            {delState === 'loading' ? 'Deleting…' : 'Delete User'}
-                          </Button>
-                        )}
-                        {!user.isAdmin && !user.vault.exists && provState === 'done' && (
-                          <span className="text-xs" style={{ color: '#4ade80' }}>✓ provisioned</span>
-                        )}
-                      </div>
+                    <td className="px-4 py-3 text-right" style={{ width: 52 }}>
+                      {busy ? (
+                        <span className="text-xs animate-pulse" style={{ color: 'var(--text-muted)' }}>…</span>
+                      ) : menuItems.length > 0 ? (
+                        <RowMenu items={menuItems} />
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -533,23 +607,26 @@ export default function AdminPage() {
             </tbody>
           </table>
 
-          {filteredUsers.length === 0 && !loading && (
+          {users.length === 0 && !loading && !error && (
             <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              {users.length === 0 ? 'No users found' : 'No users match the current filters'}
+              {debouncedSearch || statusFilter !== 'all' || vaultFilter !== 'all'
+                ? 'No users match the current search/filters'
+                : 'No users found'}
             </div>
           )}
         </div>
 
-        {/* Pagination controls */}
+        {/* Pagination */}
         {userTotalPages > 1 && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Showing {(adminPage - 1) * USER_PAGE_LIMIT + 1}–{Math.min(adminPage * USER_PAGE_LIMIT, userTotal)} of {userTotal} users
+              Showing {(adminPage - 1) * USER_PAGE_LIMIT + 1}–{Math.min(adminPage * USER_PAGE_LIMIT, userTotal)} of {userTotal}
+              {debouncedSearch || statusFilter !== 'all' || vaultFilter !== 'all' ? ' matching' : ''} users
             </p>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost" size="sm"
-                onClick={() => { setAdminPage((p) => p - 1); load(adminPage - 1); }}
+                onClick={() => { const p = adminPage - 1; setAdminPage(p); load(p); }}
                 disabled={adminPage <= 1}
               >← Prev</Button>
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -557,7 +634,7 @@ export default function AdminPage() {
               </span>
               <Button
                 variant="ghost" size="sm"
-                onClick={() => { setAdminPage((p) => p + 1); load(adminPage + 1); }}
+                onClick={() => { const p = adminPage + 1; setAdminPage(p); load(p); }}
                 disabled={adminPage >= userTotalPages}
               >Next →</Button>
             </div>
@@ -565,7 +642,7 @@ export default function AdminPage() {
         )}
 
         <p className="mt-4 text-xs" style={{ color: 'var(--text-muted)' }}>
-          Doc count includes parent + chunk documents. Actual notes ≈ half. Vault size = CouchDB active data size.
+          Doc count includes parent + chunk documents; actual notes ≈ half. Vault size = CouchDB active data size.
         </p>
 
         {/* Shared Vaults section */}
