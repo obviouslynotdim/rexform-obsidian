@@ -17,6 +17,33 @@ NextAuth.js handler. Manages session creation, JWT signing, and session retrieva
 
 ---
 
+### `POST /api/auth/kratos/flow`
+
+Submit a Kratos login flow (proxied server-side so the browser never talks to Kratos directly).
+
+| | |
+|---|---|
+| Auth required | No |
+| Request body | `{ flowId, email, password }` |
+| Response | Kratos login flow result (`{ session, session_token }`) |
+| Errors | Passthrough of Kratos error status + body |
+
+---
+
+### `POST /api/auth/kratos/register`
+
+Submit a Kratos registration flow.
+
+| | |
+|---|---|
+| Auth required | No |
+| Request body | `{ flowId, email, password, firstName, lastName }` |
+| Response | Kratos registration flow result |
+| Behaviour | Calls `updateRegistrationFlow` with `method: 'password'`, traits `{ email, name: { first, last } }` |
+| Errors | Passthrough of Kratos error status + body, else 500 |
+
+---
+
 ## Notes
 
 ### `GET /api/notes`
@@ -60,6 +87,137 @@ Fetch a single note parent document.
 
 ---
 
+### `GET /api/notes/[id]/content`
+
+Fetch assembled note content (chunks concatenated, frontmatter stripped).
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Path param | `id` — URL-encoded note `_id` |
+| Query params | `vault` (optional) |
+| Response | `{ content, title }` |
+| Behaviour | `getNote()` → `assembleNoteContent()` → `stripFrontmatter()` |
+
+---
+
+### `GET /api/notes/[id]/backlinks`
+
+List notes that link to this note via `[[wikilinks]]`.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Path param | `id` — URL-encoded target note `_id` |
+| Query params | `vault` (optional) |
+| Response | `{ backlinks: [{ id, title, snippet }], targetId }` |
+| Behaviour | Scans all other notes' assembled content for wikilinks resolving to the target; builds a ~120-char snippet around the first mention; sorted by title |
+
+---
+
+### `POST /api/notes/[id]/move`
+
+Rename and/or move a single note.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Path param | `id` — URL-encoded old note `_id` |
+| Query params | `vault` (optional) |
+| Request body | `{ folder?: string, name?: string }` — omit `folder` to keep folder, omit `name` to keep filename |
+| Response | `{ id: newId }` |
+| Behaviour | Copies chunks + parent to new IDs (updates `path`, `children`, `mtime`, `title`), deletes originals. Deletes the target folder's `.keep`; recreates `.keep` in the old folder if it becomes empty. On title change, fires best-effort background `updateBacklinks()` rewriting `[[Old Name]]` → `[[New Name]]` across the vault (preserves `#heading` / `\|alias` suffixes). |
+| Errors | 401, 400, 403 (read-only vault), 404 (source missing), 409 (destination exists), 500 |
+
+---
+
+### `GET /api/notes/tree`
+
+Flat file/folder listing for the sidebar file tree.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional) |
+| Response | `{ notes: [{ id, path, title, mtime?, ctime? }, ..., { id, path, isMarker: true }, ...] }` |
+| Behaviour | Notes (via `isVaultNote()`) sorted by path, then `.keep` folder markers appended |
+
+---
+
+### `GET /api/notes/graph`
+
+Wikilink graph for the D3 knowledge graph view.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional), `folder` (optional — scope to a folder subtree) |
+| Response | `{ nodes: [{ id, path, title, linkCount }], edges: [{ source, target }] }` |
+| Behaviour | Assembles every note's content, extracts `[[wikilinks]]`, resolves by filename (case-insensitive, `-`/`_` → space, with/without `.md`). Edges deduped and undirected; self-links skipped. |
+
+---
+
+## Folders
+
+### `POST /api/notes/folder/create`
+
+Create an empty folder.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional) |
+| Request body | `{ folder: string }` |
+| Response | `201 { folder }` (200 if it already existed) |
+| Behaviour | Creates a `<folder>/.keep` marker doc (`{ _id, rexform_marker: true, path }`). Idempotent. |
+| Errors | 401, 400, 403 (read-only vault) |
+
+---
+
+### `POST /api/notes/folder/rename`
+
+Rename a folder in place.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional) |
+| Request body | `{ oldPath: string, newName: string }` |
+| Response | `{ renamed: number, errors?: string[] }` |
+| Behaviour | Replaces the last path segment; copies each affected note + chunks to new IDs, deletes originals. Does not rewrite wikilinks. |
+| Errors | 401, 400, 403 (read-only vault) |
+
+---
+
+### `POST /api/notes/folder/move`
+
+Move a folder (and its subtree) into another folder.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional) |
+| Request body | `{ source: string, target: string }` |
+| Response | `{ moved: number }` |
+| Behaviour | New path is `target/<lastSegmentOfSource>`. Copies affected notes, chunks, and `.keep` markers; deletes originals. Manages `.keep` markers on both ends. |
+| Errors | 401, 400 (missing source / move into own descendant), 403 (read-only vault), 500 |
+
+---
+
+### `DELETE /api/notes/folder`
+
+Delete a folder and all its contents.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `path` (required — folder path), `vault` (optional) |
+| Response | `{ deleted: number }` |
+| Behaviour | Deletes every note (chunks first) and folder marker under `path/` |
+| Errors | 401, 400, 403 (read-only vault) |
+
+---
+
 ### `PUT /api/notes/[id]/update`
 
 Update note content.
@@ -95,14 +253,29 @@ Delete a note and all its chunk documents.
 
 ### `GET /api/search`
 
-Search notes by title and path.
+Full-text search across note titles, paths, and body content. Backs the Ctrl+K quick switcher.
 
 | | |
 |---|---|
 | Auth required | Yes |
-| Query params | `q` (search string), `vault` (optional) |
-| Response | `{ results: [{ _id, title, snippet }] }` — max 50 results |
-| Limitation | Searches `path` and `title` fields only — does not search note body content |
+| Query params | `q` (search string; empty → `{ results: [] }`), `vault` (optional) |
+| Response | `{ results: [{ _id, title, snippet, matchIn: "title" \| "content" \| "path" }] }` — max 50 results |
+| Notes | `matchIn` priority: title > content > path. Body matching reads inline `body`/`content`/`text` fields (not chunk-assembled), so bodies of multi-chunk LiveSync notes may not match. |
+
+---
+
+## Kanban
+
+### `GET /api/kanban/boards`
+
+List Kanban boards in the active vault.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Query params | `vault` (optional) |
+| Response | `{ boards: [{ id, title, path, mtime, columns, cards }] }` — sorted by `mtime` descending |
+| Behaviour | Single `_all_docs` scan; a note is a board if its frontmatter contains the `kanban-plugin` key; column/card counts via `parseKanban()` |
 
 ---
 
@@ -159,6 +332,34 @@ Regenerate LiveSync credentials.
 | Response | `{ username, password, serverUrl, database }` |
 | Behaviour | Generates new 32-char hex password, updates `_users` doc, re-confirms `_security` vault access |
 | Errors | 401, 400 (admin user), 500 |
+
+---
+
+### `GET /api/user/plugins` / `POST /api/user/plugins`
+
+Read / write the user's community-plugin install state.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| GET response | `{ installed: string[], enabled: Record<string, boolean> }` — defaults to empty on first use |
+| POST body | `{ installed: string[], enabled: Record<string, boolean> }` |
+| Behaviour | Stored in the `rexform-plugins` doc in the user's personal vault. Legacy `{ plugins: { id: bool } }` shape auto-migrated. Admin users get an in-memory default (no persistence). |
+| Errors | 401, 400 (invalid body), 500 |
+
+---
+
+### `GET /api/user/settings` / `POST /api/user/settings`
+
+Read / write user preferences.
+
+| | |
+|---|---|
+| Auth required | Yes |
+| Settings shape | `{ syncHeadingWithFilename: boolean, newNoteLocation: "root" \| "current", language: "en" \| "kh" }` — defaults: `false`, `"root"`, `"en"` |
+| POST body | Settings object (bare or `{ settings: {...} }` envelope); partial — merges over existing values |
+| Behaviour | Stored in the `rexform-settings` doc in the user's personal vault. Admin users get defaults. |
+| Errors | 401, 400 (invalid body), 500 |
 
 ---
 

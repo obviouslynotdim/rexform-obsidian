@@ -124,6 +124,88 @@ Document path: `/_users/org.couchdb.user:<userId>`
 
 ---
 
+## Folder Marker Documents
+
+Empty folders are represented by a `.keep` marker document, created by `POST /api/notes/folder/create` and managed automatically by note/folder move and delete operations (recreated when a folder would otherwise become empty, removed when real content arrives).
+
+```json
+{
+  "_id": "Projects/Ideas/.keep",
+  "rexform_marker": true,
+  "path": "Projects/Ideas/.keep"
+}
+```
+
+Markers are excluded from note lists and returned separately (with `isMarker: true`) by `GET /api/notes/tree` so the sidebar can render empty folders.
+
+---
+
+## Plugin & Settings Documents
+
+Two per-user documents live in the user's personal vault (`vault-<userId>`), read/written with admin credentials via `/api/user/plugins` and `/api/user/settings`.
+
+**`rexform-plugins`** — community plugin install state:
+
+```json
+{
+  "_id": "rexform-plugins",
+  "installed": ["kanban", "calendar"],
+  "enabled": { "kanban": true, "calendar": false }
+}
+```
+
+Plugin IDs come from the static catalog in `lib/plugin-registry.ts` (`kanban`, `calendar`, `livesync`, `gitlab`). A legacy `{ "plugins": { "id": true } }` shape is auto-migrated on read.
+
+**`rexform-settings`** — user preferences:
+
+```json
+{
+  "_id": "rexform-settings",
+  "settings": {
+    "syncHeadingWithFilename": false,
+    "newNoteLocation": "root",
+    "language": "en"
+  }
+}
+```
+
+Writes are partial merges — posting one field does not reset the others.
+
+---
+
+## Kanban Board Notes
+
+Kanban boards are ordinary markdown notes whose YAML frontmatter contains the `kanban-plugin` key (byte-compatible with Obsidian's community Kanban plugin):
+
+```markdown
+---
+kanban-plugin: basic
+---
+
+## To do
+- [ ] First card
+
+## Doing
+- [ ] Card with a second line
+  continued on an indented line
+
+## Done
+**Complete**
+- [x] Finished card
+```
+
+| Element | Syntax |
+|---|---|
+| Column | `## Heading` |
+| Card | `- [ ] text` (`- [x]` = checked) |
+| Multi-line card | Continuation lines indented 2 spaces |
+| "Done" column | `**Complete**` as the first line of a column — cards dropped there get checked |
+| Archive/settings trailer | Everything from the first `***` rule or a `%% kanban:` line is preserved verbatim |
+
+`lib/kanban.ts` round-trips this format (`parseKanban()` / `serializeKanban()`); the board UI (`KanbanView.tsx`) edits the parsed structure and serializes back to markdown on save.
+
+---
+
 ## Shared Vault Metadata Document
 
 Each shared vault contains one metadata document:
@@ -156,7 +238,8 @@ Before any document list is returned to the UI, documents pass through `isVaultN
 
 - Not deleted (`_deleted !== true`)
 - `_id` does not start with `docs/`, `node_modules/`, `h:`, or `_`
-- `_id` is not `rexform-metadata`
+- `_id` is not `rexform-metadata`, `rexform-plugins`, or `rexform-settings`
+- `_id` does not end with `/.keep` (folder markers)
 - `doc.type === 'plain'` OR `doc.path` ends with `.md`
 
-This filter prevents LiveSync internal documents (`h:` prefix), VitePress remnants (`docs/` prefix), and system documents from appearing in the notes list.
+This filter prevents LiveSync internal documents (`h:` prefix), VitePress remnants (`docs/` prefix), app state documents, and folder markers from appearing in the notes list.
