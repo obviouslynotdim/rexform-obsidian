@@ -186,14 +186,31 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   const [sidebarWidth, setSidebarWidth] = useState(288); // 288px = the old w-72
   const resizingRef = useRef(false);
   // Right panel (Outline) — a real flex column reserved in the row, never an
-  // overlay. Closed by default (Obsidian-style); open state + width persisted,
-  // mirrored from the left split.
+  // overlay. Closed by default (Obsidian-style); open state persisted PER VAULT
+  // so a freshly registered account always starts closed, even on a browser
+  // where another account left it open. Width persisted globally, mirrored
+  // from the left split.
   const [rightOpen, setRightOpen] = useState(false);
   const [rightWidth, setRightWidth] = useState(280);
   const resizingRightRef = useRef(false);
+  // True once the per-vault open state has been restored — writes before that
+  // would stamp the default over the stored value.
+  const rightRestoredRef = useRef(false);
   const router = useRouter();
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
+
+  // Active vault id (same source/normalisation as TabsContext — SWR dedupes).
+  const { data: vaultsData } = useSWR<{ vaults: any[]; activeVault: string }>(
+    '/api/vaults',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 }
+  );
+  const rawVaultId = vaultsData?.activeVault ?? null;
+  const vaultId =
+    rawVaultId === 'undefined' || rawVaultId === 'null' || rawVaultId === ''
+      ? null
+      : rawVaultId;
 
   useEffect(() => {
     const s = localStorage.getItem('notes.sidebarWidth');
@@ -201,17 +218,24 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
       const n = parseInt(s, 10);
       if (!Number.isNaN(n)) setSidebarWidth(Math.min(560, Math.max(200, n)));
     }
-    const ro = localStorage.getItem('notes.rightOpen');
-    if (ro != null) setRightOpen(ro === '1');
     const rw = Number(localStorage.getItem('notes.rightWidth'));
     if (rw >= 200 && rw <= 460) setRightWidth(rw);
   }, []);
+  // Restore the per-vault open state; an absent key means closed (the default).
+  useEffect(() => {
+    if (!vaultId) return;
+    let ro: string | null = null;
+    try { ro = localStorage.getItem(`notes.rightOpen:${vaultId}`); } catch {}
+    setRightOpen(ro === '1');
+    rightRestoredRef.current = true;
+  }, [vaultId]);
   useEffect(() => {
     localStorage.setItem('notes.sidebarWidth', String(sidebarWidth));
   }, [sidebarWidth]);
   useEffect(() => {
-    localStorage.setItem('notes.rightOpen', rightOpen ? '1' : '0');
-  }, [rightOpen]);
+    if (!rightRestoredRef.current || !vaultId) return;
+    try { localStorage.setItem(`notes.rightOpen:${vaultId}`, rightOpen ? '1' : '0'); } catch {}
+  }, [rightOpen, vaultId]);
   useEffect(() => {
     localStorage.setItem('notes.rightWidth', String(rightWidth));
   }, [rightWidth]);

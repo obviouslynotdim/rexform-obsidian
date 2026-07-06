@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
@@ -52,9 +52,15 @@ export default function NotesPage() {
   // flashes before a first-time redirect fires.
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
+  // Set when the first-time redirect fires. The onboarding redirect opens the
+  // graph + welcome tabs itself, which would otherwise trip the "restore last
+  // active tab" effect below and clobber the ?open= param mid-navigation.
+  const onboardingRedirectRef = useRef(false);
+
   // Returning user: restore the last active tab. (Unchanged behaviour.)
   useEffect(() => {
     if (!initialized) return;
+    if (onboardingRedirectRef.current) return;
     if (!activeTabId || tabs.length === 0) return;
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab) return;
@@ -90,13 +96,19 @@ export default function NotesPage() {
       try {
         localStorage.setItem(`rexform-onboarded:${vaultId}`, '1');
       } catch {}
+      onboardingRedirectRef.current = true;
+      // Land the new user with real tabs: the welcome note plus the graph view
+      // (opened last so it's active). The ?open= param still drives the graph's
+      // welcome-note preview panel.
+      ctx?.openTab(WELCOME_NOTE_ID, WELCOME_NOTE_ID.replace(/\.md$/i, ''));
+      ctx?.openTab('graph', 'Graph view', 'graph');
       router.replace('/notes/graph?open=' + encodeURIComponent(WELCOME_NOTE_ID));
       return;
     }
 
     // No welcome note to land on — fall through to the empty state.
     setOnboardingChecked(true);
-  }, [initialized, tabs.length, vaultsData, vaultId, treeData, router]);
+  }, [initialized, tabs.length, vaultsData, vaultId, treeData, router, ctx]);
 
   function openWelcome() {
     if (!welcomeExists) return;
