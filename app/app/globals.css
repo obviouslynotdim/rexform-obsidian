@@ -148,6 +148,55 @@ body {
 .prose ol li {
   list-style-type: decimal;
 }
+
+/* Task lists — Obsidian-style: no bullet, the checkbox sits in its place */
+.prose li.task-list-item {
+  list-style-type: none;
+}
+.prose li.task-list-item > input[type='checkbox'],
+.prose li.task-list-item > p > input[type='checkbox'] {
+  margin: 0 0.5em 0.2em -1.45em;
+}
+.prose input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  vertical-align: middle;
+}
+.prose input[type='checkbox']:disabled {
+  cursor: default;
+}
+.prose input[type='checkbox']:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.prose input[type='checkbox']:checked {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.prose input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid rgba(255, 255, 255, 0.8);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+/* Checked task → dim and strike through the item's text */
+.prose li.task-list-item:has(> input:checked),
+.prose li.task-list-item:has(> p > input:checked) {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
 .prose strong {
   color: var(--text-primary);
   font-weight: 600;

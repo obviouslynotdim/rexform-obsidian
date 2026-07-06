@@ -28,16 +28,29 @@ graph LR
 
 ## Getting around
 
-- **Reading / Source / Live Preview modes** — switch how a note is shown. *Reading* displays the rendered note, *Source* shows the raw Markdown, and *Live Preview* renders formatting inline as you type. Press \`Ctrl/Cmd + E\` to toggle between them.
-- **The sidebar** — browse, search, create, and organise notes and folders down the left edge of the app.
-- **The graph view** — open the graph to see every note as a dot and every [[wikilink]] as a line connecting them. It's the fastest way to rediscover related ideas.
+- **Quick switcher** — press \`Ctrl/Cmd + K\` anywhere to search every note by title or content and jump straight to it.
+- **Reading / Source / Live Preview modes** — switch how a note is shown with the toggles in the bottom-right, or press \`Ctrl/Cmd + E\`. *Reading* renders the note, *Source* shows raw Markdown, and *Live Preview* renders formatting inline as you type.
+- **The sidebar** — browse, search, create, and organise notes and folders. Right-click files and folders for more actions; drag and drop to reorganise.
+- **Tabs** — every note opens in a tab along the top, so you can keep several notes at hand.
+- **The graph view** — every note is a dot, every [[wikilink]] a line. It's the fastest way to rediscover related ideas.
+- **The right panel** — toggle it from the top-right to see the current note's **outline** and **backlinks**.
+
+## Make it yours with plugins
+
+Open **Settings → Community plugins** to add features when you need them:
+
+- **Kanban** — drag-and-drop task boards stored as plain markdown
+- **Calendar** — daily notes on a monthly calendar
+- **PDF Export** — save any note as a clean PDF
+- **Speech** — read notes aloud, or dictate into the editor
+- **Self-hosted LiveSync** — two-way sync with the Obsidian desktop and mobile apps
 
 ## What you can do
 
 - **Create notes** — write anything, from quick thoughts to detailed research
-- **Link between notes** — use [[double brackets]] to create connections between ideas
+- **Link between notes** — type \`[[\` and pick a note; press \`Tab\` or \`Enter\` to accept
 - **Search** — find anything instantly across your entire vault
-- **Sync across devices** — your notes are always up to date
+- **Sync across devices** — connect the Obsidian app via the LiveSync plugin
 
 > **Your vault is private — only you can see your notes**
 
@@ -58,12 +71,28 @@ const QUICK_START_CONTENT = `# Quick Start Guide
 | \`*italic*\` | *italic* |
 | \`- item\` | bullet list |
 | \`1. item\` | numbered list |
+| \`- [ ] task\` | checkbox |
+| \`> quote\` | blockquote |
 | \`[[Note Name]]\` | wikilink |
 | \`#tag\` | tag |
 
+## Keyboard shortcuts
+
+| Keys | Action |
+|------|--------|
+| \`Ctrl/Cmd + K\` | search all notes (quick switcher) |
+| \`Ctrl/Cmd + E\` | toggle Reading ↔ editing mode |
+| \`Ctrl/Cmd + S\` | save the current note |
+| \`Tab\` / \`Enter\` | accept a \`[[\` link suggestion |
+| \`Esc\` | back to Reading mode |
+
 ## Wikilinks
 
-Connect notes using [[double bracket links]]. Type \`[[\` and a note name to create a link. These links form a web of knowledge across your vault.
+Connect notes using [[double bracket links]]. Type \`[[\` and pick a note from the popup. These links form a web of knowledge across your vault — see them all in the **graph view**, and check any note's incoming links in the right panel's **backlinks** tab.
+
+## Properties
+
+Notes can carry structured data (tags, dates, anything) in a **Properties** block at the top. Expand the panel above a note to edit them — they're stored as standard YAML frontmatter, fully compatible with Obsidian.
 
 ## Tags
 
@@ -75,11 +104,7 @@ Add \`#tags\` anywhere in a note to categorise it:
 
 ## Organising with Folders
 
-Use folder paths when naming notes:
-
-- \`Projects/My Project.md\`
-- \`Journal/2026-06-02.md\`
-- \`Resources/Quick Reference.md\`
+Create folders in the sidebar (right-click → **New folder**) and drag notes between them. Renaming or moving notes and folders is safe — links to them update automatically.
 
 > **Tip:** Start simple — a flat structure often works better than deep folder hierarchies.
 `;
@@ -87,6 +112,14 @@ Use folder paths when naming notes:
 const FIRST_NOTE_CONTENT = `# My First Note
 
 Start writing here...
+
+## Things to try
+
+- [ ] Click this text to start editing (or press \`Ctrl/Cmd + E\`)
+- [ ] Type \`[[\` and link to the [[Welcome to REXFORM Notes]] note
+- [ ] Press \`Ctrl/Cmd + K\` and search for "quick start"
+- [ ] Open the graph view from the left icon strip
+- [ ] Install a plugin in **Settings → Community plugins**
 
 ---
 

@@ -196,9 +196,13 @@ interface WikiMarkdownProps {
   /** Fired when the TEXT of a heading is clicked (the fold chevron is separate
       and only folds). NoteViewClient passes "switch to Source mode" here. */
   onHeadingClick?: () => void;
+  /** Fired when a task checkbox is clicked. `line` is 1-based in the markdown
+      passed as children (preprocessWikilinks preserves line numbers). Absent →
+      checkboxes render read-only (viewers, previews, PDF export). */
+  onToggleTask?: (line: number, checked: boolean) => void;
 }
 
-export default function WikiMarkdown({ children, onHeadingClick }: WikiMarkdownProps) {
+export default function WikiMarkdown({ children, onHeadingClick, onToggleTask }: WikiMarkdownProps) {
   const { data } = useSWR<{ notes: NoteStub[] }>('/api/notes/tree', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
@@ -286,6 +290,38 @@ export default function WikiMarkdown({ children, onHeadingClick }: WikiMarkdownP
       }
       return <a href={href} {...props}>{linkChildren}</a>;
     },
+
+    // Task-list items: the synthetic checkbox <input> carries no source
+    // position, but its <li> does, so the li owns the click → toggle mapping.
+    // stopPropagation keeps a nested task's click from also toggling its
+    // ancestors (the event would bubble through their <li>s otherwise).
+    li: ({ node, className, children: liChildren, ...props }: any) => {
+      if (!className?.includes('task-list-item')) {
+        return <li className={className} {...props}>{liChildren}</li>;
+      }
+      const line: number | undefined = node?.position?.start?.line;
+      return (
+        <li
+          className={className}
+          {...props}
+          onClick={(e: React.MouseEvent) => {
+            const t = e.target as HTMLInputElement;
+            if (t.tagName !== 'INPUT' || t.type !== 'checkbox') return;
+            e.stopPropagation();
+            if (onToggleTask && typeof line === 'number') onToggleTask(line, t.checked);
+          }}
+        >
+          {liChildren}
+        </li>
+      );
+    },
+
+    // remark-gfm emits task checkboxes as disabled; re-enable them when a
+    // toggle handler exists. checked is controlled by the markdown source —
+    // the li's onClick above persists the flip, which re-renders this input.
+    input: ({ node: _node, disabled: _disabled, ...props }: any) => (
+      <input {...props} disabled={!onToggleTask} onChange={() => {}} />
+    ),
 
     // Mermaid fenced blocks (```mermaid) render as diagrams; all other code
     // renders as a normal <code>.

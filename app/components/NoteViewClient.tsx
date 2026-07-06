@@ -446,6 +446,19 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     persistDoc(nextDoc);
   }, [frontmatter, persistDoc]);
 
+  // Reading-view task checkboxes: flip `- [ ]` ↔ `- [x]` on the clicked line
+  // and persist through the same path as Kanban/panel edits (recombine with
+  // frontmatter, single `doc`, debounced save, editor remount token).
+  const handleToggleTask = useCallback((line: number, checked: boolean) => {
+    const lines = body.split('\n');
+    const idx = line - 1;
+    if (idx < 0 || idx >= lines.length) return;
+    const taskRe = /^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\])/;
+    if (!taskRe.test(lines[idx])) return;
+    lines[idx] = lines[idx].replace(taskRe, `$1${checked ? 'x' : ' '}$2`);
+    handleKanbanBodyChange(lines.join('\n'));
+  }, [body, handleKanbanBodyChange]);
+
   // Escape exits any editing mode back to Reading.
   useEffect(() => {
     if (viewMode === 'reading') return;
@@ -733,6 +746,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
                 <div className="prose prose-invert">
                   <WikiMarkdown
                     onHeadingClick={canWrite ? () => setViewMode('source') : undefined}
+                    onToggleTask={canWrite ? handleToggleTask : undefined}
                   >
                     {body}
                   </WikiMarkdown>
