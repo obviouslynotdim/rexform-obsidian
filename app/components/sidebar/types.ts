@@ -3,7 +3,7 @@ export interface FileNode { type: 'file'; name: string; id: string; path: string
 export interface FolderNode { type: 'folder'; name: string; path: string; children: TreeNode[] }
 export type TreeNode = FileNode | FolderNode
 
-export interface VaultOption { name: string; label: string; role?: string }
+export interface VaultOption { name: string; label: string; role?: string; kind?: 'primary' | 'personal' | 'shared' }
 export interface VaultsData { vaults: VaultOption[]; activeVault: string }
 
 export interface ContextMenuState {

@@ -80,8 +80,16 @@ export async function fetchFromVault(
     };
     const res = await fetch(url, opts);
 
-    // Auto-provision missing user vault on first access
-    if (res.status === 404 && database && database !== DB) {
+    // Auto-provision missing PRIMARY user vault on first access.
+    // Only applies to vault-<userId> — shared (vault-shared-*) and extra
+    // personal (uvault-*) vaults are created explicitly, never auto-provisioned.
+    if (
+      res.status === 404 &&
+      database &&
+      database !== DB &&
+      database.startsWith('vault-') &&
+      !database.startsWith('vault-shared-')
+    ) {
       const body = await res.clone().json().catch(() => ({}));
       if (body.reason === 'Database does not exist.') {
         const userId = database.replace(/^vault-/, '');
@@ -264,26 +272,61 @@ async function getSharedVaultDisplayName(vaultId: string): Promise<string> {
 }
 
 /**
- * Returns all vaults the session user can access: their personal vault plus any
- * shared vaults granted via Keto. Falls back gracefully if Keto is not configured.
+ * Returns all vaults the session user can access, in order: their primary vault,
+ * extra personal vaults (uvault-<userId>-* — discovered by DB name prefix, no Keto
+ * required), then shared vaults granted via Keto (skipped if Keto is unreachable).
  */
 export async function getAccessibleVaults(session: Session | null): Promise<VaultOption[]> {
   const personal = getAvailableVaults(session);
-  if (!session?.user?.id || !process.env.KETO_READ_URL) return personal;
+  const userId = session?.user?.id;
+  if (!userId) return personal;
 
+  // Extra personal vaults: ownership is encoded in the DB name prefix
+  let personalExtras: VaultOption[] = [];
   try {
-    const { getUserSharedVaults } = await import('./keto');
-    const shared = await getUserSharedVaults(session.user.id);
-    const sharedOptions: VaultOption[] = await Promise.all(
-      shared.map(async ({ vaultId, role }) => ({
-        name: vaultId,
-        label: await getSharedVaultDisplayName(vaultId),
-        role,
-      }))
-    );
-    return [...personal, ...sharedOptions];
+    const { getPersonalVaultPrefix } = await import('./vault');
+    const prefix = getPersonalVaultPrefix(userId);
+    const res = await fetch(`${INTERNAL_URL}/_all_dbs`, {
+      headers: { Authorization: adminAuthHeader() },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const dbs: string[] = await res.json();
+      personalExtras = await Promise.all(
+        dbs
+          .filter((db) => db.startsWith(prefix))
+          .map(async (db) => ({
+            name: db,
+            label: await getSharedVaultDisplayName(db),
+            role: 'owner' as const,
+            kind: 'personal' as const,
+          }))
+      );
+    }
   } catch (e) {
-    console.error('[couchdb] getAccessibleVaults error:', e);
-    return personal;
+    console.error('[couchdb] personal vault listing error:', e);
   }
+
+  // Shared vaults via Keto
+  let sharedVaults: VaultOption[] = [];
+  if (process.env.KETO_READ_URL) {
+    try {
+      const { getUserSharedVaults } = await import('./keto');
+      const shared = await getUserSharedVaults(userId);
+      sharedVaults = await Promise.all(
+        shared
+          .filter(({ vaultId }) => vaultId.startsWith('vault-shared-'))
+          .map(async ({ vaultId, role }) => ({
+            name: vaultId,
+            label: await getSharedVaultDisplayName(vaultId),
+            role,
+            kind: 'shared' as const,
+          }))
+      );
+    } catch (e) {
+      console.error('[couchdb] getAccessibleVaults error:', e);
+    }
+  }
+
+  return [...personal, ...personalExtras, ...sharedVaults];
 }

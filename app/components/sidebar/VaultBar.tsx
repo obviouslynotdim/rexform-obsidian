@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { useSettingsModal } from '@/context/SettingsModalContext';
+import ManageVaultsModal from './ManageVaultsModal';
 import type { VaultsData } from './types';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -10,6 +11,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 export default function VaultBar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageCreating, setManageCreating] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const settingsModal = useSettingsModal();
@@ -20,7 +23,7 @@ export default function VaultBar() {
   });
 
   const activeVault = data?.vaults.find((v) => v.name === data.activeVault);
-  const canSwitch = (data?.vaults.length ?? 0) > 1;
+  const canSwitch = !!data;
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -94,7 +97,46 @@ export default function VaultBar() {
               </button>
             );
           })}
+
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '2px 0' }} />
+          <button
+            onClick={() => { setDropdownOpen(false); setManageCreating(true); setManageOpen(true); }}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', background: 'transparent', border: 'none',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span style={{ width: 12, textAlign: 'center', flexShrink: 0 }}>＋</span>
+            New vault
+          </button>
+          <button
+            onClick={() => { setDropdownOpen(false); setManageCreating(false); setManageOpen(true); }}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', background: 'transparent', border: 'none',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'left',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+            </svg>
+            Manage vaults…
+          </button>
         </div>
+      )}
+
+      {manageOpen && data && (
+        <ManageVaultsModal
+          data={data}
+          initialCreating={manageCreating}
+          onClose={() => setManageOpen(false)}
+        />
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', height: 40, padding: '0 8px', gap: 4 }}>
