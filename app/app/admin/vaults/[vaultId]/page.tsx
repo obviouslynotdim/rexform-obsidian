@@ -19,32 +19,64 @@ interface UserOption {
   email: string;
 }
 
-const ROLE_COLORS: Record<VaultRole, string> = {
-  owner: '#7F77DD',
-  editor: '#4ade80',
-  viewer: '#94a3b8',
+// Sections render in this order — highest privilege first.
+const ROLE_ORDER: VaultRole[] = ['owner', 'editor', 'viewer'];
+
+const ROLE_META: Record<VaultRole, { color: string; plural: string; desc: string }> = {
+  owner:  { color: '#7F77DD', plural: 'Owners',  desc: 'Full access — manage notes and members' },
+  editor: { color: '#4ade80', plural: 'Editors', desc: 'Can read and write notes' },
+  viewer: { color: '#94a3b8', plural: 'Viewers', desc: 'Read-only access' },
 };
 
-function RoleBadge({ role }: { role: VaultRole }) {
+// Same stable-hue avatar as the admin users table.
+function Avatar({ email }: { email: string }) {
+  const letter = (email[0] ?? '?').toUpperCase();
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
   return (
     <span
-      className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium"
-      style={{ background: ROLE_COLORS[role] + '22', color: ROLE_COLORS[role] }}
+      className="flex items-center justify-center flex-shrink-0 rounded-full text-xs font-semibold"
+      style={{
+        width: 30, height: 30,
+        background: `hsla(${hue}, 45%, 55%, 0.18)`,
+        color: `hsl(${hue}, 65%, 72%)`,
+        border: `1px solid hsla(${hue}, 45%, 60%, 0.3)`,
+      }}
     >
-      {role}
+      {letter}
     </span>
   );
 }
 
+function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
+      style={{
+        background: type === 'success' ? '#14532d' : '#7f1d1d',
+        color: '#fff',
+        border: `1px solid ${type === 'success' ? '#4ade80' : '#f87171'}`,
+      }}
+    >
+      {type === 'success' ? '✓' : '✗'} {msg}
+    </div>
+  );
+}
+
 export default function VaultDetailPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const params = useParams();
   const vaultId = params.vaultId as string;
 
   const [members, setMembers] = useState<Member[]>([]);
+  const [vaultName, setVaultName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  // Per-member busy flag while a role change / removal is in flight.
+  const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
 
   // Add member state
   const [allUsers, setAllUsers] = useState<UserOption[]>([]);
@@ -55,8 +87,12 @@ export default function VaultDetailPage() {
   const [addError, setAddError] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
+  const showToast = useCallback((msg: string, type: 'success' | 'error') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
   const loadMembers = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
       const res = await fetch(`/api/admin/vaults/${vaultId}/members`);
@@ -70,6 +106,17 @@ export default function VaultDetailPage() {
       setLoading(false);
     }
   }, [vaultId, router]);
+
+  // Display name comes from the vaults list (rexform-metadata) — non-critical.
+  const loadVaultName = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/vaults');
+      if (!res.ok) return;
+      const data = await res.json();
+      const v = (data.vaults || []).find((x: any) => x.vaultId === vaultId);
+      if (v?.vaultName) setVaultName(v.vaultName);
+    } catch {}
+  }, [vaultId]);
 
   const loadAllUsers = useCallback(async () => {
     try {
@@ -85,19 +132,26 @@ export default function VaultDetailPage() {
 
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') { loadMembers(); loadAllUsers(); }
-  }, [status, loadMembers, loadAllUsers, router]);
+    if (status === 'authenticated') { loadMembers(); loadVaultName(); loadAllUsers(); }
+  }, [status, loadMembers, loadVaultName, loadAllUsers, router]);
 
+  // Users already in the vault shouldn't reappear in the add-member search.
+  const memberIds = new Set(members.map((m) => m.userId));
+  const candidates = allUsers.filter((u) => !memberIds.has(u.id));
   const filteredUsers = userSearch.trim()
-    ? allUsers.filter((u) =>
+    ? candidates.filter((u) =>
         u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.id.toLowerCase().includes(userSearch.toLowerCase())
       )
-    : allUsers;
+    : candidates;
 
   const addMember = async () => {
     const userId = selectedUser?.id || userSearch.trim();
     if (!userId) return;
+    if (memberIds.has(userId)) {
+      setAddError('Already a member — change their role in the list below.');
+      return;
+    }
     setAdding(true);
     setAddError('');
     try {
@@ -111,6 +165,7 @@ export default function VaultDetailPage() {
       setSelectedUser(null);
       setUserSearch('');
       setDropdownOpen(false);
+      showToast('Member added', 'success');
       await loadMembers();
     } catch (e: any) {
       setAddError(e.message);
@@ -120,20 +175,38 @@ export default function VaultDetailPage() {
   };
 
   const changeRole = async (userId: string, role: VaultRole) => {
-    const res = await fetch(`/api/admin/vaults/${vaultId}/members/${userId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-    });
-    if (res.ok) await loadMembers();
+    setRowBusy((p) => ({ ...p, [userId]: true }));
+    try {
+      const res = await fetch(`/api/admin/vaults/${vaultId}/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to change role');
+      showToast(`Role changed to ${role}`, 'success');
+      await loadMembers();
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    } finally {
+      setRowBusy((p) => ({ ...p, [userId]: false }));
+    }
   };
 
-  const removeMember = async (userId: string) => {
-    if (!confirm('Remove this member from the vault?')) return;
-    const res = await fetch(`/api/admin/vaults/${vaultId}/members/${userId}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Failed to remove'); return; }
-    await loadMembers();
+  const removeMember = async (userId: string, email: string | null) => {
+    if (!confirm(`Remove ${email ?? userId} from this vault?`)) return;
+    setRowBusy((p) => ({ ...p, [userId]: true }));
+    try {
+      const res = await fetch(`/api/admin/vaults/${vaultId}/members/${userId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to remove');
+      showToast('Member removed', 'success');
+      await loadMembers();
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    } finally {
+      setRowBusy((p) => ({ ...p, [userId]: false }));
+    }
   };
 
   if (status === 'loading' || loading) {
@@ -144,22 +217,26 @@ export default function VaultDetailPage() {
     );
   }
 
-  const selectStyle: React.CSSProperties = {
-    background: 'var(--bg-surface)',
-    borderColor: 'var(--border)',
-    color: 'var(--text-primary)',
-  };
+  const owners = members.filter((m) => m.role === 'owner');
 
   return (
     <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
       <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
+
+        {/* Header */}
+        <div className="mb-8">
           <Link href="/admin" className="text-sm hover:underline" style={{ color: 'var(--accent)' }}>
             ← Admin Panel
           </Link>
-          <h1 className="text-2xl font-bold mt-3 mb-1" style={{ color: 'var(--text-primary)' }}>
-            Vault Members
-          </h1>
+          <div className="flex items-baseline gap-3 mt-3 mb-1 flex-wrap">
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {vaultName || 'Vault Members'}
+            </h1>
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+            </span>
+          </div>
           <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{vaultId}</p>
         </div>
 
@@ -170,7 +247,7 @@ export default function VaultDetailPage() {
         )}
 
         {/* Add member */}
-        <Card className="p-5 mb-6">
+        <Card className="p-5 mb-8">
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Add Member</h2>
           <div className="flex gap-2">
             {/* User search input */}
@@ -218,7 +295,7 @@ export default function VaultDetailPage() {
               value={newRole}
               onChange={(e) => setNewRole(e.target.value as VaultRole)}
               className="px-3 py-1.5 rounded-lg border text-sm outline-none"
-              style={selectStyle}
+              style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
             >
               <option value="viewer">Viewer</option>
               <option value="editor">Editor</option>
@@ -229,81 +306,81 @@ export default function VaultDetailPage() {
           {addError && <p className="text-xs mt-2" style={{ color: '#f87171' }}>{addError}</p>}
         </Card>
 
-        {/* Members table */}
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-          <div
-            className="px-4 py-3 border-b"
-            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-          >
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {members.length} {members.length === 1 ? 'member' : 'members'}
-            </p>
-          </div>
-          {members.length === 0 ? (
-            <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              No members yet
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {members.map((m, i) => {
-                  const isOnlyOwner = m.role === 'owner' && members.filter((x) => x.role === 'owner').length === 1;
-                  return (
-                    <tr
-                      key={m.userId}
-                      style={{
-                        background: i % 2 === 0 ? 'var(--bg-base)' : 'var(--bg-surface)',
-                        borderBottom: '1px solid var(--border)',
-                      }}
-                    >
-                      <td className="px-4 py-3">
-                        {m.email ? (
-                          <>
-                            <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
-                              {m.email}
-                            </p>
-                            <p className="font-mono text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                              {m.userId}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="font-mono text-xs" style={{ color: 'var(--text-primary)' }}>
+        {/* Members grouped by role — highest privilege first */}
+        {ROLE_ORDER.map((role) => {
+          const meta = ROLE_META[role];
+          const group = members.filter((m) => m.role === role);
+          return (
+            <div key={role} className="mb-6">
+              <div className="flex items-baseline gap-2 mb-2 px-1">
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: meta.color, alignSelf: 'center', flexShrink: 0 }} />
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {meta.plural}
+                </h2>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {group.length} · {meta.desc}
+                </span>
+              </div>
+
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                {group.length === 0 ? (
+                  <div className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)', background: 'var(--bg-surface)' }}>
+                    No {meta.plural.toLowerCase()} yet
+                  </div>
+                ) : (
+                  group.map((m, i) => {
+                    const isOnlyOwner = m.role === 'owner' && owners.length === 1;
+                    const busy = !!rowBusy[m.userId];
+                    return (
+                      <div
+                        key={m.userId}
+                        className="flex items-center gap-3 px-4 py-3"
+                        style={{
+                          background: 'var(--bg-surface)',
+                          borderBottom: i === group.length - 1 ? 'none' : '1px solid var(--border)',
+                          opacity: busy ? 0.6 : 1,
+                          transition: 'opacity 0.15s',
+                        }}
+                      >
+                        <Avatar email={m.email ?? m.userId} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                            {m.email ?? 'Unknown user'}
+                          </p>
+                          <p className="font-mono text-[11px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
                             {m.userId}
                           </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <RoleBadge role={m.role} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2 justify-end">
-                          <select
-                            value={m.role}
-                            onChange={(e) => changeRole(m.userId, e.target.value as VaultRole)}
-                            className="px-2 py-1 rounded text-xs outline-none border"
-                            style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-                          >
-                            <option value="viewer">viewer</option>
-                            <option value="editor">editor</option>
-                            <option value="owner">owner</option>
-                          </select>
-                          <button
-                            onClick={() => removeMember(m.userId)}
-                            disabled={isOnlyOwner}
-                            className="px-2 py-1 rounded text-xs hover:opacity-80 disabled:opacity-30"
-                            style={{ background: '#7f1d1d22', color: '#f87171', border: '1px solid #f8717144' }}
-                          >
-                            Remove
-                          </button>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+
+                        <select
+                          value={m.role}
+                          disabled={busy || isOnlyOwner}
+                          title={isOnlyOwner ? 'The only owner — promote someone else first' : 'Change role'}
+                          onChange={(e) => changeRole(m.userId, e.target.value as VaultRole)}
+                          className="px-2 py-1 rounded-md text-xs outline-none border disabled:opacity-40 flex-shrink-0"
+                          style={{ background: 'var(--bg-base)', borderColor: 'var(--border)', color: 'var(--text-primary)', cursor: busy || isOnlyOwner ? 'default' : 'pointer' }}
+                        >
+                          <option value="owner">Owner</option>
+                          <option value="editor">Editor</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+                        <button
+                          onClick={() => removeMember(m.userId, m.email)}
+                          disabled={busy || isOnlyOwner}
+                          title={isOnlyOwner ? 'The only owner — promote someone else first' : 'Remove from vault'}
+                          className="px-2.5 py-1 rounded-md text-xs hover:opacity-80 disabled:opacity-30 flex-shrink-0"
+                          style={{ background: '#7f1d1d22', color: '#f87171', border: '1px solid #f8717144', cursor: busy || isOnlyOwner ? 'default' : 'pointer' }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

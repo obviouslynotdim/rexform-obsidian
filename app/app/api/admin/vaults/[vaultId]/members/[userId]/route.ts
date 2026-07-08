@@ -26,8 +26,19 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
   }
 
-  // Revoke all existing roles then grant the new one
   const members = await getVaultMembers(params.vaultId);
+
+  // Same guard as DELETE: a vault must always keep at least one owner.
+  const owners = members.filter((m) => m.role === 'owner');
+  if (
+    newRole !== 'owner' &&
+    owners.length === 1 &&
+    owners[0].userId === params.userId
+  ) {
+    return NextResponse.json({ error: 'Cannot demote the last owner' }, { status: 400 });
+  }
+
+  // Revoke all existing roles then grant the new one
   const existing = members.filter((m) => m.userId === params.userId);
   await Promise.all(existing.map((m) => revokeVaultAccess(params.vaultId, m.userId, m.role)));
   await grantVaultAccess(params.vaultId, params.userId, newRole);
