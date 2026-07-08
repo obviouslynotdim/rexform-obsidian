@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { isAdminUser } from '@/lib/vault';
+import { isAdminUser, getPersonalVaultPrefix, deletePersonalVault } from '@/lib/vault';
 import { kratosAdmin } from '@/lib/kratos';
 
 const COUCH_BASE = process.env.COUCHDB_URL || 'http://localhost:5984';
@@ -49,6 +49,29 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   } catch (e: any) {
     console.error(`[admin delete] vault delete ${userId}:`, e.message);
     results.vault = e.message;
+  }
+
+  // Step 2b: Delete any extra personal vaults (uvault-<userId>-*) — otherwise
+  // they'd be orphaned in CouchDB with no owner. deletePersonalVault also
+  // revokes the Keto tuples.
+  try {
+    const dbsRes = await fetch(`${COUCH_BASE}/_all_dbs`, {
+      headers: { Authorization: couchAuth() },
+      cache: 'no-store',
+    });
+    if (!dbsRes.ok) throw new Error(`_all_dbs: ${dbsRes.status}`);
+    const dbs: string[] = await dbsRes.json();
+    const prefix = getPersonalVaultPrefix(userId);
+    const extras = dbs.filter((db) => db.startsWith(prefix));
+    const outcomes = await Promise.allSettled(extras.map((db) => deletePersonalVault(db)));
+    const failed = outcomes.filter((o) => o.status === 'rejected');
+    results.extraVaults = failed.length === 0 ? 'ok' : `${failed.length}/${extras.length} failed`;
+    failed.forEach((o) =>
+      console.error(`[admin delete] extra vault delete ${userId}:`, (o as PromiseRejectedResult).reason)
+    );
+  } catch (e: any) {
+    console.error(`[admin delete] extra vaults ${userId}:`, e.message);
+    results.extraVaults = e.message;
   }
 
   // Step 3: Delete CouchDB _users doc

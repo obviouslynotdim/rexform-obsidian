@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { isAdminUser } from '@/lib/vault';
+import { isAdminUser, getPersonalVaultPrefix } from '@/lib/vault';
 import { kratosAdmin } from '@/lib/kratos';
 
 const COUCH_BASE = process.env.COUCHDB_URL || 'http://localhost:5984';
@@ -29,6 +29,40 @@ async function getVaultInfo(userId: string) {
   }
 }
 
+// Extra personal vaults (uvault-<userId>-<slug>) created via "My Vaults".
+// Display name lives in the vault's rexform-metadata doc.
+async function getExtraVaultInfo(dbName: string) {
+  try {
+    const [infoRes, metaRes] = await Promise.all([
+      fetch(`${COUCH_BASE}/${dbName}`, { headers: { Authorization: couchAuth() }, cache: 'no-store' }),
+      fetch(`${COUCH_BASE}/${dbName}/rexform-metadata`, { headers: { Authorization: couchAuth() }, cache: 'no-store' }),
+    ]);
+    const info = infoRes.ok ? await infoRes.json() : {};
+    const meta = metaRes.ok ? await metaRes.json() : {};
+    return {
+      dbName,
+      name: typeof meta.vaultName === 'string' && meta.vaultName ? meta.vaultName : dbName,
+      docCount: info.doc_count ?? 0,
+      sizeBytes: (info.sizes?.active ?? info.disk_size ?? 0) as number,
+    };
+  } catch {
+    return { dbName, name: dbName, docCount: 0, sizeBytes: 0 };
+  }
+}
+
+async function listAllDbs(): Promise<string[]> {
+  try {
+    const res = await fetch(`${COUCH_BASE}/_all_dbs`, {
+      headers: { Authorization: couchAuth() },
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !isAdminUser(session.user.id)) {
@@ -43,11 +77,19 @@ export async function GET(req: NextRequest) {
   const vaultFilter = sp.get('vault') ?? 'all';   // all | has | none
 
   try {
-    const { data: identities } = await kratosAdmin.listIdentities({ perPage: 500 });
+    const [{ data: identities }, allDbs] = await Promise.all([
+      kratosAdmin.listIdentities({ perPage: 500 }),
+      listAllDbs(),
+    ]);
+    const uvaultDbs = allDbs.filter((db) => db.startsWith('uvault-'));
 
     const allUsers = await Promise.all(
       identities.map(async (identity) => {
-        const vault = await getVaultInfo(identity.id);
+        const prefix = getPersonalVaultPrefix(identity.id);
+        const [vault, extraVaults] = await Promise.all([
+          getVaultInfo(identity.id),
+          Promise.all(uvaultDbs.filter((db) => db.startsWith(prefix)).map(getExtraVaultInfo)),
+        ]);
         return {
           id: identity.id,
           email: (identity.traits as any)?.email ?? '—',
@@ -55,6 +97,7 @@ export async function GET(req: NextRequest) {
           state: identity.state ?? 'active',
           isAdmin: isAdminUser(identity.id),
           vault,
+          extraVaults,
         };
       })
     );
@@ -66,9 +109,12 @@ export async function GET(req: NextRequest) {
     });
 
     // Global stats — always over the full user list, not the filtered page.
+    // activeVaults counts every vault DB: primaries plus extra personal vaults.
     const stats = {
       total: allUsers.length,
-      activeVaults: allUsers.filter((u) => u.vault.exists).length,
+      activeVaults:
+        allUsers.filter((u) => u.vault.exists).length +
+        allUsers.reduce((n, u) => n + u.extraVaults.length, 0),
       suspended: allUsers.filter((u) => !u.isAdmin && u.state !== 'active').length,
       missingVaults: allUsers.filter((u) => !u.vault.exists && !u.isAdmin).length,
     };

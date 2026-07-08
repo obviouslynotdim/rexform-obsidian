@@ -23,8 +23,13 @@ export async function DELETE(
   }
 
   const { vaultId } = params;
-  if (!vaultId.startsWith('vault-shared-')) {
-    return NextResponse.json({ error: 'Can only delete shared vaults via this endpoint' }, { status: 400 });
+  // Shared vaults and extra personal vaults only — primary vaults (vault-<userId>)
+  // go through /api/admin/users/[id]/vault-db so credentials are handled too.
+  if (!vaultId.startsWith('vault-shared-') && !vaultId.startsWith('uvault-')) {
+    return NextResponse.json(
+      { error: 'Can only delete shared or personal (uvault) vaults via this endpoint' },
+      { status: 400 }
+    );
   }
 
   const results: Record<string, string> = {};

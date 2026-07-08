@@ -22,6 +22,14 @@ interface VaultInfo {
   sizeBytes: number;
 }
 
+// Extra personal vaults (uvault-<userId>-<slug>) created via "My Vaults".
+interface ExtraVault {
+  dbName: string;
+  name: string;
+  docCount: number;
+  sizeBytes: number;
+}
+
 interface User {
   id: string;
   email: string;
@@ -29,6 +37,7 @@ interface User {
   state: string;
   isAdmin: boolean;
   vault: VaultInfo;
+  extraVaults: ExtraVault[];
 }
 
 interface Stats {
@@ -197,9 +206,9 @@ function RowMenu({ items }: { items: MenuItem[] }) {
             borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
           }}
         >
-          {items.map((item) => (
+          {items.map((item, i) => (
             <button
-              key={item.label}
+              key={`${item.label}-${i}`}
               disabled={item.disabled}
               onClick={() => { setOpen(false); item.onClick(); }}
               className="block w-full text-left px-3.5 py-1.5 text-[13px] transition-colors disabled:opacity-40"
@@ -367,14 +376,22 @@ export default function AdminPage() {
     }
   }
 
-  const deleteUser = (userId: string, email: string) => {
-    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault database, and CouchDB credentials. This cannot be undone.`)) return;
+  const deleteUser = (userId: string, email: string, extraCount: number) => {
+    const extras = extraCount > 0
+      ? ` (including ${extraCount} extra personal vault${extraCount !== 1 ? 's' : ''})`
+      : '';
+    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault databases${extras}, and CouchDB credentials. This cannot be undone.`)) return;
     runDelete(`/api/admin/users/${userId}/vault`, `del-${userId}`, 'User deleted', () => load(adminPage, { quiet: true }));
   };
 
   const deleteVault = (userId: string, email: string) => {
-    if (!confirm(`Delete vault for ${email}?\n\nThis removes their CouchDB database and credentials but keeps their account. They can re-provision later.`)) return;
+    if (!confirm(`Delete primary vault for ${email}?\n\nThis removes their CouchDB database and credentials but keeps their account and any extra vaults. They can re-provision later.`)) return;
     runDelete(`/api/admin/users/${userId}/vault-db`, `delvault-${userId}`, 'Vault deleted', () => load(adminPage, { quiet: true }));
+  };
+
+  const deleteExtraVault = (dbName: string, name: string, email: string) => {
+    if (!confirm(`Delete vault "${name}" belonging to ${email}?\n\nThis removes the database and its access permissions. This cannot be undone.`)) return;
+    runDelete(`/api/admin/vaults/${dbName}`, `deluvault-${dbName}`, `Vault "${name}" deleted`, () => load(adminPage, { quiet: true }));
   };
 
   const deleteSharedVault = (vaultId: string, vaultName: string) => {
@@ -515,10 +532,12 @@ export default function AdminPage() {
             <tbody>
               {users.map((user) => {
                 const isSelf = user.id === session?.user?.id;
+                const extraVaults = user.extraVaults ?? [];
                 const busy =
                   actions[user.id] === 'loading' ||
                   actions[`del-${user.id}`] === 'loading' ||
-                  actions[`delvault-${user.id}`] === 'loading';
+                  actions[`delvault-${user.id}`] === 'loading' ||
+                  extraVaults.some((v) => actions[`deluvault-${v.dbName}`] === 'loading');
 
                 const menuItems: MenuItem[] = [];
                 if (!user.isAdmin && !isSelf) {
@@ -531,10 +550,21 @@ export default function AdminPage() {
                   menuItems.push({ label: 'Provision vault', onClick: () => provision(user.id) });
                 }
                 if (!user.isAdmin && user.vault.exists) {
-                  menuItems.push({ label: 'Delete vault…', danger: true, onClick: () => deleteVault(user.id, user.email) });
+                  menuItems.push({
+                    label: extraVaults.length > 0 ? 'Delete primary vault…' : 'Delete vault…',
+                    danger: true,
+                    onClick: () => deleteVault(user.id, user.email),
+                  });
                 }
                 if (!user.isAdmin) {
-                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email) });
+                  extraVaults.forEach((v) => {
+                    menuItems.push({
+                      label: `Delete vault “${v.name}”…`,
+                      danger: true,
+                      onClick: () => deleteExtraVault(v.dbName, v.name, user.email),
+                    });
+                  });
+                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length) });
                 }
 
                 return (
@@ -586,6 +616,17 @@ export default function AdminPage() {
                       ) : (
                         <Badge color="#fbbf24">no vault</Badge>
                       )}
+                      {extraVaults.map((v) => (
+                        <div
+                          key={v.dbName}
+                          className="text-[11px] mt-0.5 truncate"
+                          style={{ color: 'var(--text-muted)', maxWidth: 220 }}
+                          title={`${v.dbName} · ${v.docCount} docs${v.sizeBytes > 0 ? ` · ${formatBytes(v.sizeBytes)}` : ''}`}
+                        >
+                          + {v.name} · {v.docCount} docs
+                          {v.sizeBytes > 0 && <> · {formatBytes(v.sizeBytes)}</>}
+                        </div>
+                      ))}
                     </td>
 
                     {/* Status */}
