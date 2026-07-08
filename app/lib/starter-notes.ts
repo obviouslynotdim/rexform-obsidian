@@ -37,7 +37,7 @@ graph LR
 
 ## Make it yours with plugins
 
-Open **Settings → Community plugins** to add features when you need them:
+Open **Settings → Plugins** to add features when you need them:
 
 - **Kanban** — drag-and-drop task boards stored as plain markdown
 - **Calendar** — daily notes on a monthly calendar
@@ -119,7 +119,7 @@ Start writing here...
 - [ ] Type \`[[\` and link to the [[Welcome to REXFORM Notes]] note
 - [ ] Press \`Ctrl/Cmd + K\` and search for "quick start"
 - [ ] Open the graph view from the left icon strip
-- [ ] Install a plugin in **Settings → Community plugins**
+- [ ] Install a plugin in **Settings → Plugins**
 
 ---
 

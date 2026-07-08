@@ -11,7 +11,7 @@ export const kh: Record<string, string> = {
   'nav.account': 'គណនី',
   'nav.editor': 'កម្មវិធីកែសម្រួល',
   'nav.sync': 'សមកាលកម្ម',
-  'nav.communityPlugins': 'កម្មវិធីបន្ថែមសហគមន៍',
+  'nav.communityPlugins': 'កម្មវិធីបន្ថែម',
 
   // General
   'general.title': 'ទូទៅ',
@@ -50,7 +50,7 @@ export const kh: Record<string, string> = {
   'sync.regenerate': 'បង្កើតពាក្យសម្ងាត់ឡើងវិញ',
 
   // Community plugins
-  'plugins.title': 'កម្មវិធីបន្ថែមសហគមន៍',
+  'plugins.title': 'កម្មវិធីបន្ថែម',
   'plugins.restrictedMode': 'របៀបដាក់កម្រិត',
   'plugins.browse': 'រកមើល',
   'plugins.installed': 'កម្មវិធីបន្ថែមដែលបានដំឡើង',

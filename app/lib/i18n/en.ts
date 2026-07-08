@@ -14,7 +14,7 @@ export const en: Record<string, string> = {
   'nav.account': 'Account',
   'nav.editor': 'Editor',
   'nav.sync': 'Sync',
-  'nav.communityPlugins': 'Community plugins',
+  'nav.communityPlugins': 'Plugins',
 
   // General
   'general.title': 'General',
@@ -53,7 +53,7 @@ export const en: Record<string, string> = {
   'sync.regenerate': 'Regenerate Password',
 
   // Community plugins
-  'plugins.title': 'Community Plugins',
+  'plugins.title': 'Plugins',
   'plugins.restrictedMode': 'Restricted mode',
   'plugins.browse': 'Browse',
   'plugins.installed': 'Installed plugins',

@@ -178,7 +178,7 @@ function SpeechPluginIcon({ size = 20 }: { size?: number }) {
   );
 }
 
-function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
+export function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
   switch (id) {
     case 'kanban':   return <KanbanPluginIcon size={size} />;
     case 'calendar': return <CalendarPluginIcon size={size} />;
@@ -192,7 +192,7 @@ function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────────
 
-function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
+export function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onChange}
@@ -701,7 +701,7 @@ function BrowseModal({
                 fontSize: 16, fontWeight: 600, color: '#fff',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
-                Browse community plugins
+                Browse plugins
               </span>
               <CloseBtn onClick={onClose} />
             </div>
@@ -715,7 +715,7 @@ function BrowseModal({
                 ref={inputRef}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search community plugins..."
+                placeholder="Search plugins..."
                 style={{
                   flex: 1, minWidth: 0, boxSizing: 'border-box',
                   background: 'rgba(255,255,255,0.06)',
@@ -750,7 +750,7 @@ function BrowseModal({
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search community plugins..."
+                  placeholder="Search plugins..."
                   style={{
                     width: '100%', boxSizing: 'border-box',
                     background: 'rgba(255,255,255,0.06)',
@@ -1060,7 +1060,7 @@ function CommunityPluginsCard({
 
       <Card className="p-6">
         <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
-          Community Plugins
+          Plugins
         </h2>
 
         {/* ── SECTION A ── */}
@@ -1076,7 +1076,7 @@ function CommunityPluginsCard({
               Restricted mode
             </p>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              When restricted mode is off, community plugins can run custom code.
+              When restricted mode is off, plugins can run custom code.
             </p>
           </div>
           <button style={ghostBtn}>Turn on and reload</button>
@@ -1090,7 +1090,7 @@ function CommunityPluginsCard({
         }}>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
-              Community plugins
+              Plugins
             </p>
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Browse and install plugins from the REXFORM library.

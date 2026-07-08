@@ -6,6 +6,8 @@ import { authOptions } from '@/lib/auth';
 import { getDashboardData, AuthHeaders } from '@/lib/couchdb';
 import { getActiveVault } from '@/lib/active-vault';
 import Card from '@/components/ui/Card';
+import DashboardPlugins from '@/components/dashboard/DashboardPlugins';
+import VaultIdValue from '@/components/dashboard/VaultIdValue';
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -38,7 +40,7 @@ export default async function DashboardPage() {
           </Card>
           <Card className="p-6">
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Vault</p>
-            <p className="text-lg font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{db}</p>
+            <VaultIdValue name={db} />
           </Card>
           <Card className="p-6">
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Status</p>
@@ -48,6 +50,8 @@ export default async function DashboardPage() {
             </div>
           </Card>
         </div>
+
+        <DashboardPlugins />
 
         <div>
           <div className="flex items-center justify-between mb-4">
