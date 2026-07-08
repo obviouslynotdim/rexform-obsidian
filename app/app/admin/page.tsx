@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { formatBytes } from '@/lib/utils';
@@ -260,6 +259,9 @@ export default function AdminPage() {
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
   const [newVaultName, setNewVaultName] = useState('');
   const [creating, setCreating] = useState(false);
+  // Per-user vault management modal. Stores the user ID and derives the user
+  // from `users` each render, so the list updates live after deletions.
+  const [manageVaultsUserId, setManageVaultsUserId] = useState<string | null>(null);
 
   const showToast = useCallback((msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -539,6 +541,9 @@ export default function AdminPage() {
                   actions[`delvault-${user.id}`] === 'loading' ||
                   extraVaults.some((v) => actions[`deluvault-${v.dbName}`] === 'loading');
 
+                const extraDocs = extraVaults.reduce((n, v) => n + v.docCount, 0);
+                const extraSize = extraVaults.reduce((n, v) => n + v.sizeBytes, 0);
+
                 const menuItems: MenuItem[] = [];
                 if (!user.isAdmin && !isSelf) {
                   menuItems.push({
@@ -549,21 +554,10 @@ export default function AdminPage() {
                 if (!user.isAdmin && !user.vault.exists) {
                   menuItems.push({ label: 'Provision vault', onClick: () => provision(user.id) });
                 }
-                if (!user.isAdmin && user.vault.exists) {
-                  menuItems.push({
-                    label: extraVaults.length > 0 ? 'Delete primary vault…' : 'Delete vault…',
-                    danger: true,
-                    onClick: () => deleteVault(user.id, user.email),
-                  });
+                if (!user.isAdmin && (user.vault.exists || extraVaults.length > 0)) {
+                  menuItems.push({ label: 'Manage vaults…', onClick: () => setManageVaultsUserId(user.id) });
                 }
                 if (!user.isAdmin) {
-                  extraVaults.forEach((v) => {
-                    menuItems.push({
-                      label: `Delete vault “${v.name}”…`,
-                      danger: true,
-                      onClick: () => deleteExtraVault(v.dbName, v.name, user.email),
-                    });
-                  });
                   menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length) });
                 }
 
@@ -616,17 +610,20 @@ export default function AdminPage() {
                       ) : (
                         <Badge color="#fbbf24">no vault</Badge>
                       )}
-                      {extraVaults.map((v) => (
-                        <div
-                          key={v.dbName}
-                          className="text-[11px] mt-0.5 truncate"
-                          style={{ color: 'var(--text-muted)', maxWidth: 220 }}
-                          title={`${v.dbName} · ${v.docCount} docs${v.sizeBytes > 0 ? ` · ${formatBytes(v.sizeBytes)}` : ''}`}
+                      {extraVaults.length > 0 && (
+                        <button
+                          onClick={() => setManageVaultsUserId(user.id)}
+                          className="block text-[11px] mt-0.5 truncate hover:underline"
+                          style={{
+                            color: 'var(--text-muted)', maxWidth: 220,
+                            background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+                          }}
+                          title="Manage vaults"
                         >
-                          + {v.name} · {v.docCount} docs
-                          {v.sizeBytes > 0 && <> · {formatBytes(v.sizeBytes)}</>}
-                        </div>
-                      ))}
+                          + {extraVaults.length} extra vault{extraVaults.length !== 1 ? 's' : ''} · {extraDocs} docs
+                          {extraSize > 0 && <> · {formatBytes(extraSize)}</>}
+                        </button>
+                      )}
                     </td>
 
                     {/* Status */}
@@ -710,48 +707,68 @@ export default function AdminPage() {
               No shared vaults yet
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sharedVaults.map((sv) => {
-                const delSVState = actions[`delsvault-${sv.vaultId}`] ?? 'idle';
-                return (
-                  <Card key={sv.vaultId} className="p-5">
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                          {sv.vaultName}
-                        </p>
-                        <p className="text-xs font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          {sv.vaultId}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Link href={`/admin/vaults/${sv.vaultId}`}>
-                          <Button size="sm" variant="ghost">Manage</Button>
-                        </Link>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={delSVState === 'loading'}
-                          onClick={() => deleteSharedVault(sv.vaultId, sv.vaultName)}
-                        >
-                          {delSVState === 'loading' ? 'Deleting…' : 'Delete'}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      <span>{sv.docCount} docs</span>
-                      {sv.sizeBytes > 0 && <span>{formatBytes(sv.sizeBytes)}</span>}
-                      {sv.createdAt && (
-                        <span>
-                          {new Date(sv.createdAt).toLocaleDateString('en-US', {
-                            year: 'numeric', month: 'short', day: 'numeric',
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                    {['Vault', 'Created', 'Docs', 'Size', ''].map((h, i) => (
+                      <th
+                        key={i}
+                        className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sharedVaults.map((sv) => {
+                    const svBusy = actions[`delsvault-${sv.vaultId}`] === 'loading';
+                    return (
+                      <tr
+                        key={sv.vaultId}
+                        className="admin-user-row"
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate" style={{ color: 'var(--text-primary)', maxWidth: 320 }}>
+                              {sv.vaultName}
+                            </p>
+                            <p className="text-[11px] font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)', maxWidth: 320 }}>
+                              {sv.vaultId}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                          {sv.createdAt
+                            ? new Date(sv.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                          {sv.docCount}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                          {sv.sizeBytes > 0 ? formatBytes(sv.sizeBytes) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right" style={{ width: 52 }}>
+                          {svBusy ? (
+                            <span className="text-xs animate-pulse" style={{ color: 'var(--text-muted)' }}>…</span>
+                          ) : (
+                            <RowMenu
+                              items={[
+                                { label: 'Manage members', onClick: () => router.push(`/admin/vaults/${sv.vaultId}`) },
+                                { label: 'Delete vault…', danger: true, onClick: () => deleteSharedVault(sv.vaultId, sv.vaultName) },
+                              ]}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -788,6 +805,104 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Per-user vault management modal */}
+      {(() => {
+        const mUser = manageVaultsUserId ? users.find((u) => u.id === manageVaultsUserId) : undefined;
+        if (!mUser) return null;
+        const mExtras = mUser.extraVaults ?? [];
+        const rows = [
+          ...(mUser.vault.exists
+            ? [{
+                key: 'primary',
+                name: 'Primary vault',
+                dbName: mUser.vault.dbName,
+                docCount: mUser.vault.docCount,
+                sizeBytes: mUser.vault.sizeBytes,
+                primary: true,
+                busy: actions[`delvault-${mUser.id}`] === 'loading',
+                onDelete: () => deleteVault(mUser.id, mUser.email),
+              }]
+            : []),
+          ...mExtras.map((v) => ({
+            key: v.dbName,
+            name: v.name,
+            dbName: v.dbName,
+            docCount: v.docCount,
+            sizeBytes: v.sizeBytes,
+            primary: false,
+            busy: actions[`deluvault-${v.dbName}`] === 'loading',
+            onDelete: () => deleteExtraVault(v.dbName, v.name, mUser.email),
+          })),
+        ];
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={(e) => e.target === e.currentTarget && setManageVaultsUserId(null)}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl p-6 shadow-2xl"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+            >
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  Manage Vaults
+                </h3>
+                <button
+                  onClick={() => setManageVaultsUserId(null)}
+                  className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-white/10 flex-shrink-0"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 15 }}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs mb-4 truncate" style={{ color: 'var(--text-muted)' }}>{mUser.email}</p>
+
+              {rows.length === 0 ? (
+                <p className="text-sm py-6 text-center" style={{ color: 'var(--text-muted)' }}>
+                  This user has no vaults.
+                </p>
+              ) : (
+                <div className="space-y-2 overflow-y-auto" style={{ maxHeight: '55vh' }}>
+                  {rows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="flex items-center gap-3 p-3 rounded-lg border"
+                      style={{ borderColor: 'var(--border)', background: 'var(--bg-base)' }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                            {row.name}
+                          </span>
+                          {row.primary && <Badge color="#7F77DD">primary</Badge>}
+                        </div>
+                        <p className="text-[11px] font-mono truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          {row.dbName}
+                        </p>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                          {row.docCount} docs
+                          {row.sizeBytes > 0 && <> · {formatBytes(row.sizeBytes)}</>}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        loading={row.busy}
+                        onClick={row.onDelete}
+                      >
+                        {row.busy ? 'Deleting…' : 'Delete'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
