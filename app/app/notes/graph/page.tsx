@@ -7,7 +7,7 @@ import NotePreview from '@/components/NotePreview';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-interface GraphNode { id: string; title: string; path?: string; linkCount: number }
+interface GraphNode { id: string; title: string; path?: string; linkCount: number; type?: string }
 interface GraphEdge { source: string; target: string }
 interface GraphData { nodes: GraphNode[]; edges: GraphEdge[] }
 
@@ -44,13 +44,37 @@ function GraphPageContent() {
     dedupingInterval: 60_000,
   });
 
-  const orphans = useMemo(
-    () => (data?.nodes ?? []).filter(n => n.linkCount === 0),
+  // Analytics only consider real notes and note↔note links — the API also
+  // returns tag/attachment/unresolved nodes for the graph's filter toggles.
+  const noteNodes = useMemo(
+    () => (data?.nodes ?? []).filter(n => (n.type ?? 'note') === 'note'),
     [data]
   );
+  const noteDegree = useMemo(() => {
+    const ids = new Set(noteNodes.map(n => n.id));
+    const deg: Record<string, number> = {};
+    (data?.edges ?? []).forEach(e => {
+      if (ids.has(e.source) && ids.has(e.target)) {
+        deg[e.source] = (deg[e.source] || 0) + 1;
+        deg[e.target] = (deg[e.target] || 0) + 1;
+      }
+    });
+    return deg;
+  }, [data, noteNodes]);
+  const noteEdgeCount = useMemo(
+    () => Object.values(noteDegree).reduce((a, b) => a + b, 0) / 2,
+    [noteDegree]
+  );
+  const orphans = useMemo(
+    () => noteNodes.filter(n => !noteDegree[n.id]),
+    [noteNodes, noteDegree]
+  );
   const topConnected = useMemo(
-    () => [...(data?.nodes ?? [])].sort((a, b) => b.linkCount - a.linkCount).slice(0, 6).filter(n => n.linkCount > 0),
-    [data]
+    () => [...noteNodes]
+      .sort((a, b) => (noteDegree[b.id] || 0) - (noteDegree[a.id] || 0))
+      .slice(0, 6)
+      .filter(n => (noteDegree[n.id] || 0) > 0),
+    [noteNodes, noteDegree]
   );
 
   const folderLabel = folder ? folder.split('/').pop() ?? folder : null;
@@ -88,8 +112,8 @@ function GraphPageContent() {
           <div style={{ padding: '12px 14px' }}>
             <div style={SECTION_LABEL}>Overview</div>
             {[
-              { label: 'Notes', value: data?.nodes.length ?? '…' },
-              { label: 'Links', value: data?.edges.length ?? '…' },
+              { label: 'Notes', value: data ? noteNodes.length : '…' },
+              { label: 'Links', value: data ? noteEdgeCount : '…' },
               { label: 'Orphans', value: data ? orphans.length : '…' },
             ].map(({ label, value }) => (
               <div key={label} style={{
@@ -124,7 +148,7 @@ function GraphPageContent() {
                     <span style={{
                       fontSize: 11, color: '#7F77DD',
                       marginLeft: 8, flexShrink: 0, fontVariantNumeric: 'tabular-nums',
-                    }}>{n.linkCount}</span>
+                    }}>{noteDegree[n.id] || 0}</span>
                   </button>
                 ))}
               </div>
@@ -221,7 +245,7 @@ function GraphPageContent() {
 
           {data && (
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-              {data.nodes.length} notes · {data.edges.length} links
+              {noteNodes.length} notes · {noteEdgeCount} links
             </span>
           )}
         </div>
