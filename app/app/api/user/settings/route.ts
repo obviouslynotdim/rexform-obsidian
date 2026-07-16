@@ -25,7 +25,7 @@ interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  syncHeadingWithFilename: false,
+  syncHeadingWithFilename: true,
   newNoteLocation: 'root',
   language: 'en',
 };

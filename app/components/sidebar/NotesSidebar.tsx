@@ -17,6 +17,21 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Props { currentId?: string }
 
+function loadExpanded(vaultId: string | null): Set<string> {
+  if (!vaultId || typeof window === 'undefined') return new Set();
+  try {
+    const saved = localStorage.getItem(`notes.expanded:${vaultId}`);
+    return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+  } catch {
+    return new Set();
+  }
+}
+
+function lastVaultId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try { return localStorage.getItem('notes.lastVault'); } catch { return null; }
+}
+
 function SkeletonItem({ width }: { width: string }) {
   return (
     <div className="px-3 py-2">
@@ -27,7 +42,7 @@ function SkeletonItem({ width }: { width: string }) {
 
 export default function NotesSidebar({ currentId }: Props) {
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => loadExpanded(lastVaultId()));
   const [creating, setCreating] = useState<CreatingState | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -69,6 +84,30 @@ export default function NotesSidebar({ currentId }: Props) {
 
   const activeRole = vaultsData?.vaults.find((v) => v.name === vaultsData.activeVault)?.role;
   const canWrite = activeRole !== 'viewer';
+
+  const vaultId = vaultsData?.activeVault || null;
+  const [restoredVault, setRestoredVault] = useState<string | null>(lastVaultId);
+
+  // Expanded folders live in localStorage — the sidebar unmounts when navigating
+  // away (e.g. to the dashboard). State is seeded synchronously from the last
+  // active vault's saved set so there is no collapsed flash on remount; if the
+  // resolved vault turns out to be a different one, swap in its saved set.
+  useEffect(() => {
+    if (!vaultId) return;
+    try { localStorage.setItem('notes.lastVault', vaultId); } catch {}
+    if (restoredVault === vaultId) return;
+    setExpanded(loadExpanded(vaultId));
+    setRestoredVault(vaultId);
+  }, [vaultId, restoredVault]);
+
+  // Persist expanded folders — only once this vault's state has been restored,
+  // so we never overwrite the saved set with the initial empty one.
+  useEffect(() => {
+    if (!vaultId || restoredVault !== vaultId) return;
+    try {
+      localStorage.setItem(`notes.expanded:${vaultId}`, JSON.stringify(Array.from(expanded)));
+    } catch {}
+  }, [expanded, vaultId, restoredVault]);
 
   // Expand ancestors of the active note
   useEffect(() => {

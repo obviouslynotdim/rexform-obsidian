@@ -356,7 +356,7 @@ Read / write user preferences.
 | | |
 |---|---|
 | Auth required | Yes |
-| Settings shape | `{ syncHeadingWithFilename: boolean, newNoteLocation: "root" \| "current", language: "en" \| "kh" }` — defaults: `false`, `"root"`, `"en"` |
+| Settings shape | `{ syncHeadingWithFilename: boolean, newNoteLocation: "root" \| "current", language: "en" \| "kh" }` — defaults: `true`, `"root"`, `"en"` |
 | POST body | Settings object (bare or `{ settings: {...} }` envelope); partial — merges over existing values |
 | Behaviour | Stored in the `rexform-settings` doc in the user's personal vault. Admin users get defaults. |
 | Errors | 401, 400 (invalid body), 500 |

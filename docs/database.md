@@ -162,7 +162,7 @@ Plugin IDs come from the static catalog in `lib/plugin-registry.ts` (`kanban`, `
 {
   "_id": "rexform-settings",
   "settings": {
-    "syncHeadingWithFilename": false,
+    "syncHeadingWithFilename": true,
     "newNoteLocation": "root",
     "language": "en"
   }
