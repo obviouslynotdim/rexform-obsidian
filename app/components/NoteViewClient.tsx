@@ -7,6 +7,7 @@ import NoteEditor, { type ViewMode } from './NoteEditor';
 import WikiMarkdown from './WikiMarkdown';
 import KanbanView from './KanbanView';
 import NoteMenu from './NoteMenu';
+import ConfirmModal from './ConfirmModal';
 import { isKanbanFrontmatter } from '@/lib/kanban';
 import { useTabsContext } from '@/context/TabsContext';
 import { useRightPanel } from '@/context/RightPanelContext';
@@ -517,10 +518,17 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   }
 
   // Delete from the ⋮ menu — same API the sidebar uses, plus tab cleanup.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   async function handleDelete() {
-    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    if (deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
     const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/delete`, { method: 'DELETE' });
-    if (!res.ok) { alert('Failed to delete note.'); return; }
+    setDeleteBusy(false);
+    if (!res.ok) { setDeleteError('Failed to delete note.'); return; }
+    setConfirmDelete(false);
     tabsCtx?.closeTab(noteId);
     mutate('/api/notes/tree');
     router.push('/notes');
@@ -680,7 +688,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
         title={title}
         canWrite={canWrite}
         onRename={() => { setRenameValue(title); renameSettled.current = false; setRenamingTitle(true); }}
-        onDelete={handleDelete}
+        onDelete={() => setConfirmDelete(true)}
         onExportPdf={pdfOn ? () => setPrinting(true) : undefined}
         onReadAloud={speechOn ? toggleReadAloud : undefined}
         readingAloud={speaking}
@@ -690,6 +698,17 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete note"
+          message={<>Are you sure you want to delete <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{title}</strong>? This cannot be undone.</>}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => { setConfirmDelete(false); setDeleteError(''); }}
+        />
+      )}
 
       {/* Kanban boards get the full pane width (the board owns its own
           horizontal scroll) — reading mode only; Source/Live in the branch

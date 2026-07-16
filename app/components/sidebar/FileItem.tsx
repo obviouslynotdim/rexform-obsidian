@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTabsContext } from '@/context/TabsContext';
+import ConfirmModal from '../ConfirmModal';
 import type { FileNode, ContextMenuState, CreatingState } from './types';
 
 interface FileItemProps {
@@ -33,6 +34,9 @@ export default function FileItem({
   const justOpenedRename = useRef(false);
   const [hovered, setHovered] = useState(false);
   const [isDragTarget, setIsDragTarget] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
@@ -82,10 +86,13 @@ export default function FileItem({
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this note? This cannot be undone.')) return;
+    if (deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
     const res = await fetch(`/api/notes/${encodeURIComponent(node.id)}/delete`, { method: 'DELETE' });
-    if (res.ok) onDeleted(node.id);
-    else alert('Failed to delete note.');
+    setDeleteBusy(false);
+    if (res.ok) { setConfirmDelete(false); onDeleted(node.id); }
+    else setDeleteError('Failed to delete note.');
   }
 
   function navigate() {
@@ -146,7 +153,7 @@ export default function FileItem({
             x: e.clientX, y: e.clientY,
             type: 'file', id: node.id, name: node.name, path: node.path,
             onRename: startRename,
-            onDelete: handleDelete,
+            onDelete: () => setConfirmDelete(true),
             onMove: () => setMoving(node.id),
             onNewFolder: () => {
               const parentFolder = node.path.split('/').slice(0, -1).join('/');
@@ -212,6 +219,16 @@ export default function FileItem({
         <p className="text-xs pb-0.5" style={{ paddingLeft: `${depth * 14 + 28}px`, color: '#e55' }}>
           {renameError}
         </p>
+      )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete note"
+          message={<>Are you sure you want to delete <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{node.name}</strong>? This cannot be undone.</>}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => { setConfirmDelete(false); setDeleteError(''); }}
+        />
       )}
     </div>
   );

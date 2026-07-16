@@ -12,6 +12,7 @@ import {
   autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion,
 } from '@codemirror/autocomplete';
 import { useTabsContext } from '@/context/TabsContext';
+import ConfirmModal from './ConfirmModal';
 import { rexformDarkTheme, rexformSyntaxHighlighting } from '@/lib/cm/theme';
 import { wikilinkCompletions, resolveWikilink, noteDisplayName, type NoteStub } from '@/lib/cm/wikilinkComplete';
 import { livePreview, setLivePreview, wikilinkConfig } from '@/lib/cm/livePreview';
@@ -310,16 +311,24 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
     view.focus();
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const handleDelete = async () => {
-    if (!confirm('Delete this note? This cannot be undone.')) return;
+    if (deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
     try {
       const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/delete`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
       await mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
+      setConfirmDelete(false);
       router.push('/notes');
       router.refresh();
     } catch {
-      alert('Failed to delete note.');
+      setDeleteError('Failed to delete note.');
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -390,7 +399,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
               Save
             </button>
             <button
-              onClick={handleDelete}
+              onClick={() => setConfirmDelete(true)}
               className="px-3 py-1 rounded text-xs font-medium"
               style={{ background: '#2d1a1a', color: '#f87171' }}
             >
@@ -408,6 +417,17 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       {/* Single CM pane for both 'source' (raw) and 'live' (inline decorations,
           toggled via setLivePreview). 'reading' is handled by NoteViewClient. */}
       {editorPane}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete note"
+          message={<>Are you sure you want to delete <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{noteId.replace(/\.md$/i, '').split('/').pop()}</strong>? This cannot be undone.</>}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => { setConfirmDelete(false); setDeleteError(''); }}
+        />
+      )}
     </div>
   );
 }

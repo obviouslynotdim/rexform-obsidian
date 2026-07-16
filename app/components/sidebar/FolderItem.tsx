@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FolderNode, ContextMenuState, CreatingState } from './types';
+import ConfirmModal from '../ConfirmModal';
 import InlineInput from './InlineInput';
 import FileItem from './FileItem';
 
@@ -42,6 +43,7 @@ export default function FolderItem({
   const [renameError, setRenameError] = useState('');
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(false);
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [deleteFolderError, setDeleteFolderError] = useState('');
   const [dragCounter, setDragCounter] = useState(0);
   const [hovered, setHovered] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -107,11 +109,13 @@ export default function FolderItem({
   }
 
   async function handleDeleteFolder() {
+    if (deletingFolder) return;
     setDeletingFolder(true);
+    setDeleteFolderError('');
     const res = await fetch(`/api/notes/folder?path=${encodeURIComponent(node.path)}`, { method: 'DELETE' });
     setDeletingFolder(false);
-    if (res.ok) onFolderDeleted(node.path);
-    else setConfirmDeleteFolder(false);
+    if (res.ok) { setConfirmDeleteFolder(false); onFolderDeleted(node.path); }
+    else setDeleteFolderError('Failed to delete folder.');
   }
 
   const sharedChildProps = {
@@ -234,22 +238,7 @@ export default function FolderItem({
           </span>
         )}
 
-        {confirmDeleteFolder ? (
-          <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
-            <span className="text-xs mr-0.5" style={{ color: '#e55' }}>delete all?</span>
-            <button
-              onClick={handleDeleteFolder}
-              disabled={deletingFolder}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs"
-              style={{ color: '#fff', background: '#c0392b' }}
-            >{deletingFolder ? '…' : '✓'}</button>
-            <button
-              onClick={() => setConfirmDeleteFolder(false)}
-              className="w-5 h-5 rounded flex items-center justify-center text-xs"
-              style={{ color: 'var(--text-secondary)', background: 'var(--bg-elevated)' }}
-            >✗</button>
-          </div>
-        ) : renaming ? (
+        {renaming ? (
           <div className="flex items-center gap-0.5 flex-shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={handleRename}
@@ -272,6 +261,17 @@ export default function FolderItem({
         <p className="text-xs px-3 pb-0.5" style={{ paddingLeft: `${depth * 14 + 30}px`, color: '#e55' }}>
           {renameError}
         </p>
+      )}
+
+      {confirmDeleteFolder && (
+        <ConfirmModal
+          title="Delete folder"
+          message={<>Are you sure you want to delete <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{node.name}</strong> and everything inside it ({folderTooltip})? This cannot be undone.</>}
+          busy={deletingFolder}
+          error={deleteFolderError}
+          onConfirm={handleDeleteFolder}
+          onCancel={() => { setConfirmDeleteFolder(false); setDeleteFolderError(''); }}
+        />
       )}
 
       {isOpen && (
