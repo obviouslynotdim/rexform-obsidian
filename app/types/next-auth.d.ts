@@ -21,5 +21,6 @@ declare module 'next-auth/jwt' {
     userId?: string;
     kratosSessionToken?: string;
     isAdmin?: boolean;
+    provider?: string;
   }
 }

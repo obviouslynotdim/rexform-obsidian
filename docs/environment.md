@@ -18,6 +18,10 @@
 | `ADMIN_USER_ID` | ✓ | Kratos identity UUID of the admin account | `957e5bcc-eb3f-442d-b5ec-0f47cac3282c` |
 | `KETO_READ_URL` | Optional | Keto Read API. Unset = shared vault permissions disabled | `http://rexform-keto.railway.internal:4466` |
 | `KETO_WRITE_URL` | Optional | Keto Write API | `http://rexform-keto.railway.internal:4467` |
+| `SSO_ISSUER_URL` | Optional | Central IAM OIDC issuer (rexform-ory-dev gateway). No trailing slash. Set all four SSO vars together or none | `https://gateway-production-1b0d.up.railway.app` |
+| `SSO_CLIENT_ID` | Optional | OAuth2 client ID registered in the central Hydra | `<from IAM client registration>` |
+| `SSO_CLIENT_SECRET` | Optional | OAuth2 client secret | `<secret>` |
+| `NEXT_PUBLIC_SSO_ENABLED` | Optional | Shows the "Continue with REXFORM SSO" button on login/register | `true` |
 
 ---
 

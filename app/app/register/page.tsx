@@ -18,7 +18,9 @@ function passwordStrength(pw: string): number {
   return score;
 }
 
-function ProtonIcon() {
+const SSO_ENABLED = process.env.NEXT_PUBLIC_SSO_ENABLED === 'true';
+
+function SsoIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
@@ -142,25 +144,27 @@ export default function RegisterPage() {
           Your personal knowledge base awaits
         </p>
 
-        {/* Proton SSO */}
-        <a
-          href="https://account.proton.me"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium mb-5 transition-colors hover:border-[#6D4AFF]/60"
-          style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
-        >
-          <ProtonIcon />
-          Sign up with Proton
-        </a>
+        {SSO_ENABLED && (
+          <>
+            <button
+              type="button"
+              onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
+              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium mb-5 transition-colors hover:border-[#6D4AFF]/60"
+              style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
+            >
+              <SsoIcon />
+              Sign up with REXFORM SSO
+            </button>
 
-        <div className="flex items-center gap-3 mb-5">
-          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            or register with email
-          </span>
-          <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-        </div>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                or register with email
+              </span>
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            </div>
+          </>
+        )}
 
         {globalError && (
           <div

@@ -101,6 +101,21 @@ export async function createUserVault(userId: string): Promise<{ vaultName: stri
   return { vaultName };
 }
 
+/**
+ * Creates the user's primary vault only if it doesn't exist yet. Never call
+ * createUserVault unconditionally per login — provisionUserCredentials inside
+ * it rotates the user's LiveSync password on every invocation.
+ */
+export async function ensureUserVault(userId: string): Promise<void> {
+  const res = await fetch(`${COUCHDB_INTERNAL_URL}/${getUserVaultName(userId)}`, {
+    method: 'HEAD',
+    headers: { Authorization: adminAuthHeader() },
+  });
+  if (res.status === 404) {
+    await createUserVault(userId);
+  }
+}
+
 export async function createSharedVault(
   name: string,
   creatorUserId: string
