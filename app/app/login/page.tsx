@@ -1,14 +1,12 @@
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, useSession, getProviders } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-
-const SSO_ENABLED = process.env.NEXT_PUBLIC_SSO_ENABLED === 'true';
 
 function SsoIcon() {
   return (
@@ -47,7 +45,17 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
   const searchParams = useSearchParams();
+
+  // Runtime check instead of a NEXT_PUBLIC_ flag: build-time inlining goes
+  // stale behind Docker layer caching, and this can never disagree with the
+  // server's actual provider list.
+  useEffect(() => {
+    getProviders()
+      .then((p) => setSsoEnabled(!!p?.['rexform-sso']))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // NextAuth redirects failed OAuth flows back here with ?error=...
@@ -114,7 +122,7 @@ function LoginForm() {
           Sign in to your workspace
         </p>
 
-        {SSO_ENABLED && (
+        {ssoEnabled && (
           <>
             <button
               type="button"

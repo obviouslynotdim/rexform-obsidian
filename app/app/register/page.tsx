@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, useSession, getProviders } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/ui/Logo';
@@ -17,8 +17,6 @@ function passwordStrength(pw: string): number {
   if (/[^A-Za-z0-9]/.test(pw)) score++;
   return score;
 }
-
-const SSO_ENABLED = process.env.NEXT_PUBLIC_SSO_ENABLED === 'true';
 
 function SsoIcon() {
   return (
@@ -57,6 +55,14 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+
+  // Runtime check instead of a NEXT_PUBLIC_ flag — see login page.
+  useEffect(() => {
+    getProviders()
+      .then((p) => setSsoEnabled(!!p?.['rexform-sso']))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     initFlow()
@@ -144,7 +150,7 @@ export default function RegisterPage() {
           Your personal knowledge base awaits
         </p>
 
-        {SSO_ENABLED && (
+        {ssoEnabled && (
           <>
             <button
               type="button"
