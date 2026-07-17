@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
-import { signIn, useSession, getProviders } from 'next-auth/react';
+import { Suspense, useState, useEffect, useRef } from 'react';
+import { signIn, signOut, useSession, getProviders } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/ui/Logo';
@@ -84,23 +84,30 @@ function LoginForm() {
   // the OAuth flow starts HERE (state/PKCE cookies must originate from this
   // app — deep-linking the callback URL fails with "State cookie was
   // missing"). Skipped when ?error= is present so a failed flow can't loop.
+  // A stale local session is discarded first so the entry always reflects
+  // whoever is signed into the IAM right now, not a previous notes login.
+  // The ref stops a second signIn when signOut flips status to
+  // unauthenticated (two racing flows would clobber each other's state
+  // cookie).
+  const ssoEntryStarted = useRef(false);
+  const ssoEntry = searchParams.get('sso') === '1' && !searchParams.get('error');
   useEffect(() => {
-    if (
-      searchParams.get('sso') === '1' &&
-      !searchParams.get('error') &&
-      ssoEnabled &&
-      status === 'unauthenticated'
-    ) {
+    if (!ssoEntry || !ssoEnabled || status === 'loading' || ssoEntryStarted.current) return;
+    ssoEntryStarted.current = true;
+    sessionStorage.removeItem('ssoAutoRetried');
+    if (status === 'authenticated') {
+      signOut({ redirect: false }).then(() => signIn('rexform-sso', { callbackUrl: '/notes' }));
+    } else {
       signIn('rexform-sso', { callbackUrl: '/notes' });
     }
-  }, [searchParams, ssoEnabled, status]);
+  }, [ssoEntry, ssoEnabled, status]);
 
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && !ssoEntry) {
       sessionStorage.removeItem('ssoAutoRetried');
       window.location.href = session?.user?.isAdmin ? '/admin' : '/notes';
     }
-  }, [status, session]);
+  }, [status, session, ssoEntry]);
 
   useEffect(() => {
     initFlow()
