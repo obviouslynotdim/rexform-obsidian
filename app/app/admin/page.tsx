@@ -37,6 +37,7 @@ interface User {
   isAdmin: boolean;
   vault: VaultInfo;
   extraVaults: ExtraVault[];
+  provider?: 'local' | 'sso';
 }
 
 interface Stats {
@@ -544,8 +545,11 @@ export default function AdminPage() {
                 const extraDocs = extraVaults.reduce((n, v) => n + v.docCount, 0);
                 const extraSize = extraVaults.reduce((n, v) => n + v.sizeBytes, 0);
 
+                // SSO users have no local Kratos identity — suspend and
+                // delete-user act on Kratos, so they only get vault actions.
+                const isSso = user.provider === 'sso';
                 const menuItems: MenuItem[] = [];
-                if (!user.isAdmin && !isSelf) {
+                if (!user.isAdmin && !isSelf && !isSso) {
                   menuItems.push({
                     label: user.state === 'active' ? 'Suspend user' : 'Reactivate user',
                     onClick: () => toggleState(user.id, user.state),
@@ -557,7 +561,7 @@ export default function AdminPage() {
                 if (!user.isAdmin && (user.vault.exists || extraVaults.length > 0)) {
                   menuItems.push({ label: 'Manage vaults…', onClick: () => setManageVaultsUserId(user.id) });
                 }
-                if (!user.isAdmin) {
+                if (!user.isAdmin && !isSso) {
                   menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length) });
                 }
 
@@ -578,6 +582,7 @@ export default function AdminPage() {
                             </span>
                             {user.isAdmin && <Badge color="#7F77DD">admin</Badge>}
                             {isSelf && !user.isAdmin && <Badge color="#60a5fa">you</Badge>}
+                            {isSso && <Badge color="#9B7FFF">SSO</Badge>}
                           </div>
                           <div className="flex items-center gap-1 mt-0.5">
                             <span className="text-[11px] font-mono truncate" style={{ color: 'var(--text-muted)', maxWidth: 230 }}>

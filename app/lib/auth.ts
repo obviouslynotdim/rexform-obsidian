@@ -3,6 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import type { OAuthConfig } from 'next-auth/providers/oauth';
 import { kratosFrontend } from './kratos';
 import { isAdminUser, ensureUserVault } from './vault';
+import { upsertSsoUser } from './sso-users';
 
 const SSO_ISSUER_URL = process.env.SSO_ISSUER_URL?.replace(/\/$/, '');
 
@@ -116,6 +117,14 @@ export const authOptions: NextAuthOptions = {
           await ensureUserVault(user.id);
         } catch (e) {
           console.error('[auth] SSO vault provisioning failed:', e);
+        }
+        // Record the profile so the admin panel can list SSO users — they
+        // have no local Kratos identity, and sign-in is the only moment
+        // their email/name is visible to this app.
+        try {
+          await upsertSsoUser(user.id, user.email ?? null, user.name ?? null);
+        } catch (e) {
+          console.error('[auth] SSO user registry upsert failed:', e);
         }
       }
       return true;

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminUser, getPersonalVaultPrefix } from '@/lib/vault';
 import { kratosAdmin } from '@/lib/kratos';
+import { listSsoUsers } from '@/lib/sso-users';
 
 const COUCH_BASE = process.env.COUCHDB_URL || 'http://localhost:5984';
 const COUCH_USER = process.env.COUCHDB_USERNAME || 'admin';
@@ -77,30 +78,55 @@ export async function GET(req: NextRequest) {
   const vaultFilter = sp.get('vault') ?? 'all';   // all | has | none
 
   try {
-    const [{ data: identities }, allDbs] = await Promise.all([
+    const [{ data: identities }, allDbs, ssoRegistry] = await Promise.all([
       kratosAdmin.listIdentities({ perPage: 500 }),
       listAllDbs(),
+      listSsoUsers(),
     ]);
     const uvaultDbs = allDbs.filter((db) => db.startsWith('uvault-'));
 
-    const allUsers = await Promise.all(
-      identities.map(async (identity) => {
-        const prefix = getPersonalVaultPrefix(identity.id);
-        const [vault, extraVaults] = await Promise.all([
-          getVaultInfo(identity.id),
-          Promise.all(uvaultDbs.filter((db) => db.startsWith(prefix)).map(getExtraVaultInfo)),
-        ]);
-        return {
-          id: identity.id,
+    // SSO users have no local Kratos identity. Merge in everyone from the
+    // sso-users registry, plus any orphan vault-<id> DB whose id matches no
+    // identity (SSO logins that predate the registry).
+    const kratosIds = new Set(identities.map((i) => i.id));
+    const registryById = new Map(ssoRegistry.filter((r) => !kratosIds.has(r.id)).map((r) => [r.id, r]));
+    const orphanVaultIds = allDbs
+      .filter((db) => db.startsWith('vault-') && !db.startsWith('vault-shared-'))
+      .map((db) => db.slice('vault-'.length))
+      .filter((id) => !kratosIds.has(id) && !registryById.has(id));
+    const ssoUserIds = Array.from(registryById.keys()).concat(orphanVaultIds);
+
+    const buildUser = async (
+      id: string,
+      base: { email: string; createdAt: string | null; state: string; provider: 'local' | 'sso' }
+    ) => {
+      const prefix = getPersonalVaultPrefix(id);
+      const [vault, extraVaults] = await Promise.all([
+        getVaultInfo(id),
+        Promise.all(uvaultDbs.filter((db) => db.startsWith(prefix)).map(getExtraVaultInfo)),
+      ]);
+      return { id, ...base, isAdmin: isAdminUser(id), vault, extraVaults };
+    };
+
+    const allUsers = await Promise.all([
+      ...identities.map((identity) =>
+        buildUser(identity.id, {
           email: (identity.traits as any)?.email ?? '—',
           createdAt: identity.created_at ?? null,
           state: identity.state ?? 'active',
-          isAdmin: isAdminUser(identity.id),
-          vault,
-          extraVaults,
-        };
-      })
-    );
+          provider: 'local',
+        })
+      ),
+      ...ssoUserIds.map((id) => {
+        const rec = registryById.get(id);
+        return buildUser(id, {
+          email: rec?.email || rec?.name || '—',
+          createdAt: rec?.createdAt ?? null,
+          state: 'active',
+          provider: 'sso',
+        });
+      }),
+    ]);
 
     allUsers.sort((a, b) => {
       if (a.isAdmin) return -1;
