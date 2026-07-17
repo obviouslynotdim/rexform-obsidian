@@ -150,28 +150,6 @@ export default function RegisterPage() {
           Your personal knowledge base awaits
         </p>
 
-        {ssoEnabled && (
-          <>
-            <button
-              type="button"
-              onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
-              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium mb-5 transition-colors hover:border-[#6D4AFF]/60"
-              style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
-            >
-              <SsoIcon />
-              Sign up with REXFORM SSO
-            </button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                or register with email
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            </div>
-          </>
-        )}
-
         {globalError && (
           <div
             className="mb-4 px-4 py-3 rounded-lg text-sm border"
@@ -247,6 +225,28 @@ export default function RegisterPage() {
             {loading ? 'Creating account…' : 'Create account'}
           </Button>
         </form>
+
+        {ssoEnabled && (
+          <>
+            <div className="flex items-center gap-3 my-5">
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                or
+              </span>
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
+              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60"
+              style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
+            >
+              <SsoIcon />
+              Sign up with REXFORM SSO
+            </button>
+          </>
+        )}
 
         <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
           Already have an account?{' '}

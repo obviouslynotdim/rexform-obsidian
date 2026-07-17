@@ -34,8 +34,9 @@ function rexformSsoProvider(): OAuthConfig<SsoProfile> {
     idToken: true,
     checks: ['pkce', 'state'],
     // Must match the Hydra client's registered token_endpoint_auth_method,
-    // otherwise the token exchange fails with invalid_client.
-    client: { token_endpoint_auth_method: 'client_secret_basic' },
+    // otherwise the token exchange fails with invalid_client. The central
+    // rexform-notes client is registered as client_secret_post.
+    client: { token_endpoint_auth_method: 'client_secret_post' },
     userinfo: {
       // A custom request takes precedence over the idToken shortcut, letting
       // us merge ID-token claims with /userinfo instead of getting only one.
