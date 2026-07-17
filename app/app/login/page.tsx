@@ -45,7 +45,9 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
-  const [ssoEnabled, setSsoEnabled] = useState(false);
+  // null = provider list not fetched yet; the error handler below must wait
+  // for it before deciding between a silent SSO retry and the error banner.
+  const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
 
   // Runtime check instead of a NEXT_PUBLIC_ flag: build-time inlining goes
@@ -54,20 +56,29 @@ function LoginForm() {
   useEffect(() => {
     getProviders()
       .then((p) => setSsoEnabled(!!p?.['rexform-sso']))
-      .catch(() => {});
+      .catch(() => setSsoEnabled(false));
   }, []);
 
   useEffect(() => {
     // NextAuth redirects failed OAuth flows back here with ?error=...
     const err = searchParams.get('error');
-    if (err) {
-      setError(
-        err === 'AccessDenied'
-          ? 'SSO sign-in was cancelled or denied.'
-          : 'SSO sign-in failed. Please try again or use email login.'
-      );
+    if (!err) return;
+    if (err === 'AccessDenied') {
+      setError('SSO sign-in was cancelled or denied.');
+      return;
     }
-  }, [searchParams]);
+    if (ssoEnabled === null || status === 'loading') return;
+    // IdP-initiated entries (a portal deep-linking the OAuth callback) fail
+    // with "State cookie was missing" because the flow didn't start here.
+    // Restarting it from this app once succeeds; the sessionStorage flag
+    // stops an error loop when the flow is genuinely broken.
+    if (ssoEnabled && status === 'unauthenticated' && !sessionStorage.getItem('ssoAutoRetried')) {
+      sessionStorage.setItem('ssoAutoRetried', '1');
+      signIn('rexform-sso', { callbackUrl: '/notes' });
+      return;
+    }
+    setError('SSO sign-in failed. Please try again or use email login.');
+  }, [searchParams, ssoEnabled, status]);
 
   // IdP-initiated entry point: other REXFORM apps link to /login?sso=1 and
   // the OAuth flow starts HERE (state/PKCE cookies must originate from this
@@ -86,6 +97,7 @@ function LoginForm() {
 
   useEffect(() => {
     if (status === 'authenticated') {
+      sessionStorage.removeItem('ssoAutoRetried');
       window.location.href = session?.user?.isAdmin ? '/admin' : '/notes';
     }
   }, [status, session]);
