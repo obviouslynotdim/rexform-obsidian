@@ -69,6 +69,21 @@ function LoginForm() {
     }
   }, [searchParams]);
 
+  // IdP-initiated entry point: other REXFORM apps link to /login?sso=1 and
+  // the OAuth flow starts HERE (state/PKCE cookies must originate from this
+  // app — deep-linking the callback URL fails with "State cookie was
+  // missing"). Skipped when ?error= is present so a failed flow can't loop.
+  useEffect(() => {
+    if (
+      searchParams.get('sso') === '1' &&
+      !searchParams.get('error') &&
+      ssoEnabled &&
+      status === 'unauthenticated'
+    ) {
+      signIn('rexform-sso', { callbackUrl: '/notes' });
+    }
+  }, [searchParams, ssoEnabled, status]);
+
   useEffect(() => {
     if (status === 'authenticated') {
       window.location.href = session?.user?.isAdmin ? '/admin' : '/notes';
