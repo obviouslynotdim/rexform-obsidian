@@ -22,7 +22,7 @@ function adminAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${COUCHDB_ADMIN_USER}:${COUCHDB_ADMIN_PASSWORD}`).toString('base64');
 }
 
-async function findKratosByEmail(email: string): Promise<ResolvedUser | null> {
+export async function findKratosByEmail(email: string): Promise<ResolvedUser | null> {
   try {
     const { data } = await kratosAdmin.listIdentities({ perPage: 500 });
     const hit = data.find(
@@ -34,7 +34,7 @@ async function findKratosByEmail(email: string): Promise<ResolvedUser | null> {
   }
 }
 
-async function findSsoByEmail(email: string): Promise<ResolvedUser | null> {
+export async function findSsoByEmail(email: string): Promise<ResolvedUser | null> {
   const users = await listSsoUsers();
   const hit = users.find((u) => (u.email ?? '').toLowerCase() === email);
   return hit ? { userId: hit.id, email: hit.email } : null;

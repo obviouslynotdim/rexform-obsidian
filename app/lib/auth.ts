@@ -4,6 +4,7 @@ import type { OAuthConfig } from 'next-auth/providers/oauth';
 import { kratosFrontend } from './kratos';
 import { isAdminUser, ensureUserVault } from './vault';
 import { upsertSsoUser } from './sso-users';
+import { findKratosByEmail } from './user-lookup';
 
 const SSO_ISSUER_URL = process.env.SSO_ISSUER_URL?.replace(/\/$/, '');
 
@@ -109,22 +110,44 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
   callbacks: {
     async signIn({ user, account }) {
-      // The Kratos after-register webhook never fires for SSO users, so their
-      // vault is provisioned here on first login. Non-fatal: the lazy
-      // auto-provision in fetchFromVault remains as the safety net.
       if (account?.provider === 'rexform-sso' && user.id) {
+        // If this email already belongs to a local Kratos identity, sign
+        // them into THAT account instead of minting a separate Hydra-`sub`
+        // identity — otherwise the same person ends up with two accounts
+        // (and two vaults) for one email. Mutating `user.id` here propagates
+        // to the jwt() callback below (no DB adapter is configured, so
+        // next-auth passes the same user object through, unmodified).
+        let linkedToLocal = false;
+        if (user.email) {
+          try {
+            const existing = await findKratosByEmail(user.email.toLowerCase());
+            if (existing) {
+              user.id = existing.userId;
+              linkedToLocal = true;
+            }
+          } catch (e) {
+            console.error('[auth] SSO email-link lookup failed:', e);
+          }
+        }
+
+        // The Kratos after-register webhook never fires for SSO users, so
+        // their vault is provisioned here on first login. Non-fatal: the
+        // lazy auto-provision in fetchFromVault remains as the safety net.
         try {
           await ensureUserVault(user.id);
         } catch (e) {
           console.error('[auth] SSO vault provisioning failed:', e);
         }
-        // Record the profile so the admin panel can list SSO users — they
-        // have no local Kratos identity, and sign-in is the only moment
-        // their email/name is visible to this app.
-        try {
-          await upsertSsoUser(user.id, user.email ?? null, user.name ?? null);
-        } catch (e) {
-          console.error('[auth] SSO user registry upsert failed:', e);
+
+        // Record the profile so the admin panel can list SSO-only users —
+        // skip this once linked, since they already have a real Kratos
+        // identity and show up in the regular user list.
+        if (!linkedToLocal) {
+          try {
+            await upsertSsoUser(user.id, user.email ?? null, user.name ?? null);
+          } catch (e) {
+            console.error('[auth] SSO user registry upsert failed:', e);
+          }
         }
       }
       return true;
