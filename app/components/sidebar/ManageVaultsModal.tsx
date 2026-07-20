@@ -586,10 +586,28 @@ function CreateVaultDialog({
 
 function MembersPanel({ vaultId, canManage, myId }: { vaultId: string; canManage: boolean; myId: string }) {
   const [members, setMembers] = useState<Member[] | null>(null);
-  const [identifier, setIdentifier] = useState('');
-  const [role, setRole] = useState<Member['role']>('editor');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('editor');
+  const [inviteUrl, setInviteUrl] = useState('');
+  const [inviteExpiresAt, setInviteExpiresAt] = useState<number | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!inviteExpiresAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [inviteExpiresAt]);
+
+  useEffect(() => {
+    if (inviteExpiresAt && now >= inviteExpiresAt) {
+      setInviteUrl('');
+      setInviteExpiresAt(null);
+    }
+  }, [now, inviteExpiresAt]);
 
   async function load() {
     try {
@@ -612,24 +630,34 @@ function MembersPanel({ vaultId, canManage, myId }: { vaultId: string; canManage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultId]);
 
-  async function addMember() {
-    const id = identifier.trim();
-    if (!id || busy) return;
-    setBusy(true);
+  async function generateInviteLink() {
+    setGenerating(true);
+    setCopied(false);
     setErr('');
-    const res = await fetch(`/api/shared-vaults/${encodeURIComponent(vaultId)}/members`, {
+    const res = await fetch(`/api/shared-vaults/${encodeURIComponent(vaultId)}/invite-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: id, role }),
+      body: JSON.stringify({ role: inviteRole }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setErr(body.error || 'Failed to add member');
+      setErr(body.error || 'Failed to create invite link');
     } else {
-      setIdentifier('');
-      await load();
+      setInviteUrl(`${window.location.origin}/invite/${vaultId}/${body.token}`);
+      setInviteExpiresAt(body.expiresAt);
+      setNow(Date.now());
     }
-    setBusy(false);
+    setGenerating(false);
+  }
+
+  async function copyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setErr('Could not copy — select and copy manually');
+    }
   }
 
   async function changeRole(member: Member, newRole: Member['role']) {
@@ -723,31 +751,66 @@ function MembersPanel({ vaultId, canManage, myId }: { vaultId: string; canManage
       )}
 
       {canManage && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
-          <input
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addMember(); }}
-            placeholder="Invite by email or user ID"
-            style={{ ...inputStyle, flex: 1, padding: '6px 9px', fontSize: 12 }}
-          />
-          <select value={role} onChange={(e) => setRole(e.target.value as Member['role'])} style={selectStyle}>
-            <option value="editor">editor</option>
-            <option value="viewer">viewer</option>
-            <option value="owner">owner</option>
-          </select>
-          <button
-            onClick={addMember}
-            disabled={!identifier.trim() || busy}
-            style={{
-              padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 500,
-              cursor: identifier.trim() && !busy ? 'pointer' : 'not-allowed',
-              background: identifier.trim() ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-              color: identifier.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
-            }}
-          >
-            {busy ? '…' : 'Add'}
-          </button>
+        <div style={{ marginTop: 9 }}>
+          {inviteUrl ? (
+            <div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  readOnly
+                  value={inviteUrl}
+                  onFocus={(e) => e.target.select()}
+                  style={{ ...inputStyle, flex: 1, padding: '6px 9px', fontSize: 11, fontFamily: 'monospace' }}
+                />
+                <button
+                  onClick={copyInviteLink}
+                  style={{
+                    padding: '6px 12px', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)',
+                    fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                    background: 'transparent', color: 'rgba(255,255,255,0.8)',
+                  }}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 }}>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                  {inviteRole} · expires in {inviteExpiresAt ? Math.max(0, Math.ceil((inviteExpiresAt - now) / 1000 / 60)) : 0} min
+                </span>
+                <button
+                  onClick={generateInviteLink}
+                  disabled={generating}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: generating ? 'not-allowed' : 'pointer',
+                    color: 'var(--accent)', fontSize: 11,
+                  }}
+                >
+                  Regenerate
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as 'editor' | 'viewer')}
+                style={selectStyle}
+              >
+                <option value="editor">editor</option>
+                <option value="viewer">viewer</option>
+              </select>
+              <button
+                onClick={generateInviteLink}
+                disabled={generating}
+                style={{
+                  flex: 1, padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 500,
+                  cursor: generating ? 'not-allowed' : 'pointer',
+                  background: 'var(--accent)', color: '#fff',
+                }}
+              >
+                {generating ? '…' : 'Generate invite link'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

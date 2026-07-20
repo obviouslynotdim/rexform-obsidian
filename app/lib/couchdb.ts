@@ -256,7 +256,7 @@ export async function getDashboardData(auth?: AuthHeaders, database?: string) {
   return { total: notes.length, recentNotes };
 }
 
-async function getSharedVaultDisplayName(vaultId: string): Promise<string> {
+export async function getSharedVaultDisplayName(vaultId: string): Promise<string> {
   try {
     const auth = 'Basic ' + Buffer.from(`${ADMIN_USER}:${ADMIN_PASS}`).toString('base64');
     const res = await fetch(`${INTERNAL_URL}/${vaultId}/rexform-metadata`, {

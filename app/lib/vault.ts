@@ -299,6 +299,97 @@ export async function renamePersonalVault(vaultId: string, newName: string): Pro
   }
 }
 
+export interface VaultInvite {
+  token: string;
+  vaultId: string;
+  role: VaultRole;
+  expiresAt: number;
+  createdBy: string;
+}
+
+const INVITE_TTL_MS = 5 * 60 * 1000;
+
+function inviteDocId(token: string): string {
+  return `rexform-invite-${token}`;
+}
+
+/**
+ * Creates a fresh single-use invite link for a vault, replacing any invite
+ * still active for it — only one live link per vault at a time, so sharing a
+ * new one implicitly revokes the last.
+ */
+export async function createVaultInviteLink(
+  vaultId: string,
+  role: VaultRole,
+  createdBy: string
+): Promise<{ token: string; expiresAt: number }> {
+  const base = COUCHDB_INTERNAL_URL;
+  const auth = adminAuthHeader();
+
+  const listRes = await fetch(
+    `${base}/${vaultId}/_all_docs?startkey=%22rexform-invite-%22&endkey=%22rexform-invite-%5Cufff0%22`,
+    { headers: { Authorization: auth }, cache: 'no-store' }
+  );
+  if (listRes.ok) {
+    const { rows } = await listRes.json();
+    await Promise.all(
+      rows.map((row: { id: string; value: { rev: string } }) =>
+        fetch(`${base}/${vaultId}/${encodeURIComponent(row.id)}?rev=${row.value.rev}`, {
+          method: 'DELETE',
+          headers: { Authorization: auth },
+        })
+      )
+    );
+  }
+
+  const token = crypto.randomBytes(24).toString('hex');
+  const expiresAt = Date.now() + INVITE_TTL_MS;
+  const putRes = await fetch(`${base}/${vaultId}/${inviteDocId(token)}`, {
+    method: 'PUT',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      _id: inviteDocId(token),
+      token,
+      role,
+      expiresAt,
+      createdBy,
+      createdAt: Date.now(),
+    }),
+  });
+  if (!putRes.ok) {
+    throw new Error(`Failed to create invite link: ${putRes.status} ${await putRes.text()}`);
+  }
+  return { token, expiresAt };
+}
+
+/** Reads an invite without consuming it. Returns null if missing or expired. */
+export async function getVaultInvite(vaultId: string, token: string): Promise<VaultInvite | null> {
+  const res = await fetch(`${COUCHDB_INTERNAL_URL}/${vaultId}/${inviteDocId(token)}`, {
+    headers: { Authorization: adminAuthHeader() },
+    cache: 'no-store',
+  });
+  if (!res.ok) return null;
+  const doc = await res.json();
+  if (typeof doc.expiresAt !== 'number' || doc.expiresAt < Date.now()) return null;
+  return { token, vaultId, role: doc.role, expiresAt: doc.expiresAt, createdBy: doc.createdBy };
+}
+
+/** Consumes an invite (single-use) by deleting its doc. No-op if already gone. */
+export async function consumeVaultInvite(vaultId: string, token: string): Promise<void> {
+  const base = COUCHDB_INTERNAL_URL;
+  const auth = adminAuthHeader();
+  const getRes = await fetch(`${base}/${vaultId}/${inviteDocId(token)}`, {
+    headers: { Authorization: auth },
+    cache: 'no-store',
+  });
+  if (!getRes.ok) return;
+  const doc = await getRes.json();
+  await fetch(`${base}/${vaultId}/${inviteDocId(token)}?rev=${doc._rev}`, {
+    method: 'DELETE',
+    headers: { Authorization: auth },
+  });
+}
+
 /** Deletes a personal vault: revokes all Keto tuples, then drops the CouchDB DB. */
 export async function deletePersonalVault(vaultId: string): Promise<void> {
   try {

@@ -134,7 +134,11 @@ function LoginForm() {
     } else {
       // '/' lets the middleware route by role — /admin for admins, /notes
       // otherwise (the fresh session isn't readable client-side yet here).
-      window.location.href = '/';
+      // Honor an incoming callbackUrl (e.g. an invite link that redirected
+      // here to sign in first) — restricted to relative paths to rule out
+      // an open redirect via a crafted query param.
+      const cb = searchParams.get('callbackUrl');
+      window.location.href = cb && cb.startsWith('/') && !cb.startsWith('//') ? cb : '/';
     }
   }
 

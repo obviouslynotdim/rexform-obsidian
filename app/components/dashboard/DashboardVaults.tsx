@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Card from '@/components/ui/Card';
 import ManageVaultsModal from '@/components/sidebar/ManageVaultsModal';
@@ -35,11 +36,11 @@ function VaultGlyph({ shared, active }: { shared: boolean; active: boolean }) {
 // modal (create/rename/delete/members). Same /api/vaults SWR key as the
 // sidebar vault bar, so changes propagate everywhere.
 export default function DashboardVaults() {
+  const router = useRouter();
   const { data, isLoading } = useSWR<VaultsData>('/api/vaults', fetcher, {
     dedupingInterval: 30_000,
   });
   const [manageOpen, setManageOpen] = useState(false);
-  const [membersVault, setMembersVault] = useState<string | undefined>(undefined);
   const [switching, setSwitching] = useState<string | null>(null);
 
   const vaults = data?.vaults ?? [];
@@ -130,7 +131,7 @@ export default function DashboardVaults() {
                 <div className="flex-shrink-0 pt-1 flex items-center gap-1.5">
                   {isShared && (
                     <button
-                      onClick={() => { setMembersVault(vault.name); setManageOpen(true); }}
+                      onClick={() => router.push(`/dashboard/vaults/${vault.name}`)}
                       className="text-xs font-medium px-3 py-1 rounded-md transition-colors"
                       style={{
                         background: 'transparent',
@@ -139,7 +140,7 @@ export default function DashboardVaults() {
                         cursor: 'pointer',
                       }}
                     >
-                      Members
+                      Manage
                     </button>
                   )}
                   {isActive ? (
@@ -175,8 +176,7 @@ export default function DashboardVaults() {
       {manageOpen && data && (
         <ManageVaultsModal
           data={data}
-          initialMembersFor={membersVault}
-          onClose={() => { setManageOpen(false); setMembersVault(undefined); }}
+          onClose={() => setManageOpen(false)}
         />
       )}
     </div>
