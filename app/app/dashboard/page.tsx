@@ -7,6 +7,7 @@ import { getDashboardData, AuthHeaders } from '@/lib/couchdb';
 import { getActiveVault } from '@/lib/active-vault';
 import Card from '@/components/ui/Card';
 import DashboardPlugins from '@/components/dashboard/DashboardPlugins';
+import DashboardVaults from '@/components/dashboard/DashboardVaults';
 import VaultIdValue from '@/components/dashboard/VaultIdValue';
 
 export default async function DashboardPage() {
@@ -50,6 +51,8 @@ export default async function DashboardPage() {
             </div>
           </Card>
         </div>
+
+        <DashboardVaults />
 
         <DashboardPlugins />
 

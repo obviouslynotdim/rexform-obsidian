@@ -67,6 +67,14 @@ export async function checkVaultAccess(vaultId: string, userId: string, role: Va
   }
 }
 
+/** Highest role the user holds on a vault, or null if not a member. */
+export async function getUserVaultRole(vaultId: string, userId: string): Promise<VaultRole | null> {
+  for (const role of ['owner', 'editor', 'viewer'] as VaultRole[]) {
+    if (await checkVaultAccess(vaultId, userId, role)) return role;
+  }
+  return null;
+}
+
 export async function getVaultMembers(vaultId: string): Promise<VaultMember[]> {
   const members: VaultMember[] = [];
   for (const role of ['owner', 'editor', 'viewer'] as VaultRole[]) {

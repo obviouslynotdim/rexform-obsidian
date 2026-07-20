@@ -1,12 +1,14 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useSession } from 'next-auth/react';
 import { mutate } from 'swr';
 import type { VaultsData, VaultOption } from './types';
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '7px 10px',
-  borderRadius: 6,
+  padding: '8px 11px',
+  borderRadius: 7,
   border: '1px solid rgba(255,255,255,0.12)',
   background: 'rgba(255,255,255,0.04)',
   color: 'rgba(255,255,255,0.9)',
@@ -14,24 +16,94 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 };
 
+const selectStyle: React.CSSProperties = {
+  padding: '5px 7px',
+  borderRadius: 6,
+  border: '1px solid rgba(255,255,255,0.12)',
+  background: '#262940',
+  color: 'rgba(255,255,255,0.8)',
+  fontSize: 12,
+  outline: 'none',
+  cursor: 'pointer',
+};
+
+const overlayStyle: React.CSSProperties = {
+  position: 'fixed', inset: 0,
+  background: 'rgba(0,0,0,0.55)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+const dialogStyle: React.CSSProperties = {
+  background: '#1e2030',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 14,
+  boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+};
+
 interface Props {
   data: VaultsData;
   onClose: () => void;
+  /** Render as a compact create-only dialog ("New vault") instead of the full manager. */
   initialCreating?: boolean;
+  /** Open with this shared vault's members panel already expanded. */
+  initialMembersFor?: string;
 }
 
-export default function ManageVaultsModal({ data, onClose, initialCreating = false }: Props) {
-  const [creating, setCreating] = useState(initialCreating);
-  const [newName, setNewName] = useState('');
-  const [template, setTemplate] = useState<'starter' | 'blank'>('starter');
+interface Member {
+  userId: string;
+  role: 'owner' | 'editor' | 'viewer';
+  email: string | null;
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{
+      fontSize: 11, fontWeight: 600, letterSpacing: 0.6, textTransform: 'uppercase',
+      color: 'rgba(255,255,255,0.35)', margin: '0 0 6px',
+    }}>
+      {children}
+    </p>
+  );
+}
+
+export default function ManageVaultsModal({
+  data,
+  onClose,
+  initialCreating = false,
+  initialMembersFor,
+}: Props) {
+  const { data: session } = useSession();
+  const myId = session?.user?.id ?? '';
+
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState<VaultOption | null>(null);
   const [confirmText, setConfirmText] = useState('');
+  const [membersFor, setMembersFor] = useState<string | null>(initialMembersFor ?? null);
+  const [createPopup, setCreatePopup] = useState<'personal' | 'shared' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const refresh = () => mutate('/api/vaults');
+
+  const personalVaults = data.vaults.filter((v) => v.kind !== 'shared');
+  const sharedVaults = data.vaults.filter((v) => v.kind === 'shared');
+
+  // Compact "New vault" entry point (sidebar dropdown) — creation only, with
+  // the vault type selectable. The full manager is everything below.
+  if (initialCreating) {
+    return (
+      <CreateVaultDialog
+        kind="personal"
+        allowKindSwitch
+        onClose={onClose}
+        onCreated={async () => {
+          await refresh();
+          onClose();
+        }}
+      />
+    );
+  }
 
   async function switchTo(vaultName: string) {
     setBusy(true);
@@ -43,40 +115,16 @@ export default function ManageVaultsModal({ data, onClose, initialCreating = fal
     window.location.href = '/notes';
   }
 
-  async function handleCreate() {
-    const name = newName.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const res = await fetch('/api/vaults/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, template }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(body.error || 'Failed to create vault');
-        setBusy(false);
-        return;
-      }
-      // Show the new vault in the list; user opens it explicitly
-      setCreating(false);
-      setNewName('');
-      await refresh();
-    } catch {
-      setError('Failed to create vault');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleRename(vault: VaultOption) {
     const name = renameValue.trim();
     if (!name || busy) return;
     setBusy(true);
     setError('');
-    const res = await fetch(`/api/vaults/${encodeURIComponent(vault.name)}`, {
+    const endpoint =
+      vault.kind === 'shared'
+        ? `/api/shared-vaults/${encodeURIComponent(vault.name)}`
+        : `/api/vaults/${encodeURIComponent(vault.name)}`;
+    const res = await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -95,9 +143,11 @@ export default function ManageVaultsModal({ data, onClose, initialCreating = fal
     if (confirmText !== vault.label || busy) return;
     setBusy(true);
     setError('');
-    const res = await fetch(`/api/vaults/${encodeURIComponent(vault.name)}`, {
-      method: 'DELETE',
-    });
+    const endpoint =
+      vault.kind === 'shared'
+        ? `/api/shared-vaults/${encodeURIComponent(vault.name)}`
+        : `/api/vaults/${encodeURIComponent(vault.name)}`;
+    const res = await fetch(endpoint, { method: 'DELETE' });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error || 'Failed to delete vault');
@@ -114,238 +164,610 @@ export default function ManageVaultsModal({ data, onClose, initialCreating = fal
     setBusy(false);
   }
 
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(0,0,0,0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
+  async function handleLeave(vault: VaultOption) {
+    if (busy || !myId) return;
+    setBusy(true);
+    setError('');
+    const res = await fetch(
+      `/api/shared-vaults/${encodeURIComponent(vault.name)}/members/${encodeURIComponent(myId)}`,
+      { method: 'DELETE' }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || 'Failed to leave vault');
+      setBusy(false);
+      return;
+    }
+    if (vault.name === data.activeVault) {
+      window.location.href = '/notes';
+      return;
+    }
+    await refresh();
+    setBusy(false);
+  }
+
+  function renderVault(vault: VaultOption) {
+    const isActive = vault.name === data.activeVault;
+    const isOwnPersonal = vault.kind === 'personal';
+    const isShared = vault.kind === 'shared';
+    const isSharedOwner = isShared && vault.role === 'owner';
+    const isDeleting = deleting?.name === vault.name;
+    const isRenaming = renaming === vault.name;
+    const showMembers = membersFor === vault.name;
+
+    return (
+      <div
+        key={vault.name}
+        style={{
+          padding: '11px 13px', borderRadius: 9,
+          border: `1px solid ${isActive ? 'var(--accent)44' : 'rgba(255,255,255,0.07)'}`,
+          background: isActive ? 'var(--accent)0d' : 'rgba(255,255,255,0.02)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isRenaming ? (
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRename(vault);
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              style={{ ...inputStyle, flex: 1, padding: '5px 9px' }}
+            />
+          ) : (
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{
+                  fontSize: 13.5, fontWeight: 500, color: 'rgba(255,255,255,0.88)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {vault.label}
+                </span>
+                {isShared && (
+                  <span style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0,
+                    background: '#64748b22', color: '#94a3b8',
+                  }}>
+                    {vault.role === 'owner' ? 'owner' : vault.role ?? 'shared'}
+                  </span>
+                )}
+                {isActive && (
+                  <span style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 4, flexShrink: 0,
+                    background: 'var(--accent)22', color: 'var(--accent)',
+                  }}>
+                    active
+                  </span>
+                )}
+              </div>
+              <p style={{
+                fontSize: 10.5, color: 'rgba(255,255,255,0.3)', margin: '3px 0 0',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {vault.name}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+            {isRenaming ? (
+              <>
+                <ActionButton label="Save" accent onClick={() => handleRename(vault)} disabled={busy} />
+                <ActionButton label="Cancel" onClick={() => setRenaming(null)} disabled={busy} />
+              </>
+            ) : (
+              <>
+                {!isActive && (
+                  <ActionButton label="Open" onClick={() => switchTo(vault.name)} disabled={busy} />
+                )}
+                {isShared && (
+                  <ActionButton
+                    label="Members"
+                    accent={showMembers}
+                    onClick={() => { setMembersFor(showMembers ? null : vault.name); setDeleting(null); setRenaming(null); }}
+                    disabled={busy}
+                  />
+                )}
+                {(isOwnPersonal || isSharedOwner) && (
+                  <ActionButton
+                    label="Rename"
+                    onClick={() => { setRenaming(vault.name); setRenameValue(vault.label); setDeleting(null); }}
+                    disabled={busy}
+                  />
+                )}
+                {(isOwnPersonal || isSharedOwner) && (
+                  <ActionButton
+                    label="Delete"
+                    danger
+                    onClick={() => { setDeleting(isDeleting ? null : vault); setConfirmText(''); setRenaming(null); setMembersFor(null); }}
+                    disabled={busy}
+                  />
+                )}
+                {isShared && !isSharedOwner && (
+                  <ActionButton label="Leave" danger onClick={() => handleLeave(vault)} disabled={busy} />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {showMembers && (
+          <MembersPanel vaultId={vault.name} canManage={isSharedOwner} myId={myId} />
+        )}
+
+        {isDeleting && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <p style={{ fontSize: 11.5, color: '#f87171', margin: '0 0 7px' }}>
+              This permanently deletes all notes in this vault{isShared ? ' for every member' : ''}. Type <strong>{vault.label}</strong> to confirm.
+            </p>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                autoFocus
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={vault.label}
+                style={{ ...inputStyle, flex: 1, padding: '6px 9px', fontSize: 12 }}
+              />
+              <button
+                onClick={() => handleDelete(vault)}
+                disabled={confirmText !== vault.label || busy}
+                style={{
+                  padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 500,
+                  cursor: confirmText === vault.label && !busy ? 'pointer' : 'not-allowed',
+                  background: confirmText === vault.label ? '#ef4444' : 'rgba(239,68,68,0.25)',
+                  color: confirmText === vault.label ? '#fff' : 'rgba(255,255,255,0.4)',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Portal to <body>: the modal is mounted from inside the sidebar/vault bar,
+  // where ancestor overflow/stacking contexts can clip or misplace a fixed
+  // overlay (e.g. overlapping the vault dropdown).
+  return createPortal(
+    <div onClick={onClose} style={{ ...overlayStyle, zIndex: 400 }}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 440, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto',
-          background: '#1e2030',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 12,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-          padding: 20,
+          ...dialogStyle,
+          width: 600, maxWidth: '94vw', maxHeight: '85vh', overflowY: 'auto',
+          padding: 26,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.92)', margin: 0 }}>
             Manage vaults
           </h2>
           <button
             onClick={onClose}
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 18, lineHeight: 1 }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 19, lineHeight: 1 }}
           >
             ×
           </button>
         </div>
+        <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', margin: '0 0 18px' }}>
+          Personal vaults are private to you. Shared vaults let you collaborate — owners invite members and set roles.
+        </p>
 
         {error && (
           <div style={{
-            marginBottom: 10, padding: '7px 10px', borderRadius: 6, fontSize: 12,
+            marginBottom: 12, padding: '8px 11px', borderRadius: 7, fontSize: 12,
             background: 'rgba(239,68,68,0.12)', color: '#f87171',
           }}>
             {error}
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {data.vaults.map((vault) => {
-            const isActive = vault.name === data.activeVault;
-            const isOwnPersonal = vault.kind === 'personal';
-            const isDeleting = deleting?.name === vault.name;
-            const isRenaming = renaming === vault.name;
-
-            return (
-              <div
-                key={vault.name}
-                style={{
-                  padding: '9px 10px', borderRadius: 8,
-                  border: `1px solid ${isActive ? 'var(--accent)44' : 'rgba(255,255,255,0.07)'}`,
-                  background: isActive ? 'var(--accent)0d' : 'rgba(255,255,255,0.02)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isRenaming ? (
-                    <input
-                      autoFocus
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRename(vault);
-                        if (e.key === 'Escape') setRenaming(null);
-                      }}
-                      style={{ ...inputStyle, flex: 1, padding: '4px 8px' }}
-                    />
-                  ) : (
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{
-                          fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.85)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {vault.label}
-                        </span>
-                        {vault.kind === 'shared' && (
-                          <span style={{
-                            fontSize: 10, padding: '1px 5px', borderRadius: 3, flexShrink: 0,
-                            background: '#64748b22', color: '#94a3b8',
-                          }}>
-                            shared{vault.role && vault.role !== 'owner' ? ` · ${vault.role}` : ''}
-                          </span>
-                        )}
-                        {isActive && (
-                          <span style={{
-                            fontSize: 10, padding: '1px 5px', borderRadius: 3, flexShrink: 0,
-                            background: 'var(--accent)22', color: 'var(--accent)',
-                          }}>
-                            active
-                          </span>
-                        )}
-                      </div>
-                      <p style={{
-                        fontSize: 10, color: 'rgba(255,255,255,0.3)', margin: '2px 0 0',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {vault.name}
-                      </p>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                    {isRenaming ? (
-                      <>
-                        <ActionButton label="Save" accent onClick={() => handleRename(vault)} disabled={busy} />
-                        <ActionButton label="Cancel" onClick={() => setRenaming(null)} disabled={busy} />
-                      </>
-                    ) : (
-                      <>
-                        {!isActive && (
-                          <ActionButton label="Open" onClick={() => switchTo(vault.name)} disabled={busy} />
-                        )}
-                        {isOwnPersonal && (
-                          <>
-                            <ActionButton
-                              label="Rename"
-                              onClick={() => { setRenaming(vault.name); setRenameValue(vault.label); setDeleting(null); }}
-                              disabled={busy}
-                            />
-                            <ActionButton
-                              label="Delete"
-                              danger
-                              onClick={() => { setDeleting(isDeleting ? null : vault); setConfirmText(''); setRenaming(null); }}
-                              disabled={busy}
-                            />
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {isDeleting && (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                    <p style={{ fontSize: 11, color: '#f87171', margin: '0 0 6px' }}>
-                      This permanently deletes all notes in this vault. Type <strong>{vault.label}</strong> to confirm.
-                    </p>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        autoFocus
-                        value={confirmText}
-                        onChange={(e) => setConfirmText(e.target.value)}
-                        placeholder={vault.label}
-                        style={{ ...inputStyle, flex: 1, padding: '5px 8px', fontSize: 12 }}
-                      />
-                      <button
-                        onClick={() => handleDelete(vault)}
-                        disabled={confirmText !== vault.label || busy}
-                        style={{
-                          padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 500,
-                          cursor: confirmText === vault.label && !busy ? 'pointer' : 'not-allowed',
-                          background: confirmText === vault.label ? '#ef4444' : 'rgba(239,68,68,0.25)',
-                          color: confirmText === vault.label ? '#fff' : 'rgba(255,255,255,0.4)',
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <SectionHeader>Personal vaults</SectionHeader>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 18 }}>
+          {personalVaults.map(renderVault)}
         </div>
 
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          {creating ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreate();
-                  if (e.key === 'Escape') setCreating(false);
-                }}
-                placeholder="Vault name"
-                maxLength={60}
-                style={inputStyle}
-              />
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['starter', 'blank'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTemplate(t)}
-                    style={{
-                      flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                      border: `1px solid ${template === t ? 'var(--accent)' : 'rgba(255,255,255,0.12)'}`,
-                      background: template === t ? 'var(--accent)18' : 'transparent',
-                      color: template === t ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
-                    }}
-                  >
-                    {t === 'starter' ? 'Starter notes' : 'Blank'}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                <ActionButton label="Cancel" onClick={() => setCreating(false)} disabled={busy} />
-                <button
-                  onClick={handleCreate}
-                  disabled={!newName.trim() || busy}
-                  style={{
-                    padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 500,
-                    cursor: newName.trim() && !busy ? 'pointer' : 'not-allowed',
-                    background: newName.trim() ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                    color: newName.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
-                  }}
-                >
-                  {busy ? 'Creating…' : 'Create vault'}
-                </button>
-              </div>
-            </div>
+        <SectionHeader>Shared vaults</SectionHeader>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {sharedVaults.length > 0 ? (
+            sharedVaults.map(renderVault)
           ) : (
-            <button
-              onClick={() => setCreating(true)}
-              style={{
-                width: '100%', padding: '7px 0', borderRadius: 6, fontSize: 12.5, cursor: 'pointer',
-                border: '1px dashed rgba(255,255,255,0.2)', background: 'transparent',
-                color: 'rgba(255,255,255,0.55)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-            >
-              ＋ New vault
-            </button>
+            <p style={{
+              fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0,
+              padding: '12px 13px', borderRadius: 9, border: '1px dashed rgba(255,255,255,0.1)',
+            }}>
+              No shared vaults yet. Create one to collaborate with your team.
+            </p>
           )}
         </div>
+
+        <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 8 }}>
+          <CreateButton label="＋ New vault" onClick={() => setCreatePopup('personal')} />
+          <CreateButton label="＋ New shared vault" onClick={() => setCreatePopup('shared')} />
+        </div>
       </div>
+
+      {createPopup && (
+        <CreateVaultDialog
+          kind={createPopup}
+          onClose={() => setCreatePopup(null)}
+          onCreated={async () => {
+            await refresh();
+            setCreatePopup(null);
+          }}
+        />
+      )}
+    </div>,
+    document.body
+  );
+}
+
+// Standalone create popup. With allowKindSwitch it shows the Personal/Shared
+// type cards (sidebar "New vault"); without, it's fixed to the kind of the
+// button that opened it and titled accordingly.
+function CreateVaultDialog({
+  kind,
+  allowKindSwitch = false,
+  onClose,
+  onCreated,
+}: {
+  kind: 'personal' | 'shared';
+  allowKindSwitch?: boolean;
+  onClose: () => void;
+  onCreated: () => Promise<void> | void;
+}) {
+  const [createKind, setCreateKind] = useState<'personal' | 'shared'>(kind);
+  const [name, setName] = useState('');
+  const [template, setTemplate] = useState<'starter' | 'blank'>('starter');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const title = allowKindSwitch
+    ? 'New vault'
+    : createKind === 'shared'
+      ? 'New shared vault'
+      : 'New personal vault';
+
+  async function handleCreate() {
+    const trimmed = name.trim();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res =
+        createKind === 'shared'
+          ? await fetch('/api/shared-vaults', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: trimmed }),
+            })
+          : await fetch('/api/vaults/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: trimmed, template }),
+            });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.error || 'Failed to create vault');
+        setBusy(false);
+        return;
+      }
+      await onCreated();
+    } catch {
+      setError('Failed to create vault');
+      setBusy(false);
+    }
+  }
+
+  return createPortal(
+    <div
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      style={{ ...overlayStyle, zIndex: 420 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ ...dialogStyle, width: 460, maxWidth: '92vw', padding: 24 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.92)', margin: 0 }}>
+            {title}
+          </h2>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 19, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+        <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', margin: '0 0 16px' }}>
+          {allowKindSwitch
+            ? 'Choose a vault type and give it a name.'
+            : createKind === 'shared'
+              ? 'A vault you can share — invite members and set their roles.'
+              : 'A private vault only you can see.'}
+        </p>
+
+        {error && (
+          <div style={{
+            marginBottom: 12, padding: '8px 11px', borderRadius: 7, fontSize: 12,
+            background: 'rgba(239,68,68,0.12)', color: '#f87171',
+          }}>
+            {error}
+          </div>
+        )}
+
+        {allowKindSwitch && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {(['personal', 'shared'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setCreateKind(k)}
+                style={{
+                  flex: 1, padding: '10px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'left',
+                  border: `1px solid ${createKind === k ? 'var(--accent)' : 'rgba(255,255,255,0.12)'}`,
+                  background: createKind === k ? 'var(--accent)14' : 'transparent',
+                }}
+              >
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: createKind === k ? 'var(--accent)' : 'rgba(255,255,255,0.8)',
+                }}>
+                  {k === 'personal' ? 'Personal' : 'Shared'}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+                  {k === 'personal' ? 'Private to you' : 'Collaborate with members'}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleCreate();
+            if (e.key === 'Escape') onClose();
+          }}
+          placeholder={createKind === 'shared' ? 'Shared vault name' : 'Vault name'}
+          maxLength={60}
+          style={inputStyle}
+        />
+
+        {createKind === 'personal' && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            {(['starter', 'blank'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTemplate(t)}
+                style={{
+                  flex: 1, padding: '7px 0', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+                  border: `1px solid ${template === t ? 'var(--accent)' : 'rgba(255,255,255,0.12)'}`,
+                  background: template === t ? 'var(--accent)18' : 'transparent',
+                  color: template === t ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
+                }}
+              >
+                {t === 'starter' ? 'Starter notes' : 'Blank'}
+              </button>
+            ))}
+          </div>
+        )}
+        {createKind === 'shared' && (
+          <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.4)', margin: '10px 0 0' }}>
+            You become the owner and can invite members by email afterwards.
+          </p>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 16 }}>
+          <ActionButton label="Cancel" onClick={onClose} disabled={busy} />
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || busy}
+            style={{
+              padding: '7px 16px', borderRadius: 7, border: 'none', fontSize: 12.5, fontWeight: 500,
+              cursor: name.trim() && !busy ? 'pointer' : 'not-allowed',
+              background: name.trim() ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+              color: name.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            {busy ? 'Creating…' : createKind === 'shared' ? 'Create shared vault' : 'Create vault'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function MembersPanel({ vaultId, canManage, myId }: { vaultId: string; canManage: boolean; myId: string }) {
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [identifier, setIdentifier] = useState('');
+  const [role, setRole] = useState<Member['role']>('editor');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function load() {
+    try {
+      const res = await fetch(`/api/shared-vaults/${encodeURIComponent(vaultId)}/members`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(body.error || 'Failed to load members');
+        setMembers([]);
+        return;
+      }
+      setMembers(body.members ?? []);
+    } catch {
+      setErr('Failed to load members');
+      setMembers([]);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultId]);
+
+  async function addMember() {
+    const id = identifier.trim();
+    if (!id || busy) return;
+    setBusy(true);
+    setErr('');
+    const res = await fetch(`/api/shared-vaults/${encodeURIComponent(vaultId)}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: id, role }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setErr(body.error || 'Failed to add member');
+    } else {
+      setIdentifier('');
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function changeRole(member: Member, newRole: Member['role']) {
+    if (busy || newRole === member.role) return;
+    setBusy(true);
+    setErr('');
+    const res = await fetch(`/api/shared-vaults/${encodeURIComponent(vaultId)}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: member.userId, role: newRole }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) setErr(body.error || 'Failed to change role');
+    await load();
+    setBusy(false);
+  }
+
+  async function removeMember(member: Member) {
+    if (busy) return;
+    setBusy(true);
+    setErr('');
+    const res = await fetch(
+      `/api/shared-vaults/${encodeURIComponent(vaultId)}/members/${encodeURIComponent(member.userId)}`,
+      { method: 'DELETE' }
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) setErr(body.error || 'Failed to remove member');
+    await load();
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+      {err && (
+        <div style={{
+          marginBottom: 7, padding: '6px 9px', borderRadius: 6, fontSize: 11.5,
+          background: 'rgba(239,68,68,0.12)', color: '#f87171',
+        }}>
+          {err}
+        </div>
+      )}
+
+      {members === null ? (
+        <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', margin: 0 }}>Loading members…</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {members.map((m) => (
+            <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{
+                flex: 1, minWidth: 0, fontSize: 12.5, color: 'rgba(255,255,255,0.75)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {m.email ?? <span style={{ fontFamily: 'monospace', fontSize: 11.5 }}>{m.userId}</span>}
+                {m.userId === myId && (
+                  <span style={{ marginLeft: 6, fontSize: 10, color: '#60a5fa' }}>you</span>
+                )}
+              </span>
+              {canManage ? (
+                <select
+                  value={m.role}
+                  disabled={busy}
+                  onChange={(e) => changeRole(m, e.target.value as Member['role'])}
+                  style={selectStyle}
+                >
+                  <option value="owner">owner</option>
+                  <option value="editor">editor</option>
+                  <option value="viewer">viewer</option>
+                </select>
+              ) : (
+                <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.45)' }}>{m.role}</span>
+              )}
+              {canManage && m.userId !== myId && (
+                <button
+                  onClick={() => removeMember(m)}
+                  disabled={busy}
+                  title="Remove member"
+                  style={{
+                    background: 'transparent', border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                    color: '#f87171', fontSize: 15, lineHeight: 1, padding: '0 3px',
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {members.length === 0 && (
+            <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.35)', margin: 0 }}>No members.</p>
+          )}
+        </div>
+      )}
+
+      {canManage && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 9 }}>
+          <input
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addMember(); }}
+            placeholder="Invite by email or user ID"
+            style={{ ...inputStyle, flex: 1, padding: '6px 9px', fontSize: 12 }}
+          />
+          <select value={role} onChange={(e) => setRole(e.target.value as Member['role'])} style={selectStyle}>
+            <option value="editor">editor</option>
+            <option value="viewer">viewer</option>
+            <option value="owner">owner</option>
+          </select>
+          <button
+            onClick={addMember}
+            disabled={!identifier.trim() || busy}
+            style={{
+              padding: '6px 14px', borderRadius: 7, border: 'none', fontSize: 12, fontWeight: 500,
+              cursor: identifier.trim() && !busy ? 'pointer' : 'not-allowed',
+              background: identifier.trim() ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+              color: identifier.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            {busy ? '…' : 'Add'}
+          </button>
+        </div>
+      )}
     </div>
+  );
+}
+
+function CreateButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, padding: '8px 0', borderRadius: 7, fontSize: 12.5, cursor: 'pointer',
+        border: '1px dashed rgba(255,255,255,0.2)', background: 'transparent',
+        color: 'rgba(255,255,255,0.55)',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.85)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -359,10 +781,10 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       style={{
-        padding: '4px 8px', borderRadius: 5, border: 'none', fontSize: 11.5,
+        padding: '5px 10px', borderRadius: 6, border: 'none', fontSize: 12,
         cursor: disabled ? 'not-allowed' : 'pointer',
         background: 'transparent',
-        color: danger ? '#f87171' : accent ? 'var(--accent)' : 'rgba(255,255,255,0.5)',
+        color: danger ? '#f87171' : accent ? 'var(--accent)' : 'rgba(255,255,255,0.55)',
         opacity: disabled ? 0.5 : 1,
       }}
       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}

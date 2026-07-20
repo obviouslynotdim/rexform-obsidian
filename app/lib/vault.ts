@@ -29,6 +29,7 @@ export function getPersonalVaultPrefix(userId: string): string {
 }
 
 export const MAX_PERSONAL_VAULTS = 5;
+export const MAX_SHARED_VAULTS_OWNED = 5;
 
 export async function syncVaultSecurity(vaultId: string): Promise<void> {
   if (!process.env.KETO_READ_URL) return;
