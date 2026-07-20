@@ -69,6 +69,16 @@ export async function upsertSsoUser(
   }
 }
 
+/** Removes a user's SSO registry entry. No-op (not an error) if it never existed. */
+export async function deleteSsoUser(userId: string): Promise<void> {
+  const auth = adminAuthHeader();
+  const docUrl = `${COUCHDB_URL}/${REGISTRY_DB}/${encodeURIComponent(userId)}`;
+  const getRes = await fetch(docUrl, { headers: { Authorization: auth }, cache: 'no-store' });
+  if (!getRes.ok) return;
+  const doc = await getRes.json();
+  await fetch(`${docUrl}?rev=${doc._rev}`, { method: 'DELETE', headers: { Authorization: auth } });
+}
+
 export async function listSsoUsers(): Promise<SsoUserRecord[]> {
   try {
     const res = await fetch(`${COUCHDB_URL}/${REGISTRY_DB}/_all_docs?include_docs=true`, {

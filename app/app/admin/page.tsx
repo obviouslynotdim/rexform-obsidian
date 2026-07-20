@@ -379,11 +379,17 @@ export default function AdminPage() {
     }
   }
 
-  const deleteUser = (userId: string, email: string, extraCount: number) => {
+  const deleteUser = (userId: string, email: string, extraCount: number, isSso: boolean) => {
     const extras = extraCount > 0
       ? ` (including ${extraCount} extra personal vault${extraCount !== 1 ? 's' : ''})`
       : '';
-    if (!confirm(`Permanently delete ${email}?\n\nThis will remove their Kratos identity, vault databases${extras}, and CouchDB credentials. This cannot be undone.`)) return;
+    // SSO users have no local Kratos identity to remove — deleting them just
+    // drops their vault data and the rexform-sso-users registry entry. Their
+    // central IAM account is unaffected (that's the other REXFORM apps' data).
+    const identityLine = isSso
+      ? `This will remove their vault databases${extras}, CouchDB credentials, and SSO registry entry (their central IAM account is untouched).`
+      : `This will remove their Kratos identity, vault databases${extras}, and CouchDB credentials.`;
+    if (!confirm(`Permanently delete ${email}?\n\n${identityLine} This cannot be undone.`)) return;
     runDelete(`/api/admin/users/${userId}/vault`, `del-${userId}`, 'User deleted', () => load(adminPage, { quiet: true }));
   };
 
@@ -545,8 +551,11 @@ export default function AdminPage() {
                 const extraDocs = extraVaults.reduce((n, v) => n + v.docCount, 0);
                 const extraSize = extraVaults.reduce((n, v) => n + v.sizeBytes, 0);
 
-                // SSO users have no local Kratos identity — suspend and
-                // delete-user act on Kratos, so they only get vault actions.
+                // SSO users have no local Kratos identity to suspend (that's
+                // a Kratos identity-state flip), so they don't get that
+                // action — but deleting them is still supported (it just
+                // skips the Kratos step and clears their SSO registry entry
+                // instead).
                 const isSso = user.provider === 'sso';
                 const menuItems: MenuItem[] = [];
                 if (!user.isAdmin && !isSelf && !isSso) {
@@ -561,8 +570,8 @@ export default function AdminPage() {
                 if (!user.isAdmin && (user.vault.exists || extraVaults.length > 0)) {
                   menuItems.push({ label: 'Manage vaults…', onClick: () => setManageVaultsUserId(user.id) });
                 }
-                if (!user.isAdmin && !isSso) {
-                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length) });
+                if (!user.isAdmin) {
+                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length, isSso) });
                 }
 
                 return (

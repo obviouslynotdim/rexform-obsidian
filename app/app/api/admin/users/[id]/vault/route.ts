@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isAdminUser, getPersonalVaultPrefix, deletePersonalVault } from '@/lib/vault';
 import { kratosAdmin } from '@/lib/kratos';
+import { deleteSsoUser } from '@/lib/sso-users';
 
 const COUCH_BASE = process.env.COUCHDB_URL || 'http://localhost:5984';
 const COUCH_USER = process.env.COUCHDB_ADMIN_USER || process.env.COUCHDB_USERNAME || 'admin';
@@ -26,14 +27,19 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
   const results: Record<string, 'ok' | 'not_found' | string> = {};
 
-  // Step 1: Delete Kratos identity
+  // Step 1: Delete Kratos identity. SSO users have none — a 404 here is
+  // expected for them, not a failure.
   try {
     await kratosAdmin.deleteIdentity({ id: userId });
     results.kratos = 'ok';
   } catch (e: any) {
-    const msg = e?.response?.data?.error?.message ?? e.message ?? 'unknown';
-    console.error(`[admin delete] Kratos identity ${userId}: ${msg}`);
-    results.kratos = msg;
+    if (e?.response?.status === 404) {
+      results.kratos = 'not_found';
+    } else {
+      const msg = e?.response?.data?.error?.message ?? e.message ?? 'unknown';
+      console.error(`[admin delete] Kratos identity ${userId}: ${msg}`);
+      results.kratos = msg;
+    }
   }
 
   // Step 2: Delete CouchDB vault database
@@ -96,6 +102,16 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   } catch (e: any) {
     console.error(`[admin delete] _users delete ${userId}:`, e.message);
     results.credentials = e.message;
+  }
+
+  // Step 4: Remove the SSO registry entry, if any — no-op for local
+  // Kratos-only users who were never in it.
+  try {
+    await deleteSsoUser(userId);
+    results.ssoRegistry = 'ok';
+  } catch (e: any) {
+    console.error(`[admin delete] SSO registry delete ${userId}:`, e.message);
+    results.ssoRegistry = e.message;
   }
 
   const allOk = Object.values(results).every((v) => v === 'ok' || v === 'not_found');
