@@ -1305,8 +1305,11 @@ export default function SettingsModal() {
   const [fileSettings, setFileSettings] = useState<FileSettings>(DEFAULT_FILE_SETTINGS);
   const [fileSettingsSaving, setFileSettingsSaving] = useState(false);
 
-  const loadCreds = useCallback(async () => {
-    setLoading(true);
+  // `silent` skips the full-page spinner — used when the modal is reopened
+  // and already has data from a previous open (it stays mounted at the root,
+  // so re-opening shouldn't flash "loading" over content the user already saw).
+  const loadCreds = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const res = await fetch('/api/user/credentials');
@@ -1322,7 +1325,7 @@ export default function SettingsModal() {
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -1349,10 +1352,20 @@ export default function SettingsModal() {
   // (Re)load data + honor the opener's requested category each time the modal
   // opens. No auth redirect here — the modal simply doesn't render while
   // unauthenticated (auth pages have no settings entry points anyway).
+  // Only the first load (per mount) shows the full-page spinner — later
+  // re-opens refresh silently since the modal stays mounted and already has
+  // data on screen.
+  const hasLoadedOnceRef = useRef(false);
   useEffect(() => {
     if (!open) return;
     setActiveCategory(initialCategory ?? 'general');
-    if (status === 'authenticated') { loadCreds(); loadPlugins(); loadSettings(); }
+    if (status === 'authenticated') {
+      const silent = hasLoadedOnceRef.current;
+      hasLoadedOnceRef.current = true;
+      loadCreds(silent);
+      loadPlugins();
+      loadSettings();
+    }
   }, [open, initialCategory, status, loadCreds, loadPlugins, loadSettings]);
 
   // Esc closes the modal. Capture phase + stopPropagation so the note editor's
