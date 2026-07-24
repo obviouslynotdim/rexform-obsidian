@@ -179,3 +179,18 @@ export function combineFrontmatter(frontmatter: Frontmatter, content: string): s
 // Backward-compatible alias. Existing callers destructure { content } and (in
 // the note page) { frontmatter }; the value type is now string | string[].
 export const stripFrontmatter = parseFrontmatter;
+
+const FRONTMATTER_HEAD_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+
+/**
+ * Length of the leading `---\n...\n---\n` block, or 0 if the text doesn't
+ * start with one. Used by Live Preview (lib/cm/livePreview.ts) to know where
+ * frontmatter ends so decorations never look inside it — CommonMark's
+ * Setext-heading grammar can otherwise misparse the closing `---`.
+ * Only checks the first 4KB (frontmatter blocks are always small), so it's
+ * cheap to call on every decoration rebuild.
+ */
+export function frontmatterBlockLength(text: string): number {
+  const m = FRONTMATTER_HEAD_RE.exec(text);
+  return m ? m[0].length : 0;
+}

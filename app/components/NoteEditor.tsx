@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { EditorView, keymap } from '@codemirror/view';
 import type { EditorView as EditorViewType } from '@codemirror/view';
-import { markdown } from '@codemirror/lang-markdown';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
 import {
   autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap, acceptCompletion,
@@ -276,7 +276,12 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       resolve: (name) => resolveRef.current(name),
       onOpen: (id, title) => onOpenRef.current(id, title),
     }),
-    markdown(),
+    // Default markdown() uses plain CommonMark — `base: markdownLanguage`
+    // switches to the GFM-configured parser so tables and strikethrough
+    // actually produce Table/Strikethrough syntax-tree nodes (livePreview.ts
+    // decorates both; without this, `~~text~~` and `| a | b |` never matched
+    // anything and rendered as plain paragraph text).
+    markdown({ base: markdownLanguage }),
     EditorView.lineWrapping,
     history(),
     closeBrackets(),
@@ -355,7 +360,11 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-base)' }}>
-      {/* Toolbar */}
+      {/* Toolbar — Source mode only. Live Preview reads like Reading mode, so
+          there's no toolbar/border to separate it from the content at all;
+          Save is automatic (autosave) and Delete already lives in the note's
+          ⋮ menu (NoteMenu, in NoteViewClient's breadcrumb) regardless of mode. */}
+      {viewMode === 'source' && (
       <div
         className="flex items-center gap-1 px-3 py-2 border-b flex-shrink-0"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
@@ -413,6 +422,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
           </>
         )}
       </div>
+      )}
 
       {/* Single CM pane for both 'source' (raw) and 'live' (inline decorations,
           toggled via setLivePreview). 'reading' is handled by NoteViewClient. */}
