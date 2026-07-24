@@ -180,8 +180,14 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
       dirtyRef.current = false;
       setSaveStatus('saved');
       onSave?.(text);
-      mutate((key) => typeof key === 'string' && key.startsWith('/api/notes'), undefined, { revalidate: true });
       setTimeout(() => setSaveStatus('idle'), 2000);
+
+      // Deliberately no broad mutate('/api/notes*') here — this runs on every
+      // debounced autosave (every ~2s while typing), and invalidating the
+      // sidebar tree/backlinks/etc. that often caused a visible refetch/flash
+      // across the app on every keystroke pause. A rename (below) already
+      // does its own targeted `mutate('/api/notes/tree')` in NoteViewClient;
+      // plain content edits don't need anything else to invalidate.
 
       // Direction B — heading → filename. After the content is persisted, if the
       // first H1 differs from the current filename title, rename the note to match.
