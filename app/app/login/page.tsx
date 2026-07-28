@@ -44,6 +44,7 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [flowLoading, setFlowLoading] = useState(true);
   // null = provider list not fetched yet; the error handler below must wait
   // for it before deciding between a silent SSO retry and the error banner.
@@ -212,12 +213,23 @@ function LoginForm() {
 
             <button
               type="button"
-              onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
-              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60"
+              disabled={ssoLoading}
+              onClick={() => {
+                setSsoLoading(true);
+                signIn('rexform-sso', { callbackUrl: '/notes' });
+              }}
+              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60 disabled:opacity-60"
               style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
             >
-              <SsoIcon />
-              Continue with REXFORM SSO
+              {ssoLoading ? (
+                <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <SsoIcon />
+              )}
+              {ssoLoading ? 'Redirecting to SSO…' : 'Continue with REXFORM SSO'}
             </button>
           </>
         )}
