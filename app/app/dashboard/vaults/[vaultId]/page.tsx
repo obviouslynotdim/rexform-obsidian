@@ -74,6 +74,7 @@ export default function DashboardVaultDetailPage() {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [myRole, setMyRole] = useState<VaultRole | null>(null);
+  const [vaultKind, setVaultKind] = useState<'personal' | 'shared' | null>(null);
   const [vaultName, setVaultName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -91,6 +92,11 @@ export default function DashboardVaultDetailPage() {
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+
+  // Personal (extra) vaults have no members/invite concept — the API base
+  // and the sections rendered below both key off this.
+  const isShared = vaultKind === 'shared';
+  const apiBase = isShared ? `/api/shared-vaults/${vaultId}` : `/api/vaults/${vaultId}`;
 
   const showToast = useCallback((msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -113,20 +119,36 @@ export default function DashboardVaultDetailPage() {
     }
   }, [vaultId, router]);
 
-  const loadVaultName = useCallback(async () => {
+  // Resolves this vault's kind first, then either loads real members (shared)
+  // or treats the caller as the sole owner (personal) — one entry point for
+  // both kinds so this page is the single place to manage any vault.
+  const init = useCallback(async () => {
+    setError('');
     try {
       const res = await fetch('/api/vaults');
-      if (!res.ok) return;
       const data = await res.json();
       const v = (data.vaults || []).find((x: any) => x.name === vaultId);
-      if (v?.label) { setVaultName(v.label); setNameDraft(v.label); }
-    } catch {}
-  }, [vaultId]);
+      if (!v || v.kind === 'primary') { router.replace('/dashboard'); return; }
+      setVaultName(v.label);
+      setNameDraft(v.label);
+      setVaultKind(v.kind);
+      if (v.kind === 'shared') {
+        await loadMembers();
+      } else {
+        setMyRole('owner');
+        setMembers([]);
+        setLoading(false);
+      }
+    } catch (e: any) {
+      setError(e.message);
+      setLoading(false);
+    }
+  }, [vaultId, router, loadMembers]);
 
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
-    if (status === 'authenticated') { loadMembers(); loadVaultName(); }
-  }, [status, loadMembers, loadVaultName, router]);
+    if (status === 'authenticated') { init(); }
+  }, [status, init, router]);
 
   // Live countdown tick while an invite link is showing.
   useEffect(() => {
@@ -191,7 +213,7 @@ export default function DashboardVaultDetailPage() {
     if (!name || name === vaultName) { setRenaming(false); return; }
     setSavingName(true);
     try {
-      const res = await fetch(`/api/shared-vaults/${vaultId}`, {
+      const res = await fetch(apiBase, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
@@ -210,10 +232,13 @@ export default function DashboardVaultDetailPage() {
   };
 
   const deleteVault = async () => {
-    if (!confirm(`Delete "${vaultName}" for every member? This can't be undone.`)) return;
+    const prompt = isShared
+      ? `Delete "${vaultName}" for every member? This can't be undone.`
+      : `Delete "${vaultName}"? This can't be undone.`;
+    if (!confirm(prompt)) return;
     setLeaving(true);
     try {
-      const res = await fetch(`/api/shared-vaults/${vaultId}`, { method: 'DELETE' });
+      const res = await fetch(apiBase, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to delete');
       await mutate('/api/vaults');
@@ -290,7 +315,7 @@ export default function DashboardVaultDetailPage() {
             ) : (
               <>
                 <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {vaultName || 'Shared vault'}
+                  {vaultName || 'Vault'}
                 </h1>
                 {isOwner && (
                   <button
@@ -303,9 +328,11 @@ export default function DashboardVaultDetailPage() {
                 )}
               </>
             )}
-            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {members.length} {members.length === 1 ? 'member' : 'members'}
-            </span>
+            {isShared && (
+              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                {members.length} {members.length === 1 ? 'member' : 'members'}
+              </span>
+            )}
           </div>
           <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>{vaultId}</p>
         </div>
@@ -316,8 +343,8 @@ export default function DashboardVaultDetailPage() {
           </div>
         )}
 
-        {/* Invite via link — owner only */}
-        {isOwner && (
+        {/* Invite via link — shared vaults, owner only */}
+        {isShared && isOwner && (
           <Card className="p-5 mb-6">
             <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Invite by link</h2>
             <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
@@ -368,8 +395,8 @@ export default function DashboardVaultDetailPage() {
           </Card>
         )}
 
-        {/* Members grouped by role */}
-        {ROLE_ORDER.map((role) => {
+        {/* Members grouped by role — shared vaults only */}
+        {isShared && ROLE_ORDER.map((role) => {
           const meta = ROLE_META[role];
           const group = members.filter((m) => m.role === role);
           if (group.length === 0 && role !== 'owner') return null;
@@ -458,7 +485,9 @@ export default function DashboardVaultDetailPage() {
           <Card className="p-5 mt-8" style={{ borderColor: '#f8717144' }}>
             <h2 className="text-sm font-semibold mb-1" style={{ color: '#f87171' }}>Danger zone</h2>
             <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-              Deletes this vault and all its notes for every member. This can&apos;t be undone.
+              {isShared
+                ? "Deletes this vault and all its notes for every member. This can't be undone."
+                : "Deletes this vault and all its notes. This can't be undone."}
             </p>
             <Button size="sm" variant="danger" loading={leaving} onClick={deleteVault}>
               Delete vault
