@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { mutate } from 'swr';
@@ -425,6 +425,39 @@ function CreateVaultDialog({
   const [template, setTemplate] = useState<'starter' | 'blank'>('starter');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Holds the created vault's name once the request succeeds — shown as a
+  // brief inline confirmation before the dialog closes. Needed because both
+  // entry points (the sidebar's compact "New vault" AND the full manager's
+  // create button) can close/unmount this whole component immediately after
+  // `onCreated()` runs, so a toast owned by a PARENT would never be seen —
+  // this confirmation has to live and finish inside the dialog itself.
+  const [created, setCreated] = useState('');
+  // Drives the fade/slide-in transition on the confirmation — starting the
+  // animated values at their "hidden" state and flipping this a frame later
+  // (rather than just rendering pre-settled) is what makes it read as a
+  // deliberate transition instead of a jump-cut.
+  const [visible, setVisible] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!created) return;
+    const frame = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, [created]);
+
+  // Unmounting mid-countdown (e.g. the user navigated away some other way)
+  // shouldn't leave a dangling timer trying to call onCreated() afterwards.
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  // Shared by both the auto-timer and the × click, so the toast always plays
+  // its exit (slide back up) instead of vanishing abruptly, and always runs
+  // the refresh/close that's bundled into onCreated() — dismissing early via
+  // × must not skip it, or the vault list would be left stale.
+  function dismissConfirmation() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setVisible(false);
+    closeTimer.current = setTimeout(() => { onCreated(); }, 350);
+  }
 
   const title = allowKindSwitch
     ? 'New vault'
@@ -456,11 +489,82 @@ function CreateVaultDialog({
         setBusy(false);
         return;
       }
-      await onCreated();
+      // Show the confirmation first, THEN refresh/close — calling onCreated()
+      // right away would refresh the list and close/unmount this dialog
+      // before `created` ever got a chance to render.
+      setCreated(trimmed);
+      closeTimer.current = setTimeout(dismissConfirmation, 1800);
     } catch {
       setError('Failed to create vault');
       setBusy(false);
     }
+  }
+
+  // Once creation succeeds, the dialog itself is done — replace it entirely
+  // with a floating top-center confirmation (non-blocking, no backdrop) that
+  // closes/refreshes either on its own timer or when the user dismisses it
+  // early via ×. Kept in THIS component (not lifted to a parent) because both
+  // entry points can unmount everything above it immediately, and a toast
+  // owned by a parent that's about to disappear would never be seen.
+  if (created) {
+    return createPortal(
+      <div
+        style={{
+          position: 'fixed', top: 20, left: '50%', zIndex: 500,
+          // Hidden state translates up by the toast's own height (off-screen,
+          // above the viewport) so it visibly drops down into place from the
+          // top on entry, and slides back up the same way on dismiss/timeout.
+          transform: visible ? 'translate(-50%, 0)' : 'translate(-50%, -130%)',
+          opacity: visible ? 1 : 0,
+          transition: 'opacity 0.3s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 11,
+            background: '#1e2030',
+            border: '1px solid rgba(74,222,128,0.35)',
+            borderRadius: 11,
+            boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+            padding: '11px 14px', maxWidth: '92vw',
+          }}
+        >
+          <div style={{
+            width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 15 15">
+              <polyline points="3.5,7.8 6.2,10.5 11.5,4.5" stroke="#4ade80" strokeWidth="1.6"
+                fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 13.5, fontWeight: 600, color: 'rgba(255,255,255,0.92)', margin: '0 0 2px' }}>
+              Vault created
+            </p>
+            <p style={{
+              fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              <strong style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{created}</strong> is ready to use
+            </p>
+          </div>
+          <button
+            onClick={dismissConfirmation}
+            title="Dismiss"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.35)', fontSize: 18, lineHeight: 1,
+              padding: '0 2px', flexShrink: 0, alignSelf: 'flex-start',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
   }
 
   return createPortal(
@@ -483,6 +587,7 @@ function CreateVaultDialog({
             ×
           </button>
         </div>
+
         <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.45)', margin: '0 0 16px' }}>
           {allowKindSwitch
             ? 'Choose a vault type and give it a name.'
