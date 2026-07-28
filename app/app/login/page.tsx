@@ -51,6 +51,18 @@ function LoginForm() {
   const [ssoEnabled, setSsoEnabled] = useState<boolean | null>(null);
   const searchParams = useSearchParams();
 
+  // True the instant this page mounts for either auto-redirect path below
+  // (?sso=1 deep link, or a retryable OAuth error) — before that, the full
+  // email/password form would otherwise render for a beat while ssoEnabled/
+  // status are still resolving, which is exactly the "flash of the login
+  // form" a portal-initiated SSO entry produces. Only flips to false once an
+  // effect below actually decides NOT to auto-redirect.
+  const [autoRedirecting, setAutoRedirecting] = useState(() => {
+    const err = searchParams.get('error');
+    const sso = searchParams.get('sso') === '1';
+    return (sso && !err) || (!!err && err !== 'AccessDenied');
+  });
+
   // Runtime check instead of a NEXT_PUBLIC_ flag: build-time inlining goes
   // stale behind Docker layer caching, and this can never disagree with the
   // server's actual provider list.
@@ -59,6 +71,13 @@ function LoginForm() {
       .then((p) => setSsoEnabled(!!p?.['rexform-sso']))
       .catch(() => setSsoEnabled(false));
   }, []);
+
+  // Safety net: if SSO turns out not to be configured, neither auto-redirect
+  // effect below will ever fire — without this, autoRedirecting would stay
+  // true forever and strand the user on a spinner with no form.
+  useEffect(() => {
+    if (ssoEnabled === false) setAutoRedirecting(false);
+  }, [ssoEnabled]);
 
   useEffect(() => {
     // NextAuth redirects failed OAuth flows back here with ?error=...
@@ -78,6 +97,7 @@ function LoginForm() {
       signIn('rexform-sso', { callbackUrl: '/notes' });
       return;
     }
+    setAutoRedirecting(false);
     setError('SSO sign-in failed. Please try again or use email login.');
   }, [searchParams, ssoEnabled, status]);
 
@@ -141,6 +161,31 @@ function LoginForm() {
       const cb = searchParams.get('callbackUrl');
       window.location.href = cb && cb.startsWith('/') && !cb.startsWith('//') ? cb : '/';
     }
+  }
+
+  // Portal-initiated entry (?sso=1) or a retryable OAuth error — skip the
+  // credentials form entirely instead of mounting it for a beat while we
+  // figure out whether to auto-redirect.
+  if (autoRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-base)' }}>
+        <div
+          className="w-full max-w-md rounded-2xl border p-8 flex flex-col items-center text-center"
+          style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+        >
+          <div className="flex items-center gap-2 mb-8">
+            <Logo />
+          </div>
+          <svg className="animate-spin h-6 w-6 mb-4" fill="none" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}>
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Signing you in via REXFORM SSO…
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
