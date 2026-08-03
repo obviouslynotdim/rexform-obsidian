@@ -10,11 +10,14 @@ interface Props {
   error?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  // Overridable for callers that mount this above another overlay (e.g. the
+  // settings modal at 9000, its browse-plugins sub-modal at 10000).
+  zIndex?: number;
 }
 
 // Small "Are you sure?" dialog used for destructive actions (delete note/folder).
 export default function ConfirmModal({
-  title, message, confirmLabel = 'Delete', busy, error, onConfirm, onCancel,
+  title, message, confirmLabel = 'Delete', busy, error, onConfirm, onCancel, zIndex = 300,
 }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -30,7 +33,7 @@ export default function ConfirmModal({
       onClick={onCancel}
       onContextMenu={(e) => e.preventDefault()}
       style={{
-        position: 'fixed', inset: 0, zIndex: 300,
+        position: 'fixed', inset: 0, zIndex,
         background: 'rgba(0,0,0,0.55)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}

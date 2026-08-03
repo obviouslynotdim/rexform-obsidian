@@ -8,6 +8,8 @@ import { PLUGIN_REGISTRY, type PluginDefinition } from '@/lib/plugin-registry';
 import { useI18n, type Locale } from '@/lib/i18n/context';
 import { useSettingsModal } from '@/context/SettingsModalContext';
 import WikiMarkdown from '@/components/WikiMarkdown';
+import { Toast, useToast } from '@/components/ui/Toast';
+import ConfirmModal from '@/components/ConfirmModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -351,11 +353,11 @@ function FilterCheckbox({
 
 function GearIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.2" />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" />
       <path
-        d="M7 1.5v1.2M7 11.3v1.2M1.5 7h1.2M11.3 7h1.2M3.1 3.1l.85.85M10.05 10.05l.85.85M10.9 3.1l-.85.85M3.95 10.05l-.85.85"
-        stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
       />
     </svg>
   );
@@ -1295,6 +1297,9 @@ export default function SettingsModal() {
 
   const [pluginData, setPluginData] = useState<PluginData>(DEFAULT_PLUGIN_DATA);
   const [pluginSaving, setPluginSaving] = useState(false);
+  const { toast: pluginToast, showToast } = useToast();
+  const [uninstallId, setUninstallId] = useState<string | null>(null);
+  const [uninstallBusy, setUninstallBusy] = useState(false);
   // Install runs behind a short simulated delay (spinner in the button + the
   // top-right toast). The ref mirrors pluginData so the delayed commit reads
   // fresh state even if something else changed during the delay.
@@ -1424,15 +1429,17 @@ export default function SettingsModal() {
       });
       if (!res.ok) {
         setPluginData(original);
-      } else {
-        // Push the saved state into the shared SWR cache so consumers outside
-        // the modal (icon strip in NotesShell, sidebar context menu) update
-        // immediately — their 30s dedupe would otherwise show stale state
-        // until a refresh.
-        swrMutate('/api/user/plugins', next, { revalidate: false });
+        return false;
       }
+      // Push the saved state into the shared SWR cache so consumers outside
+      // the modal (icon strip in NotesShell, sidebar context menu) update
+      // immediately — their 30s dedupe would otherwise show stale state
+      // until a refresh.
+      swrMutate('/api/user/plugins', next, { revalidate: false });
+      return true;
     } catch {
       setPluginData(original);
+      return false;
     } finally {
       setPluginSaving(false);
     }
@@ -1463,15 +1470,28 @@ export default function SettingsModal() {
     }, INSTALL_DELAY_MS);
   }, [installing, savePlugins]);
 
+  // Opens the confirm dialog; the actual removal happens in confirmUninstall
+  // once the user accepts it.
   const handleUninstall = useCallback((id: string) => {
+    setUninstallId(id);
+  }, []);
+
+  const confirmUninstall = useCallback(async () => {
+    if (!uninstallId) return;
+    const id = uninstallId;
+    const name = PLUGIN_REGISTRY.find(p => p.id === id)?.name ?? id;
+    setUninstallBusy(true);
     const { [id]: _removed, ...restEnabled } = pluginData.enabled;
     const next: PluginData = {
       installed: pluginData.installed.filter(i => i !== id),
       enabled: restEnabled,
     };
     setPluginData(next);
-    savePlugins(next, pluginData);
-  }, [pluginData, savePlugins]);
+    const ok = await savePlugins(next, pluginData);
+    setUninstallBusy(false);
+    setUninstallId(null);
+    showToast(ok ? `Plugin "${name}" uninstalled` : `Failed to uninstall "${name}"`, ok ? 'success' : 'error');
+  }, [uninstallId, pluginData, savePlugins, showToast]);
 
   const handleToggle = useCallback((id: string) => {
     const next: PluginData = {
@@ -1513,11 +1533,14 @@ export default function SettingsModal() {
     }
   };
 
-  // The toast outlives the modal — closing settings mid-install keeps the
-  // notice (and the delayed commit) running.
-  const toast = installing
-    ? <InstallToast name={installing.name} done={installing.done} />
-    : null;
+  // These outlive the modal — closing settings mid-install/uninstall keeps
+  // the notice (and, for install, the delayed commit) running.
+  const toast = (
+    <>
+      {installing && <InstallToast name={installing.name} done={installing.done} />}
+      {pluginToast && <Toast msg={pluginToast.msg} type={pluginToast.type} />}
+    </>
+  );
 
   if (!open || status === 'unauthenticated') return toast;
 
@@ -1537,9 +1560,22 @@ export default function SettingsModal() {
   ];
   const selected = categories.some((c) => c.id === activeCategory) ? activeCategory : 'general';
 
+  const uninstallPlugin = uninstallId ? PLUGIN_REGISTRY.find(p => p.id === uninstallId) : null;
+
   return (
     <>
     {toast}
+    {uninstallPlugin && (
+      <ConfirmModal
+        title="Uninstall plugin"
+        message={<>Uninstall <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{uninstallPlugin.name}</strong>? Its settings will be lost.</>}
+        confirmLabel="Uninstall"
+        busy={uninstallBusy}
+        zIndex={10500}
+        onConfirm={confirmUninstall}
+        onCancel={() => setUninstallId(null)}
+      />
+    )}
     {/* Scrim — covers the whole app; click outside the panel closes. */}
     <div
       style={{

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { mutate } from 'swr';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { Toast, useToast } from '@/components/ui/Toast';
 
 type VaultRole = 'owner' | 'editor' | 'viewer';
 
@@ -43,21 +44,6 @@ function Avatar({ email }: { email: string }) {
   );
 }
 
-function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
-  return (
-    <div
-      className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
-      style={{
-        background: type === 'success' ? '#14532d' : '#7f1d1d',
-        color: '#fff',
-        border: `1px solid ${type === 'success' ? '#4ade80' : '#f87171'}`,
-      }}
-    >
-      {type === 'success' ? '✓' : '✗'} {msg}
-    </div>
-  );
-}
-
 function formatCountdown(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
   const m = Math.floor(total / 60);
@@ -78,7 +64,7 @@ export default function DashboardVaultDetailPage() {
   const [vaultName, setVaultName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const { toast, showToast } = useToast();
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
 
   const [renaming, setRenaming] = useState(false);
@@ -97,11 +83,6 @@ export default function DashboardVaultDetailPage() {
   // and the sections rendered below both key off this.
   const isShared = vaultKind === 'shared';
   const apiBase = isShared ? `/api/shared-vaults/${vaultId}` : `/api/vaults/${vaultId}`;
-
-  const showToast = useCallback((msg: string, type: 'success' | 'error') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
 
   const loadMembers = useCallback(async () => {
     setError('');

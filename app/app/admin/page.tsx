@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { Toast, useToast } from '@/components/ui/Toast';
 import { formatBytes } from '@/lib/utils';
 
 interface SharedVault {
@@ -119,21 +120,6 @@ function CopyIdButton({ id }: { id: string }) {
     >
       {copied ? '✓ copied' : 'copy'}
     </button>
-  );
-}
-
-function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
-  return (
-    <div
-      className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
-      style={{
-        background: type === 'success' ? '#14532d' : '#7f1d1d',
-        color: '#fff',
-        border: `1px solid ${type === 'success' ? '#4ade80' : '#f87171'}`,
-      }}
-    >
-      {type === 'success' ? '✓' : '✗'} {msg}
-    </div>
   );
 }
 
@@ -254,7 +240,7 @@ export default function AdminPage() {
   const debouncedSearch = useDebounced(search, 300);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [vaultFilter, setVaultFilter] = useState<'all' | 'has' | 'none'>('all');
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const { toast, showToast } = useToast();
   const [sharedVaults, setSharedVaults] = useState<SharedVault[]>([]);
   const [sharedVaultsLoading, setSharedVaultsLoading] = useState(true);
   const [createVaultOpen, setCreateVaultOpen] = useState(false);
@@ -263,11 +249,6 @@ export default function AdminPage() {
   // Per-user vault management modal. Stores the user ID and derives the user
   // from `users` each render, so the list updates live after deletions.
   const [manageVaultsUserId, setManageVaultsUserId] = useState<string | null>(null);
-
-  const showToast = useCallback((msg: string, type: 'success' | 'error') => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
 
   const load = useCallback(async (page: number, opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setLoading(true);
