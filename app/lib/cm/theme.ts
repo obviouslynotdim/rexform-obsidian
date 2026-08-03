@@ -9,7 +9,7 @@ export const rexformDarkTheme = EditorView.theme(
     '&': {
       color: 'var(--text-primary)',
       backgroundColor: 'transparent',
-      height: '100%',
+      height: 'auto',
       fontSize: '14px',
     },
     '.cm-content': {
@@ -18,7 +18,11 @@ export const rexformDarkTheme = EditorView.theme(
       caretColor: 'var(--accent)',
       lineHeight: '1.6',
     },
-    '.cm-scroller': { overflow: 'auto' },
+    // Auto-height editor (CM6's documented pattern for embedding in a
+    // scrolling page): no internal viewport, so the note pane's own scroll
+    // — the one carrying the Properties panel and breadcrumb above it —
+    // is the only scrollbar, instead of a second one isolated to the editor.
+    '.cm-scroller': { overflow: 'visible' },
     '&.cm-focused': { outline: 'none' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {

@@ -71,5 +71,5 @@ export default function CodeMirrorEditor({
     }
   }, [value]);
 
-  return <div ref={hostRef} style={{ height: '100%', overflow: 'hidden' }} />;
+  return <div ref={hostRef} style={{ minHeight: '40vh' }} />;
 }

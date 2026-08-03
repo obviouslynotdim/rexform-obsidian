@@ -756,13 +756,22 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             />
           )}
 
-          {/* Body — body clicks do nothing; the click-to-Source entry points are
-              the heading TEXT (via WikiMarkdown's onHeadingClick — the fold
-              chevron stays fold-only) and the empty-note placeholder. */}
+          {/* Body — clicking anywhere in the body text switches to Source, same
+              as the heading TEXT (via WikiMarkdown's onHeadingClick) and the
+              empty-note placeholder. Links, checkboxes and the fold chevron
+              (inside <summary>) opt out so they keep their own click behavior. */}
           {viewMode === 'reading' ? (
             <div style={{ minHeight: '40vh', fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}>
               {body ? (
-                <div className="prose prose-invert">
+                <div
+                  className="prose prose-invert"
+                  onClick={canWrite ? (e: React.MouseEvent) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest('a, input, button, summary')) return;
+                    setViewMode('source');
+                  } : undefined}
+                  style={{ cursor: canWrite ? 'text' : undefined }}
+                >
                   <WikiMarkdown
                     onHeadingClick={canWrite ? () => setViewMode('source') : undefined}
                     onToggleTask={canWrite ? handleToggleTask : undefined}
@@ -781,7 +790,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
               )}
             </div>
           ) : (
-            <div style={{ height: '60vh' }}>
+            <div>
               {/* The editor owns the FULL raw document (frontmatter + body). Its
                   onChange feeds `doc` directly — no split — so the raw `---` block
                   is editable in Source and `doc` stays the single source of truth.

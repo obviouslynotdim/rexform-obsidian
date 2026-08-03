@@ -20,7 +20,7 @@ import { livePreview, setLivePreview, wikilinkConfig } from '@/lib/cm/livePrevie
 // CM touches the DOM at instantiation — load client-only to keep it out of SSR.
 const CodeMirrorEditor = dynamic(() => import('./CodeMirrorEditor'), {
   ssr: false,
-  loading: () => <div style={{ height: '100%', background: 'var(--bg-base)' }} />,
+  loading: () => <div style={{ minHeight: '40vh', background: 'var(--bg-base)' }} />,
 });
 
 export type ViewMode = 'reading' | 'source' | 'live';
@@ -351,7 +351,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
   };
 
   const editorPane = (
-    <div className="flex-1 min-w-0" style={{ minHeight: 0 }}>
+    <div className="min-w-0">
       <CodeMirrorEditor
         value={content}
         onChange={handleChange}
@@ -365,7 +365,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
   );
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--bg-base)' }}>
+    <div className="flex flex-col" style={{ background: 'var(--bg-base)' }}>
       {/* Toolbar — Source mode only. Live Preview reads like Reading mode, so
           there's no toolbar/border to separate it from the content at all;
           Save is automatic (autosave) and Delete already lives in the note's
