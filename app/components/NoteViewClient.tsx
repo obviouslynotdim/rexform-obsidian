@@ -82,6 +82,13 @@ const MODE_LABELS: Record<ViewMode, string> = {
   live: 'Live Preview',
 };
 
+// Opening another note fully remounts NoteViewClient (it's keyed by the route
+// param), which would otherwise reset viewMode to 'reading' every time. These
+// module-level vars survive that remount (the module itself doesn't reload
+// during client-side navigation) so the mode sticks across notes.
+let lastViewMode: ViewMode = 'reading';
+let lastEditModeGlobal: 'source' | 'live' = 'source';
+
 // ─── Properties panel ───────────────────────────────────────────────────────
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -327,7 +334,8 @@ function AddItemInput({ placeholder, onAdd }: { placeholder: string; onAdd: (val
 // in NotesShell's right column; this file publishes the data via context.)
 
 export default function NoteViewClient({ noteId, title, content, folder, frontmatter: initialFrontmatter }: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>('reading');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => lastViewMode);
+  useEffect(() => { lastViewMode = viewMode; }, [viewMode]);
   // Single source of truth: the FULL raw document (frontmatter + body). The
   // Properties panel, the Source/Live editor, and the reading view ALL derive
   // from this one string, so they can never desync. The editor edits it directly
@@ -340,7 +348,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
   // (flicker + lost caret).
   const [editorEpoch, setEditorEpoch] = useState(0);
   const isSavingRef = useRef(false);
-  const lastEditMode = useRef<'source' | 'live'>('source');
+  const lastEditMode = useRef<'source' | 'live'>(lastEditModeGlobal);
   const router = useRouter();
   const tabsCtx = useTabsContext();
 
@@ -607,6 +615,7 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
           setViewMode(lastEditMode.current);
         } else {
           lastEditMode.current = viewMode;
+          lastEditModeGlobal = viewMode;
           setViewMode('reading');
         }
       }
