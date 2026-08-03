@@ -1,5 +1,5 @@
 'use client';
-import { useState, Suspense, useMemo } from 'react';
+import { useState, useRef, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import GraphView from '@/components/GraphView';
@@ -34,6 +34,38 @@ function GraphPageContent() {
     openParam ? openParam.replace(/\.md$/i, '').split('/').pop() ?? openParam : ''
   );
   const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Drag-to-resize for the preview panel — same pattern as NotesShell's right
+  // panel (width = distance from the cursor to the window's right edge).
+  const [previewWidth, setPreviewWidth] = useState(480);
+  const resizingRef = useRef(false);
+  useEffect(() => {
+    try {
+      const stored = Number(localStorage.getItem('notes.graphPreviewWidth'));
+      if (stored) setPreviewWidth(Math.min(900, Math.max(320, stored)));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizingRef.current) return;
+      setPreviewWidth(Math.min(900, Math.max(320, window.innerWidth - e.clientX)));
+    }
+    function onUp() {
+      if (!resizingRef.current) return;
+      resizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('notes.graphPreviewWidth', String(previewWidth)); } catch {}
+  }, [previewWidth]);
 
   const swrKey = folder
     ? `/api/notes/graph?folder=${encodeURIComponent(folder)}`
@@ -262,13 +294,26 @@ function GraphPageContent() {
 
       {/* Note preview panel */}
       {selectedNote && (
-        <div style={{
-          width: 480, flexShrink: 0,
-          borderLeft: '1px solid rgba(255,255,255,0.1)',
-          background: 'var(--bg-surface)',
-          overflow: 'hidden',
-          display: 'flex', flexDirection: 'column',
-        }}>
+        <>
+          {/* Drag handle — mirrors NotesShell's right-panel handle */}
+          <div
+            onMouseDown={() => {
+              resizingRef.current = true;
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+            }}
+            title="Drag to resize"
+            style={{ width: 5, flexShrink: 0, cursor: 'col-resize', background: 'transparent' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(127,119,221,0.3)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          />
+          <div style={{
+            width: previewWidth, flexShrink: 0,
+            borderLeft: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--bg-surface)',
+            overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
+          }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 16px', height: 44,
@@ -317,7 +362,8 @@ function GraphPageContent() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             <NotePreview noteId={selectedNote} />
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
