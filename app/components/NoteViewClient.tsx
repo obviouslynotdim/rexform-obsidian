@@ -559,6 +559,9 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
     (pluginsData?.installed ?? []).includes(id) && !!pluginsData?.enabled?.[id];
   const pdfOn = pluginOn('pdf');
   const speechOn = pluginOn('speech');
+  const pluginConfig = (id: string): Record<string, any> => pluginsData?.config?.[id] ?? {};
+  const pdfIncludeProperties = !!pluginConfig('pdf').includeProperties;
+  const kanbanNewCardPosition: 'top' | 'bottom' = pluginConfig('kanban').newCardPosition === 'top' ? 'top' : 'bottom';
 
   // PDF Export — render the note into a print-only portal (light theme, body
   // only) and open the browser's print dialog; "Save as PDF" does the rest.
@@ -734,7 +737,12 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
             {breadcrumbRow}
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
-            <KanbanView body={body} canWrite={canWrite} onBodyChange={handleKanbanBodyChange} />
+            <KanbanView
+              body={body}
+              canWrite={canWrite}
+              onBodyChange={handleKanbanBodyChange}
+              newCardPosition={kanbanNewCardPosition}
+            />
           </div>
         </div>
       ) : (
@@ -890,6 +898,16 @@ export default function NoteViewClient({ noteId, title, content, folder, frontma
       {printing && createPortal(
         <div className="print-export">
           <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 18 }}>{title}</h1>
+          {pdfIncludeProperties && Object.keys(frontmatter).length > 0 && (
+            <div style={{ marginBottom: 20, fontSize: 13, color: '#333', lineHeight: 1.6 }}>
+              {Object.entries(frontmatter).map(([key, value]) => (
+                <div key={key}>
+                  <strong>{key}:</strong>{' '}
+                  {Array.isArray(value) ? value.join(', ') : String(value)}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="prose">
             <WikiMarkdown>{body}</WikiMarkdown>
           </div>

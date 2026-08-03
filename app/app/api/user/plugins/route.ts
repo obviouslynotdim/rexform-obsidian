@@ -15,18 +15,27 @@ function adminAuth() {
 }
 
 const DOC_ID = 'rexform-plugins';
-const DEFAULT_STATE = { installed: [] as string[], enabled: {} as Record<string, boolean> };
+type PluginConfig = Record<string, Record<string, unknown>>;
+const DEFAULT_STATE = {
+  installed: [] as string[],
+  enabled: {} as Record<string, boolean>,
+  config: {} as PluginConfig,
+};
 
-// Migrate legacy format { plugins: { kanban: bool } } → { installed, enabled }
-function normalise(doc: any): { installed: string[]; enabled: Record<string, boolean> } {
+// Migrate legacy format { plugins: { kanban: bool } } → { installed, enabled, config }
+function normalise(doc: any): { installed: string[]; enabled: Record<string, boolean>; config: PluginConfig } {
   if (Array.isArray(doc.installed)) {
-    return { installed: doc.installed, enabled: doc.enabled ?? {} };
+    return {
+      installed: doc.installed,
+      enabled: doc.enabled ?? {},
+      config: doc.config && typeof doc.config === 'object' ? doc.config : {},
+    };
   }
   if (doc.plugins && typeof doc.plugins === 'object') {
     const installed = Object.keys(doc.plugins).filter((k) => doc.plugins[k] === true);
     const enabled: Record<string, boolean> = {};
     installed.forEach((k) => { enabled[k] = true; });
-    return { installed, enabled };
+    return { installed, enabled, config: {} };
   }
   return DEFAULT_STATE;
 }
@@ -65,8 +74,12 @@ export async function POST(req: NextRequest) {
 
   let installed: string[];
   let enabled: Record<string, boolean>;
+  let config: PluginConfig;
   try {
-    ({ installed, enabled } = await req.json());
+    const body = await req.json();
+    installed = body.installed;
+    enabled = body.enabled;
+    config = body.config && typeof body.config === 'object' ? body.config : {};
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
@@ -82,18 +95,18 @@ export async function POST(req: NextRequest) {
   } catch {}
 
   try {
-    const body: Record<string, unknown> = { _id: DOC_ID, installed, enabled };
-    if (rev) body._rev = rev;
+    const docBody: Record<string, unknown> = { _id: DOC_ID, installed, enabled, config };
+    if (rev) docBody._rev = rev;
     const res = await fetch(docUrl, {
       method: 'PUT',
       headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(docBody),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.reason || `CouchDB error: ${res.status}`);
     }
-    return NextResponse.json({ installed, enabled });
+    return NextResponse.json({ installed, enabled, config });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

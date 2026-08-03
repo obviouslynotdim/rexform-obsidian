@@ -1,3 +1,7 @@
+export type PluginSettingField =
+  | { key: string; label: string; type: 'boolean'; default: boolean; help?: string }
+  | { key: string; label: string; type: 'select'; options: { value: string; label: string }[]; default: string; help?: string };
+
 export interface PluginDefinition {
   id: 'kanban' | 'calendar' | 'gitlab' | 'livesync' | 'pdf' | 'speech';
   name: string;
@@ -7,6 +11,10 @@ export interface PluginDefinition {
   author: string;
   version: string;
   category: 'productivity' | 'integration';
+  /** Configurable options shown behind the ⚙ gear in Settings → Plugins.
+      Absent for gitlab/livesync — their real settings already live elsewhere
+      (the GitLab connection page, the Sync tab) and the gear deep-links there. */
+  settingsSchema?: PluginSettingField[];
 }
 
 export const PLUGIN_REGISTRY: PluginDefinition[] = [
@@ -17,6 +25,18 @@ export const PLUGIN_REGISTRY: PluginDefinition[] = [
     version: '1.0.0',
     description: 'Organize tasks with drag-and-drop boards',
     category: 'productivity',
+    settingsSchema: [
+      {
+        key: 'newCardPosition',
+        label: 'Add new cards to the',
+        type: 'select',
+        options: [
+          { value: 'bottom', label: 'bottom of the column' },
+          { value: 'top', label: 'top of the column' },
+        ],
+        default: 'bottom',
+      },
+    ],
     longDescription: `Create markdown-backed Kanban boards to manage tasks and workflows.
 
 ## How to use
@@ -56,6 +76,9 @@ kanban-plugin: basic
     version: '1.0.0',
     description: 'Navigate and create daily notes by date',
     category: 'productivity',
+    settingsSchema: [
+      { key: 'weekStartsMonday', label: 'Week starts on Monday', type: 'boolean', default: false },
+    ],
     longDescription: `Browse your notes on a monthly calendar and create daily notes with one click.
 
 ## How to use
@@ -75,6 +98,9 @@ Daily notes are named \`YYYY-MM-DD.md\` and live in your vault like any other no
     version: '1.0.0',
     description: 'Export notes as PDF documents',
     category: 'productivity',
+    settingsSchema: [
+      { key: 'includeProperties', label: 'Include properties (frontmatter) in export', type: 'boolean', default: false },
+    ],
     longDescription: `Export any note as a print-ready PDF straight from the browser.
 
 ## How to use
@@ -86,7 +112,7 @@ Daily notes are named \`YYYY-MM-DD.md\` and live in your vault like any other no
 ## Notes
 
 - The export uses the Reading view: wikilinks, tables, code blocks and Mermaid diagrams render as on screen.
-- YAML frontmatter (Properties) is omitted — only the note body is exported.`,
+- Properties (frontmatter) are omitted by default — turn on **Include properties in export** in the plugin's ⚙ settings to add them above the body.`,
   },
   {
     id: 'speech',
@@ -95,6 +121,21 @@ Daily notes are named \`YYYY-MM-DD.md\` and live in your vault like any other no
     version: '1.0.0',
     description: 'Read notes aloud and dictate text into the editor',
     category: 'productivity',
+    settingsSchema: [
+      {
+        key: 'dictationLanguage',
+        label: 'Dictation language',
+        type: 'select',
+        options: [
+          { value: 'en-US', label: 'English (US)' },
+          { value: 'en-GB', label: 'English (UK)' },
+          { value: 'fr-FR', label: 'French' },
+          { value: 'es-ES', label: 'Spanish' },
+          { value: 'de-DE', label: 'German' },
+        ],
+        default: 'en-US',
+      },
+    ],
     longDescription: `Text-to-speech and speech-to-text powered by your browser's built-in speech engine — nothing leaves your machine except what your browser's speech service processes.
 
 ## Read aloud (text-to-speech)

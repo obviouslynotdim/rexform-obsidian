@@ -83,6 +83,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
   });
   const speechOn =
     (pluginsData?.installed ?? []).includes('speech') && !!pluginsData?.enabled?.speech;
+  const dictationLanguage: string = pluginsData?.config?.speech?.dictationLanguage ?? 'en-US';
 
   // Dictation via the Web Speech API: final transcripts are inserted at the
   // cursor. The recognizer lives in a ref; `dictating` drives the button UI.
@@ -101,7 +102,7 @@ export default function NoteEditor({ noteId, initialContent, viewMode, currentTi
     const rec = new SR();
     rec.continuous = true;
     rec.interimResults = false;
-    rec.lang = 'en-US';
+    rec.lang = dictationLanguage;
     rec.onresult = (e: any) => {
       let text = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {

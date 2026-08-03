@@ -14,6 +14,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const WEEKDAYS_FULL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS_MON = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+const WEEKDAYS_FULL_MON = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -44,6 +46,13 @@ export default function CalendarPanel({ variant = 'panel' }: Props) {
     dedupingInterval: 30_000,
   });
 
+  // From the Calendar plugin's settings (gear icon in Settings → Plugins).
+  const { data: pluginsData } = useSWR('/api/user/plugins', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  });
+  const mondayFirst = !!pluginsData?.config?.calendar?.weekStartsMonday;
+
   // date string → note id, for every note whose filename is YYYY-MM-DD.md.
   const dailyNotes = useMemo(() => {
     const map = new Map<string, string>();
@@ -58,12 +67,13 @@ export default function CalendarPanel({ variant = 'panel' }: Props) {
 
   // Leading blanks so day 1 lands on its weekday column, then the days.
   const cells = useMemo(() => {
-    const firstWeekday = new Date(year, month, 1).getDay();
+    const sundayFirst = new Date(year, month, 1).getDay();
+    const firstWeekday = mondayFirst ? (sundayFirst + 6) % 7 : sundayFirst;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const list: (number | null)[] = Array(firstWeekday).fill(null);
     for (let d = 1; d <= daysInMonth; d++) list.push(d);
     return list;
-  }, [year, month]);
+  }, [year, month, mondayFirst]);
 
   function shiftMonth(delta: number) {
     const next = new Date(year, month + delta, 1);
@@ -133,7 +143,10 @@ export default function CalendarPanel({ variant = 'panel' }: Props) {
 
       {/* Weekday header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isPage ? 6 : 0, marginBottom: isPage ? 4 : 2 }}>
-        {(isPage ? WEEKDAYS_FULL : WEEKDAYS).map((w) => (
+        {(isPage
+          ? (mondayFirst ? WEEKDAYS_FULL_MON : WEEKDAYS_FULL)
+          : (mondayFirst ? WEEKDAYS_MON : WEEKDAYS)
+        ).map((w) => (
           <span
             key={w}
             style={{

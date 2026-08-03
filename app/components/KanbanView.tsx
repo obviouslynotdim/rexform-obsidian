@@ -17,6 +17,8 @@ interface Props {
   body: string;
   canWrite: boolean;
   onBodyChange: (nextBody: string) => void;
+  /** From the Kanban plugin's settings (gear icon in Settings → Plugins). */
+  newCardPosition?: 'top' | 'bottom';
 }
 
 const COL_WIDTH = 272;
@@ -151,7 +153,7 @@ function ColumnMenu({
   );
 }
 
-export default function KanbanView({ body, canWrite, onBodyChange }: Props) {
+export default function KanbanView({ body, canWrite, onBodyChange, newCardPosition = 'bottom' }: Props) {
   const board = useMemo(() => parseKanban(body), [body]);
 
   const [editingCard, setEditingCard] = useState<{ col: number; card: number } | null>(null);
@@ -208,7 +210,9 @@ export default function KanbanView({ body, canWrite, onBodyChange }: Props) {
     const trimmed = text.trim();
     if (!trimmed) return;
     const next = cloneBoard(board);
-    next.columns[ci].cards.push({ text: trimmed, checked: next.columns[ci].complete });
+    const card = { text: trimmed, checked: next.columns[ci].complete };
+    if (newCardPosition === 'top') next.columns[ci].cards.unshift(card);
+    else next.columns[ci].cards.push(card);
     commit(next);
   };
 

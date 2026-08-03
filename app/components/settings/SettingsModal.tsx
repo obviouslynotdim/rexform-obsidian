@@ -4,7 +4,8 @@ import { mutate as swrMutate } from 'swr';
 import { useSession } from 'next-auth/react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { PLUGIN_REGISTRY, type PluginDefinition } from '@/lib/plugin-registry';
+import { useRouter } from 'next/navigation';
+import { PLUGIN_REGISTRY, type PluginDefinition, type PluginSettingField } from '@/lib/plugin-registry';
 import { useI18n, type Locale } from '@/lib/i18n/context';
 import { useSettingsModal } from '@/context/SettingsModalContext';
 import WikiMarkdown from '@/components/WikiMarkdown';
@@ -23,9 +24,10 @@ interface Credentials {
 interface PluginData {
   installed: string[];
   enabled: Record<string, boolean>;
+  config: Record<string, Record<string, unknown>>;
 }
 
-const DEFAULT_PLUGIN_DATA: PluginData = { installed: [], enabled: {} };
+const DEFAULT_PLUGIN_DATA: PluginData = { installed: [], enabled: {}, config: {} };
 
 type NewNoteLocation = 'root' | 'current';
 interface FileSettings {
@@ -193,6 +195,44 @@ export function PluginIcon({ id, size = 20 }: { id: string; size?: number }) {
 }
 
 // ─── Small UI atoms ───────────────────────────────────────────────────────────
+
+// Left-nav category button — shared by the fixed categories (General, etc.)
+// and the per-plugin entries listed under the "Plugins" divider.
+function NavButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        textAlign: 'left',
+        padding: '7px 10px',
+        borderRadius: 6,
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 13.5,
+        fontWeight: active ? 600 : 400,
+        background: active ? 'rgba(127,119,221,0.15)' : 'transparent',
+        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)';
+      }}
+      onMouseLeave={(e) => {
+        if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 export function PluginToggle({ enabled, onChange, disabled }: { enabled: boolean; onChange: () => void; disabled?: boolean }) {
   return (
@@ -415,12 +455,14 @@ function InstalledPluginRow({
   saving,
   onToggle,
   onUninstall,
+  onOpenSettings,
 }: {
   plugin: PluginDefinition;
   enabled: boolean;
   saving: boolean;
   onToggle: () => void;
   onUninstall: () => void;
+  onOpenSettings: () => void;
 }) {
   return (
     <div
@@ -459,7 +501,7 @@ function InstalledPluginRow({
 
       {/* Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <IconBtn onClick={() => {}} title="Plugin settings (coming soon)">
+        <IconBtn onClick={onOpenSettings} title={`${plugin.name} settings`}>
           <GearIcon />
         </IconBtn>
         <IconBtn onClick={onUninstall} title="Uninstall" danger>
@@ -1017,6 +1059,7 @@ function CommunityPluginsCard({
   onInstall,
   onUninstall,
   onToggle,
+  onOpenPluginSettings,
 }: {
   pluginData: PluginData;
   saving: boolean;
@@ -1024,6 +1067,7 @@ function CommunityPluginsCard({
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
   onToggle: (id: string) => void;
+  onOpenPluginSettings: (id: string) => void;
 }) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -1192,6 +1236,7 @@ function CommunityPluginsCard({
                   saving={saving}
                   onToggle={() => onToggle(plugin.id)}
                   onUninstall={() => onUninstall(plugin.id)}
+                  onOpenSettings={() => onOpenPluginSettings(plugin.id)}
                 />
               </div>
             ))}
@@ -1199,6 +1244,152 @@ function CommunityPluginsCard({
         )}
       </Card>
     </>
+  );
+}
+
+// ─── Per-plugin settings card ─────────────────────────────────────────────────
+// Obsidian-style: each installed plugin gets its own left-nav entry (rendered
+// by the modal below) that lands here — a normal Card in the settings flow,
+// not a popover, so configuring a plugin looks and feels like every other
+// settings page instead of a one-off dropdown.
+
+function PluginSettingsRow({
+  field,
+  value,
+  onChange,
+  divider = true,
+}: {
+  field: PluginSettingField;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  divider?: boolean;
+}) {
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 12,
+    paddingBottom: 14, marginBottom: divider ? 14 : 0,
+    borderBottom: divider ? '1px solid var(--border)' : 'none',
+  };
+  if (field.type === 'boolean') {
+    const checked = typeof value === 'boolean' ? value : field.default;
+    return (
+      <div style={rowStyle}>
+        <p style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', margin: 0 }}>
+          {field.label}
+        </p>
+        <PluginToggle enabled={checked} onChange={() => onChange(!checked)} />
+      </div>
+    );
+  }
+  const selected = typeof value === 'string' ? value : field.default;
+  return (
+    <div style={rowStyle}>
+      <p style={{ flex: 1, fontSize: 13.5, fontWeight: 500, color: 'var(--text-primary)', margin: 0 }}>
+        {field.label}
+      </p>
+      <select
+        value={selected}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          flexShrink: 0, padding: '6px 10px', borderRadius: 6, fontSize: 12.5,
+          background: 'var(--bg-base)', border: '1px solid var(--border)',
+          color: 'var(--text-primary)', outline: 'none', cursor: 'pointer',
+        }}
+      >
+        {field.options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function PluginSettingsCard({
+  plugin,
+  enabled,
+  config,
+  onFieldChange,
+  onGoToGitlab,
+  onGoToSync,
+}: {
+  plugin: PluginDefinition;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  onFieldChange: (key: string, value: unknown) => void;
+  onGoToGitlab: () => void;
+  onGoToSync: () => void;
+}) {
+  const linkBtnStyle: React.CSSProperties = {
+    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    background: 'var(--accent)', color: '#fff', fontSize: 12.5, fontWeight: 500,
+    flexShrink: 0,
+  };
+  const hasDeepLink = plugin.id === 'gitlab' || plugin.id === 'livesync';
+  const schema = plugin.settingsSchema ?? [];
+
+  return (
+    <Card className="p-6">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 9, flexShrink: 0,
+          background: 'rgba(127,119,221,0.15)', border: '1px solid rgba(127,119,221,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
+        }}>
+          <PluginIcon id={plugin.id} size={19} />
+        </div>
+        <div>
+          <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+            {plugin.name}
+          </h2>
+          <p style={{ fontSize: 11.5, color: 'var(--text-muted)', margin: 0 }}>
+            v{plugin.version} · {plugin.author}
+          </p>
+        </div>
+      </div>
+
+      {plugin.id === 'gitlab' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          paddingBottom: 14, marginBottom: 14, borderBottom: '1px solid var(--border)',
+        }}>
+          <p style={{ flex: 1, fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>
+            Connecting a personal access token and browsing projects/issues happens on the plugin's own page.
+          </p>
+          <button onClick={onGoToGitlab} style={linkBtnStyle}>Open GitLab connection →</button>
+        </div>
+      )}
+
+      {plugin.id === 'livesync' && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          paddingBottom: 14, marginBottom: 14, borderBottom: '1px solid var(--border)',
+        }}>
+          <p style={{ flex: 1, fontSize: 12.5, color: 'var(--text-muted)', margin: 0 }}>
+            {enabled
+              ? 'Server URL, database, and credentials for the Obsidian desktop/mobile app live in the Sync tab.'
+              : 'Enable this plugin to configure sync credentials.'}
+          </p>
+          {enabled && (
+            <button onClick={onGoToSync} style={linkBtnStyle}>Open Sync settings →</button>
+          )}
+        </div>
+      )}
+
+      {schema.map((field, i) => (
+        <PluginSettingsRow
+          key={field.key}
+          field={field}
+          value={config[field.key]}
+          onChange={(value) => onFieldChange(field.key, value)}
+          divider={i < schema.length - 1}
+        />
+      ))}
+
+      {schema.length === 0 && !hasDeepLink && (
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+          This plugin has no configurable settings.
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -1283,6 +1474,7 @@ export default function SettingsModal() {
   const open = modal?.open ?? false;
   const initialCategory = modal?.initialCategory ?? null;
   const closeSettings = modal?.closeSettings;
+  const router = useRouter();
 
   const { data: session, status } = useSession();
   const { t, locale, setLocale } = useI18n();
@@ -1342,6 +1534,7 @@ export default function SettingsModal() {
         setPluginData({
           installed: data.installed ?? [],
           enabled: data.enabled ?? {},
+          config: data.config ?? {},
         });
       }
     } catch {}
@@ -1425,7 +1618,7 @@ export default function SettingsModal() {
       const res = await fetch('/api/user/plugins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ installed: next.installed, enabled: next.enabled }),
+        body: JSON.stringify({ installed: next.installed, enabled: next.enabled, config: next.config }),
       });
       if (!res.ok) {
         setPluginData(original);
@@ -1459,6 +1652,7 @@ export default function SettingsModal() {
       const original = pluginDataRef.current;
       if (!original.installed.includes(id)) {
         const next: PluginData = {
+          ...original,
           installed: [...original.installed, id],
           enabled: { ...original.enabled, [id]: true },
         };
@@ -1483,6 +1677,7 @@ export default function SettingsModal() {
     setUninstallBusy(true);
     const { [id]: _removed, ...restEnabled } = pluginData.enabled;
     const next: PluginData = {
+      ...pluginData,
       installed: pluginData.installed.filter(i => i !== id),
       enabled: restEnabled,
     };
@@ -1501,6 +1696,36 @@ export default function SettingsModal() {
     setPluginData(next);
     savePlugins(next, pluginData);
   }, [pluginData, savePlugins]);
+
+  const handleFieldChange = useCallback((pluginId: string, key: string, value: unknown) => {
+    const next: PluginData = {
+      ...pluginData,
+      config: {
+        ...pluginData.config,
+        [pluginId]: { ...pluginData.config[pluginId], [key]: value },
+      },
+    };
+    setPluginData(next);
+    savePlugins(next, pluginData);
+  }, [pluginData, savePlugins]);
+
+  // GitLab's real settings (the PAT connect flow) live on its own page — the
+  // gear just closes Settings and jumps there rather than duplicating them.
+  const goToGitlabSettings = useCallback(() => {
+    closeSettings?.();
+    router.push('/notes/gitlab');
+  }, [closeSettings, router]);
+
+  // LiveSync's real settings (credentials) already live in the Sync tab.
+  const goToSyncSettings = useCallback(() => {
+    setActiveCategory('sync');
+  }, []);
+
+  // Obsidian-style: clicking a plugin's gear (or its left-nav entry) jumps to
+  // a dedicated category for it, same as General/Account/etc.
+  const openPluginSettings = useCallback((id: string) => {
+    setActiveCategory(`plugin-${id}`);
+  }, []);
 
   const regenerate = async () => {
     if (!confirm('Regenerate password? Your current LiveSync connection will stop working until you update it in Obsidian.')) return;
@@ -1558,7 +1783,11 @@ export default function SettingsModal() {
     ...(creds && liveSyncOn ? [{ id: 'sync', label: t('nav.sync') }] : []),
     { id: 'plugins', label: t('nav.communityPlugins') },
   ];
-  const selected = categories.some((c) => c.id === activeCategory) ? activeCategory : 'general';
+  // One nav entry per installed plugin (Obsidian-style) — its gear/row jumps
+  // here instead of a popover, so configuring it looks like every other page.
+  const installedPluginDefs = PLUGIN_REGISTRY.filter((p) => pluginData.installed.includes(p.id));
+  const allCategoryIds = [...categories.map((c) => c.id), ...installedPluginDefs.map((p) => `plugin-${p.id}`)];
+  const selected = allCategoryIds.includes(activeCategory) ? activeCategory : 'general';
 
   const uninstallPlugin = uninstallId ? PLUGIN_REGISTRY.find(p => p.id === uninstallId) : null;
 
@@ -1642,35 +1871,37 @@ export default function SettingsModal() {
           >
             {t('settings.title')}
           </h1>
-          {categories.map((cat) => {
-            const active = cat.id === selected;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                style={{
-                  textAlign: 'left',
-                  padding: '7px 10px',
-                  borderRadius: 6,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13.5,
-                  fontWeight: active ? 600 : 400,
-                  background: active ? 'rgba(127,119,221,0.15)' : 'transparent',
-                  color: active ? 'var(--accent)' : 'var(--text-secondary)',
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-                onMouseEnter={(e) => {
-                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                }}
-              >
-                {cat.label}
-              </button>
-            );
-          })}
+          {categories.map((cat) => (
+            <NavButton key={cat.id} active={cat.id === selected} onClick={() => setActiveCategory(cat.id)}>
+              {cat.label}
+            </NavButton>
+          ))}
+
+          {installedPluginDefs.length > 0 && (
+            <>
+              <p style={{
+                fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase',
+                color: 'var(--text-muted)', margin: '14px 8px 4px',
+              }}>
+                Plugins
+              </p>
+              {installedPluginDefs.map((p) => {
+                const catId = `plugin-${p.id}`;
+                return (
+                  <NavButton key={catId} active={catId === selected} onClick={() => setActiveCategory(catId)}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ display: 'flex', flexShrink: 0, opacity: 0.85 }}>
+                        <PluginIcon id={p.id} size={13} />
+                      </span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.name}
+                      </span>
+                    </span>
+                  </NavButton>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* ── Content panel ── */}
@@ -1861,8 +2092,24 @@ export default function SettingsModal() {
               onInstall={handleInstall}
               onUninstall={handleUninstall}
               onToggle={handleToggle}
+              onOpenPluginSettings={openPluginSettings}
             />
           )}
+
+          {selected.startsWith('plugin-') && (() => {
+            const plugin = installedPluginDefs.find((p) => `plugin-${p.id}` === selected);
+            if (!plugin) return null;
+            return (
+              <PluginSettingsCard
+                plugin={plugin}
+                enabled={!!pluginData.enabled[plugin.id]}
+                config={pluginData.config[plugin.id] ?? {}}
+                onFieldChange={(key, value) => handleFieldChange(plugin.id, key, value)}
+                onGoToGitlab={goToGitlabSettings}
+                onGoToSync={goToSyncSettings}
+              />
+            );
+          })()}
           </>
           )}
         </div>
