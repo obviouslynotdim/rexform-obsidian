@@ -4,6 +4,7 @@ import { mutate as swrMutate } from 'swr';
 import { useSession } from 'next-auth/react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import { useRouter } from 'next/navigation';
 import { PLUGIN_REGISTRY, type PluginDefinition, type PluginSettingField } from '@/lib/plugin-registry';
 import { useI18n, type Locale } from '@/lib/i18n/context';
@@ -1395,6 +1396,256 @@ function PluginSettingsCard({
 
 // ─── Files & Links card ───────────────────────────────────────────────────────
 
+// ─── Profile ──────────────────────────────────────────────────────────────────
+
+interface ProfileData {
+  accountType: 'local' | 'sso-only';
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  username: string;
+  hasPassword: boolean;
+}
+
+function ProfileCard() {
+  const { t } = useI18n();
+  const { data: session } = useSession();
+  const { toast, showToast } = useToast();
+
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [username, setUsername] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/user/profile');
+        if (res.ok) {
+          const data: ProfileData = await res.json();
+          if (!cancelled) {
+            setProfile(data);
+            setFirstName(data.firstName);
+            setLastName(data.lastName);
+            setUsername(data.username);
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const saveProfile = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, username }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save profile', 'error');
+        return;
+      }
+      setProfile(data);
+      setFirstName(data.firstName);
+      setLastName(data.lastName);
+      setUsername(data.username);
+      showToast(t('profile.saved'), 'success');
+    } catch {
+      showToast('Failed to save profile', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changePassword = async () => {
+    setPasswordError('');
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const res = await fetch('/api/user/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPasswordError(data.error || 'Failed to change password');
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      showToast(t('profile.passwordChanged'), 'success');
+    } catch {
+      setPasswordError('Failed to change password');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card className="p-6">
+        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>
+          {t('common.loading')}
+        </div>
+      </Card>
+    );
+  }
+
+  const isSsoOnly = profile?.accountType === 'sso-only';
+  const signInMethod = session?.provider === 'rexform-sso' ? t('profile.sso') : t('profile.password');
+
+  return (
+    <>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+
+      <Card className="p-6">
+        <h2 className="text-base font-semibold mb-5" style={{ color: 'var(--text-primary)' }}>
+          {t('account.title')}
+        </h2>
+
+        <div style={{ display: 'flex', gap: 12, marginBottom: isSsoOnly ? 6 : 14 }}>
+          <div style={{ flex: 1 }}>
+            <Input
+              label={t('profile.firstName')}
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              disabled={isSsoOnly}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <Input
+              label={t('profile.lastName')}
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              disabled={isSsoOnly}
+            />
+          </div>
+        </div>
+        {isSsoOnly && (
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+            {t('profile.ssoManagedHint')}
+          </p>
+        )}
+
+        <div style={{ marginBottom: 18 }}>
+          <Input
+            label={t('profile.username')}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            hint={t('profile.usernameHint')}
+            placeholder="jane.doe"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.email')}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{profile?.email}</span>
+              <span
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={{ background: 'var(--accent)22', color: 'var(--accent)' }}
+                title={t('profile.signInMethod')}
+              >
+                {signInMethod}
+              </span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.role')}</span>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ background: 'var(--accent)22', color: 'var(--accent)' }}
+            >
+              {session?.user?.isAdmin ? t('account.admin') : t('account.member')}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+          <Button onClick={saveProfile} loading={saving} size="sm">{t('common.save')}</Button>
+        </div>
+      </Card>
+
+      <Card className="p-6 mt-6">
+        <h2 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {t('profile.password')}
+        </h2>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, marginBottom: 18 }}>
+          {t('profile.passwordDesc')}
+        </p>
+
+        {profile?.hasPassword ? (
+          <>
+            <div style={{ display: 'grid', gap: 14, marginBottom: passwordError ? 8 : 18 }}>
+              <Input
+                type="password"
+                autoComplete="current-password"
+                label={t('profile.currentPassword')}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+              <Input
+                type="password"
+                autoComplete="new-password"
+                label={t('profile.newPassword')}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <Input
+                type="password"
+                autoComplete="new-password"
+                label={t('profile.confirmPassword')}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+            {passwordError && (
+              <p style={{ fontSize: 12.5, color: '#f87171', marginBottom: 10 }}>{passwordError}</p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                onClick={changePassword}
+                loading={passwordSaving}
+                disabled={!currentPassword || !newPassword || !confirmPassword}
+                size="sm"
+              >
+                {t('common.save')}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <p style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{t('profile.passwordSsoNote')}</p>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function FilesLinksCard({
   settings,
   saving,
@@ -1957,27 +2208,8 @@ export default function SettingsModal() {
             </Card>
           )}
 
-          {/* Account */}
-          {selected === 'account' && (
-            <Card className="p-6">
-              <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>{t('account.title')}</h2>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.email')}</span>
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{session?.user?.email}</span>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t('account.role')}</span>
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: 'var(--accent)22', color: 'var(--accent)' }}
-                  >
-                    {session?.user?.isAdmin ? t('account.admin') : t('account.member')}
-                  </span>
-                </div>
-              </div>
-            </Card>
-          )}
+          {/* Account / Profile */}
+          {selected === 'account' && <ProfileCard />}
 
           {/* Editor (Files & Links) */}
           {selected === 'editor' && (

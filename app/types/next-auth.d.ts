@@ -13,6 +13,7 @@ declare module 'next-auth' {
       isAdmin?: boolean;
     };
     kratosSessionToken?: string;
+    provider?: string;
   }
 }
 

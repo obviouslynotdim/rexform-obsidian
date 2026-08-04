@@ -11,7 +11,7 @@ export const en: Record<string, string> = {
 
   // Category nav
   'nav.general': 'General',
-  'nav.account': 'Account',
+  'nav.account': 'Profile',
   'nav.editor': 'Editor',
   'nav.sync': 'Sync',
   'nav.communityPlugins': 'Plugins',
@@ -23,12 +23,29 @@ export const en: Record<string, string> = {
   'general.languageEnglish': 'English',
   'general.languageKhmer': 'ខ្មែរ',
 
-  // Account
-  'account.title': 'Account',
+  // Account / Profile
+  'account.title': 'Profile',
   'account.email': 'Email',
   'account.role': 'Role',
   'account.admin': 'Admin',
   'account.member': 'Member',
+  'profile.firstName': 'First name',
+  'profile.lastName': 'Last name',
+  'profile.username': 'Username',
+  'profile.usernameHint': 'Letters, numbers, dots, underscores or hyphens — 3 to 32 characters.',
+  'profile.ssoManagedHint': "Managed by your organization's SSO provider.",
+  'profile.signInMethod': 'Signed in via',
+  'profile.sso': 'SSO',
+  'profile.password': 'Password',
+  'profile.passwordDesc': 'Change your account password.',
+  'profile.currentPassword': 'Current password',
+  'profile.newPassword': 'New password',
+  'profile.confirmPassword': 'Confirm new password',
+  'profile.passwordSsoNote': 'Your account signs in via SSO and has no password to change.',
+  'profile.saved': 'Profile updated',
+  'profile.passwordChanged': 'Password changed',
+  'common.save': 'Save',
+  'common.saving': 'Saving…',
 
   // Editor / Files & Links
   'editor.title': 'Files & Links',

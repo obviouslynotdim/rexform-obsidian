@@ -20,6 +20,7 @@ export interface SsoUserRecord {
   id: string;
   email: string | null;
   name: string | null;
+  username: string | null;
   createdAt: string;
   lastLoginAt: string;
 }
@@ -55,6 +56,7 @@ export async function upsertSsoUser(
     ...(existing?._rev ? { _rev: existing._rev } : {}),
     email: email ?? existing?.email ?? null,
     name: name ?? existing?.name ?? null,
+    username: existing?.username ?? null,
     createdAt: existing?.createdAt ?? now,
     lastLoginAt: now,
   };
@@ -66,6 +68,31 @@ export async function upsertSsoUser(
   });
   if (!putRes.ok && putRes.status !== 409) {
     throw new Error(`Failed to upsert SSO user ${userId}: ${putRes.status}`);
+  }
+}
+
+/**
+ * Patches just the `username` field on an SSO-only user's registry doc — kept
+ * separate from `upsertSsoUser` because that function runs on every login and
+ * would otherwise need special-casing to avoid clobbering a user-set value.
+ */
+export async function updateSsoUserProfile(userId: string, username: string | null): Promise<void> {
+  await ensureRegistryDb();
+  const auth = adminAuthHeader();
+  const docUrl = `${COUCHDB_URL}/${REGISTRY_DB}/${encodeURIComponent(userId)}`;
+
+  const existingRes = await fetch(docUrl, { headers: { Authorization: auth }, cache: 'no-store' });
+  if (!existingRes.ok) throw new Error(`SSO user ${userId} not found`);
+  const existing = await existingRes.json();
+
+  const doc = { ...existing, username };
+  const putRes = await fetch(docUrl, {
+    method: 'PUT',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  });
+  if (!putRes.ok) {
+    throw new Error(`Failed to update SSO user ${userId}: ${putRes.status}`);
   }
 }
 
@@ -94,6 +121,7 @@ export async function listSsoUsers(): Promise<SsoUserRecord[]> {
         id: d._id,
         email: d.email ?? null,
         name: d.name ?? null,
+        username: d.username ?? null,
         createdAt: d.createdAt ?? null,
         lastLoginAt: d.lastLoginAt ?? null,
       }));

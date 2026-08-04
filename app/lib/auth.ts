@@ -165,6 +165,7 @@ export const authOptions: NextAuthOptions = {
       session.user.id = token.userId ?? '';
       session.user.isAdmin = token.isAdmin ?? false;
       session.kratosSessionToken = token.kratosSessionToken;
+      session.provider = token.provider;
       return session;
     },
   },

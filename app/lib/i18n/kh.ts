@@ -8,7 +8,7 @@ export const kh: Record<string, string> = {
 
   // Category nav
   'nav.general': 'ទូទៅ',
-  'nav.account': 'គណនី',
+  'nav.account': 'ប្រវត្តិរូប',
   'nav.editor': 'កម្មវិធីកែសម្រួល',
   'nav.sync': 'សមកាលកម្ម',
   'nav.communityPlugins': 'កម្មវិធីបន្ថែម',
@@ -20,12 +20,29 @@ export const kh: Record<string, string> = {
   'general.languageEnglish': 'English',
   'general.languageKhmer': 'ខ្មែរ',
 
-  // Account
-  'account.title': 'គណនី',
+  // Account / Profile
+  'account.title': 'ប្រវត្តិរូប',
   'account.email': 'អ៊ីមែល',
   'account.role': 'តួនាទី',
   'account.admin': 'អ្នកគ្រប់គ្រង',
   'account.member': 'សមាជិក',
+  'profile.firstName': 'នាមខ្លួន',
+  'profile.lastName': 'នាមត្រកូល',
+  'profile.username': 'ឈ្មោះអ្នកប្រើ',
+  'profile.usernameHint': 'អក្សរ លេខ ចំណុច សញ្ញាគូស ឬសញ្ញាចំណុចក្រោម — ៣ ដល់ ៣២ តួអក្សរ។',
+  'profile.ssoManagedHint': 'គ្រប់គ្រងដោយអ្នកផ្តល់សេវា SSO របស់អង្គភាពអ្នក។',
+  'profile.signInMethod': 'ចូលប្រើតាមរយៈ',
+  'profile.sso': 'SSO',
+  'profile.password': 'ពាក្យសម្ងាត់',
+  'profile.passwordDesc': 'ប្តូរពាក្យសម្ងាត់គណនីរបស់អ្នក។',
+  'profile.currentPassword': 'ពាក្យសម្ងាត់បច្ចុប្បន្ន',
+  'profile.newPassword': 'ពាក្យសម្ងាត់ថ្មី',
+  'profile.confirmPassword': 'បញ្ជាក់ពាក្យសម្ងាត់ថ្មី',
+  'profile.passwordSsoNote': 'គណនីរបស់អ្នកចូលប្រើតាមរយៈ SSO ហើយមិនមានពាក្យសម្ងាត់ដើម្បីប្តូរទេ។',
+  'profile.saved': 'បានធ្វើបច្ចុប្បន្នភាពប្រវត្តិរូប',
+  'profile.passwordChanged': 'បានប្តូរពាក្យសម្ងាត់',
+  'common.save': 'រក្សាទុក',
+  'common.saving': 'កំពុងរក្សាទុក…',
 
   // Editor / Files & Links
   'editor.title': 'ឯកសារ និងតំណ',
