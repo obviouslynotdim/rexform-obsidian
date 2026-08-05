@@ -1417,6 +1417,7 @@ function ProfileCard() {
   const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -1431,15 +1432,18 @@ function ProfileCard() {
       setLoading(true);
       try {
         const res = await fetch('/api/user/profile');
-        if (res.ok) {
-          const data: ProfileData = await res.json();
-          if (!cancelled) {
-            setProfile(data);
-            setFirstName(data.firstName);
-            setLastName(data.lastName);
-            setUsername(data.username);
-          }
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (res.ok && data) {
+          setProfile(data);
+          setFirstName(data.firstName);
+          setLastName(data.lastName);
+          setUsername(data.username);
+        } else {
+          setLoadError(data?.error || 'Failed to load profile');
         }
+      } catch {
+        if (!cancelled) setLoadError('Failed to load profile');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1511,6 +1515,14 @@ function ProfileCard() {
         <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>
           {t('common.loading')}
         </div>
+      </Card>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Card className="p-6">
+        <p style={{ fontSize: 13, color: '#f87171' }}>{loadError}</p>
       </Card>
     );
   }

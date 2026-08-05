@@ -17,6 +17,30 @@ interface ProfileResponse {
 
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 
+// Kratos admin lives at a railway.internal hostname that only resolves inside
+// Railway's private network — unreachable is expected in local dev and must
+// not be conflated with "this user has no local identity" (that misclassifies
+// a real local account as SSO-only, see app/app/api/admin/users/route.ts for
+// the same distinction).
+function isKratosConnectionError(e: any): boolean {
+  const msg = String(e?.message ?? e);
+  const code = String(e?.code ?? e?.cause?.code ?? '');
+  return /ENOTFOUND|ECONNREFUSED|EAI_AGAIN|ETIMEDOUT/i.test(msg + ' ' + code);
+}
+
+function kratosUnreachableResponse() {
+  const adminUrl = process.env.KRATOS_ADMIN_URL || 'http://localhost:4434';
+  return NextResponse.json(
+    {
+      error:
+        `Cannot reach the Kratos admin API at ${adminUrl}. ` +
+        `Railway-internal hostnames (…railway.internal) only resolve inside Railway's private network, ` +
+        `so profile management works on the deployed app but not in local development.`,
+    },
+    { status: 503 }
+  );
+}
+
 function splitName(name: string | null): { firstName: string; lastName: string } {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { firstName: '', lastName: '' };
@@ -25,8 +49,15 @@ function splitName(name: string | null): { firstName: string; lastName: string }
 }
 
 async function loadProfile(userId: string): Promise<ProfileResponse | null> {
+  let identity: any = null;
   try {
-    const { data: identity } = await kratosAdmin.getIdentity({ id: userId, includeCredential: ['password'] });
+    identity = (await kratosAdmin.getIdentity({ id: userId, includeCredential: ['password'] })).data;
+  } catch (e: any) {
+    if (isKratosConnectionError(e)) throw e;
+    // Genuinely not a local Kratos identity — fall back to the SSO-only registry.
+  }
+
+  if (identity) {
     const traits = (identity.traits as any) ?? {};
     return {
       accountType: 'local',
@@ -36,8 +67,6 @@ async function loadProfile(userId: string): Promise<ProfileResponse | null> {
       username: (identity.metadata_public as any)?.username ?? '',
       hasPassword: !!identity.credentials?.password,
     };
-  } catch {
-    // Not a local Kratos identity — fall back to the SSO-only registry.
   }
 
   const ssoUsers = await listSsoUsers();
@@ -60,11 +89,16 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const profile = await loadProfile(session.user.id);
-  if (!profile) {
-    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  try {
+    const profile = await loadProfile(session.user.id);
+    if (!profile) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+    return NextResponse.json(profile);
+  } catch (e: any) {
+    if (isKratosConnectionError(e)) return kratosUnreachableResponse();
+    return NextResponse.json({ error: e.message || 'Failed to load profile' }, { status: 500 });
   }
-  return NextResponse.json(profile);
 }
 
 export async function PATCH(req: NextRequest) {
@@ -96,7 +130,8 @@ export async function PATCH(req: NextRequest) {
   let identity;
   try {
     identity = (await kratosAdmin.getIdentity({ id: userId })).data;
-  } catch {
+  } catch (e: any) {
+    if (isKratosConnectionError(e)) return kratosUnreachableResponse();
     identity = null; // no local Kratos identity — SSO-only account
   }
 
@@ -129,9 +164,14 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: e.message || 'Failed to update profile' }, { status: 500 });
   }
 
-  const profile = await loadProfile(userId);
-  if (!profile) {
-    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  try {
+    const profile = await loadProfile(userId);
+    if (!profile) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+    return NextResponse.json(profile);
+  } catch (e: any) {
+    if (isKratosConnectionError(e)) return kratosUnreachableResponse();
+    return NextResponse.json({ error: e.message || 'Failed to load profile' }, { status: 500 });
   }
-  return NextResponse.json(profile);
 }
