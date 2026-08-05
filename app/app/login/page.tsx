@@ -7,20 +7,7 @@ import Link from 'next/link';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-
-function SsoIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M3 5C3 3.89543 3.89543 3 5 3H14L21 10V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5Z"
-        fill="#6D4AFF"
-        opacity="0.9"
-      />
-      <path d="M14 3L21 10H16C14.8954 10 14 9.10457 14 8V3Z" fill="#9B7FFF" />
-      <path d="M7 12H17M7 16H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
+import AuthLayout, { SsoIcon } from '@/components/auth/AuthLayout';
 
 async function initFlow(): Promise<string> {
   const r = await fetch('/api/auth/kratos/flow?type=login');
@@ -168,11 +155,8 @@ function LoginForm() {
   // figure out whether to auto-redirect.
   if (autoRedirecting) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-base)' }}>
-        <div
-          className="w-full max-w-md rounded-2xl border p-8 flex flex-col items-center text-center"
-          style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-        >
+      <AuthLayout scrollable={false}>
+        <div className="flex flex-col items-center text-center">
           <div className="flex items-center gap-2 mb-8">
             <Logo />
           </div>
@@ -184,108 +168,103 @@ function LoginForm() {
             Signing you in via REXFORM SSO…
           </p>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-base)' }}>
-      <div
-        className="w-full max-w-md rounded-2xl border p-8"
-        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <Logo />
-        </div>
-
-        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-          Welcome back
-        </h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-          Sign in to your workspace
-        </p>
-
-        {error && (
-          <div
-            className="mb-4 px-4 py-3 rounded-lg text-sm border"
-            style={{ background: '#2d1a1a', borderColor: '#7a2020', color: '#f87171' }}
-          >
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="Email"
-            type="email"
-            name="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="you@example.com"
-          />
-          <Input
-            label="Password"
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            placeholder="••••••••"
-          />
-          <Button
-            type="submit"
-            disabled={flowLoading}
-            loading={loading}
-            className="w-full"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </Button>
-        </form>
-
-        {ssoEnabled && (
-          <>
-            <div className="flex items-center gap-3 my-5">
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                or
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            </div>
-
-            <button
-              type="button"
-              disabled={ssoLoading}
-              onClick={() => {
-                setSsoLoading(true);
-                signIn('rexform-sso', { callbackUrl: '/notes' });
-              }}
-              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60 disabled:opacity-60"
-              style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
-            >
-              {ssoLoading ? (
-                <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <SsoIcon />
-              )}
-              {ssoLoading ? 'Redirecting to SSO…' : 'Continue with REXFORM SSO'}
-            </button>
-          </>
-        )}
-
-        <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
-            Create one
-          </Link>
-        </p>
+    <AuthLayout scrollable={false}>
+      {/* Logo */}
+      <div className="flex items-center gap-2 mb-8">
+        <Logo />
       </div>
-    </div>
+
+      <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+        Welcome back
+      </h1>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+        Sign in to your workspace
+      </p>
+
+      {error && (
+        <div
+          className="mb-4 px-4 py-3 rounded-lg text-sm border"
+          style={{ background: '#2d1a1a', borderColor: '#7a2020', color: '#f87171' }}
+        >
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Email"
+          type="email"
+          name="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          placeholder="you@example.com"
+        />
+        <Input
+          label="Password"
+          type="password"
+          name="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          placeholder="••••••••"
+        />
+        <Button
+          type="submit"
+          disabled={flowLoading}
+          loading={loading}
+          className="w-full"
+        >
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+
+      {ssoEnabled && (
+        <>
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              or
+            </span>
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+          </div>
+
+          <button
+            type="button"
+            disabled={ssoLoading}
+            onClick={() => {
+              setSsoLoading(true);
+              signIn('rexform-sso', { callbackUrl: '/notes' });
+            }}
+            className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60 disabled:opacity-60"
+            style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
+          >
+            {ssoLoading ? (
+              <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <SsoIcon />
+            )}
+            {ssoLoading ? 'Redirecting to SSO…' : 'Continue with REXFORM SSO'}
+          </button>
+        </>
+      )}
+
+      <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
+        Don&apos;t have an account?{' '}
+        <Link href="/register" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+          Create one
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Logo from '@/components/ui/Logo';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import AuthLayout, { SsoIcon } from '@/components/auth/AuthLayout';
 
 function passwordStrength(pw: string): number {
   if (!pw) return 0;
@@ -16,20 +17,6 @@ function passwordStrength(pw: string): number {
   if (/[A-Z]/.test(pw) && /[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
   return score;
-}
-
-function SsoIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M3 5C3 3.89543 3.89543 3 5 3H14L21 10V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5Z"
-        fill="#6D4AFF"
-        opacity="0.9"
-      />
-      <path d="M14 3L21 10H16C14.8954 10 14 9.10457 14 8V3Z" fill="#9B7FFF" />
-      <path d="M7 12H17M7 16H13" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 async function initFlow(): Promise<string> {
@@ -131,141 +118,133 @@ export default function RegisterPage() {
   const strength = passwordStrength(password);
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 py-10"
-      style={{ background: 'var(--bg-base)' }}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border p-8"
-        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <Logo />
+    <AuthLayout>
+      {/* Logo */}
+      <div className="flex items-center gap-2 mb-8">
+        <Logo />
+      </div>
+
+      <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+        Create your account
+      </h1>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+        Your personal knowledge base awaits
+      </p>
+
+      {globalError && (
+        <div
+          className="mb-4 px-4 py-3 rounded-lg text-sm border"
+          style={{ background: '#2d1a1a', borderColor: '#7a2020', color: '#f87171' }}
+        >
+          {globalError}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="First name"
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            required
+            placeholder="John"
+            error={errors['traits.name.first']}
+          />
+          <Input
+            label="Last name"
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            required
+            placeholder="Doe"
+            error={errors['traits.name.last']}
+          />
         </div>
 
-        <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-          Create your account
-        </h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-          Your personal knowledge base awaits
-        </p>
+        <Input
+          label="Email"
+          type="email"
+          name="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          placeholder="you@example.com"
+          error={errors['traits.email']}
+        />
 
-        {globalError && (
-          <div
-            className="mb-4 px-4 py-3 rounded-lg text-sm border"
-            style={{ background: '#2d1a1a', borderColor: '#7a2020', color: '#f87171' }}
-          >
-            {globalError}
-          </div>
-        )}
+        <Input
+          label="Username (optional)"
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="your username..."
+          hint="Letters, numbers, dots, underscores or hyphens — 3 to 32 characters."
+          error={errors['username']}
+        />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="First name"
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-              placeholder="John"
-              error={errors['traits.name.first']}
-            />
-            <Input
-              label="Last name"
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-              placeholder="Doe"
-              error={errors['traits.name.last']}
-            />
-          </div>
-
+        <div>
           <Input
-            label="Email"
-            type="email"
-            name="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            label="Password"
+            type="password"
+            name="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             required
-            placeholder="you@example.com"
-            error={errors['traits.email']}
+            placeholder="••••••••"
+            error={errors['password']}
           />
+          <div className="flex gap-1 mt-2">
+            {[1, 2, 3, 4].map((seg) => (
+              <div
+                key={seg}
+                className="h-1 flex-1 rounded-full transition-all duration-300"
+                style={{ background: strength >= seg ? 'var(--accent)' : 'var(--border)' }}
+              />
+            ))}
+          </div>
+        </div>
 
-          <Input
-            label="Username (optional)"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="your username..."
-            hint="Letters, numbers, dots, underscores or hyphens — 3 to 32 characters."
-            error={errors['username']}
-          />
+        <Button
+          type="submit"
+          disabled={!flowId}
+          loading={loading}
+          className="w-full mt-2"
+        >
+          {loading ? 'Creating account…' : 'Create account'}
+        </Button>
+      </form>
 
-          <div>
-            <Input
-              label="Password"
-              type="password"
-              name="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-              error={errors['password']}
-            />
-            <div className="flex gap-1 mt-2">
-              {[1, 2, 3, 4].map((seg) => (
-                <div
-                  key={seg}
-                  className="h-1 flex-1 rounded-full transition-all duration-300"
-                  style={{ background: strength >= seg ? 'var(--accent)' : 'var(--border)' }}
-                />
-              ))}
-            </div>
+      {ssoEnabled && (
+        <>
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              or
+            </span>
+            <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
           </div>
 
-          <Button
-            type="submit"
-            disabled={!flowId}
-            loading={loading}
-            className="w-full mt-2"
+          <button
+            type="button"
+            onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
+            className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60"
+            style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
           >
-            {loading ? 'Creating account…' : 'Create account'}
-          </Button>
-        </form>
+            <SsoIcon />
+            Sign up with REXFORM SSO
+          </button>
+        </>
+      )}
 
-        {ssoEnabled && (
-          <>
-            <div className="flex items-center gap-3 my-5">
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                or
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => signIn('rexform-sso', { callbackUrl: '/notes' })}
-              className="flex items-center justify-center gap-2.5 w-full py-2.5 rounded-lg border text-sm font-medium transition-colors hover:border-[#6D4AFF]/60"
-              style={{ background: 'var(--bg-base)', borderColor: '#3a3560', color: '#c8c4f0' }}
-            >
-              <SsoIcon />
-              Sign up with REXFORM SSO
-            </button>
-          </>
-        )}
-
-        <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </div>
+      <p className="mt-6 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
+        Already have an account?{' '}
+        <Link href="/login" className="font-medium hover:underline" style={{ color: 'var(--accent)' }}>
+          Sign in
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }
