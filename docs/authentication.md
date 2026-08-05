@@ -45,20 +45,51 @@ File: `kratos/identity-schemas/user.schema.json`
 
 ---
 
+## SSO Login Flow (Central REXFORM IAM)
+
+File: `app/lib/auth.ts` — `rexformSsoProvider()`, a NextAuth OAuth provider (`id: 'rexform-sso'`), enabled only when `SSO_ISSUER_URL` / `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` are all set (`ssoEnabled`).
+
+1. User clicks "Continue with SSO" (or arrives via an IdP-initiated `?sso=1` deep link) → `signIn('rexform-sso')`
+2. NextAuth redirects to the IAM gateway (Ory Hydra) with PKCE + `state` checks
+3. On callback, the `userinfo` handler merges ID-token claims with a `/userinfo` call (the gateway's `openid`-only scope means the ID token alone may carry nothing but `sub`)
+4. `signIn` callback: looks up `user.email` against local Kratos identities via `findKratosByEmail()`
+   - **Match found** → `user.id` is rewritten to the existing Kratos identity's ID, so the SSO login lands on the same account/vault as password login (prevents duplicate accounts per email)
+   - **No match** → the user has no local Kratos identity at all; their profile is upserted into the `rexform-sso-users` CouchDB registry (`lib/sso-users.ts`) so the admin panel can still list/manage them
+5. `ensureUserVault(user.id)` provisions the vault on first SSO login (the Kratos after-register webhook never fires for SSO users)
+6. `jwt`/`session` callbacks set `token.provider` / `session.provider` to `'rexform-sso'`; note `session.kratosSessionToken` stays unset for SSO-only sessions
+
+**IdP-initiated retry:** `app/app/login/page.tsx` auto-restarts the OAuth flow once if it fails with a stale "state cookie was missing" error (typical for `?sso=1` deep links that skip the local flow-init step) — guarded by a `sessionStorage` flag so a genuinely broken flow doesn't loop forever.
+
+---
+
+## Account & Profile Management
+
+Routes: `app/app/api/user/profile` (GET/PATCH), `app/app/api/user/password` (POST).
+
+- **Profile** — first/last name and a username. Storage differs by account type:
+  - Local Kratos identity: name lives in `traits.name`, username lives in `identity.metadata_public.username` (not a traits-schema field — see [Kratos Identity Schema](#kratos-identity-schema) above, which has no `username` trait)
+  - SSO-only account (no local Kratos identity): both live in the `rexform-sso-users` registry doc; name is overwritten on every login by the IAM's claims, so the profile page shows it read-only
+  - Email is always read-only — it's the key used for SSO-to-local account linking and for admin/user lookups
+- **Password** (`POST /api/user/password`) — requires the current password. It's verified by driving a fresh Kratos **native login flow** server-side (`kratosFrontend.createNativeLoginFlow()` + `updateLoginFlow()`) rather than trusting the session, because an SSO-linked session carries no `kratosSessionToken` to check against — only the credentials provider sets one. SSO-only accounts (no Kratos identity) get no password section at all.
+
+---
+
 ## NextAuth JWT Structure
 
 Defined in `lib/auth.ts` and `app/types/next-auth.d.ts`:
 
 ```typescript
 // JWT token (server-side, encrypted in cookie)
-token.userId              // string — Kratos identity UUID
-token.kratosSessionToken  // string — Kratos session token
+token.userId              // string — Kratos identity UUID (or Hydra `sub` for an unlinked SSO user)
+token.kratosSessionToken  // string — Kratos session token (credentials login only; unset for SSO)
 token.isAdmin             // boolean — userId === ADMIN_USER_ID
+token.provider            // 'credentials' | 'rexform-sso'
 
 // Session object (returned to client via useSession() or getServerSession())
 session.user.id           // string — Kratos identity UUID
 session.user.isAdmin      // boolean
-session.kratosSessionToken // string — passed to CouchDB / Oathkeeper
+session.kratosSessionToken // string — passed to CouchDB / Oathkeeper; undefined for SSO-only sessions
+session.provider          // 'credentials' | 'rexform-sso'
 ```
 
 ---
@@ -77,15 +108,19 @@ session.kratosSessionToken // string — passed to CouchDB / Oathkeeper
 File: `app/middleware.ts`
 
 ```typescript
-matcher: ['/((?!login|register|api/auth|api/hooks|_next/static|_next/image|favicon\\.ico).*)']
+matcher: ['/((?!login|register|api/hooks|_next/static|_next/image|favicon\\.ico).*)']
 ```
+
+`api/auth` is intentionally **in** the matcher now (it was excluded previously) — the middleware needs to see those requests to rate-limit them. It's still effectively public: a `PUBLIC_PREFIXES` check (`/api/auth`, `/api/hooks`) short-circuits before the `withAuth` JWT check runs.
 
 | Status | Routes |
 |---|---|
 | **Protected** (requires valid JWT) | `/dashboard`, `/notes/*`, `/api/notes/*`, `/api/admin/*`, `/api/vaults`, `/api/user/*`, `/search`, `/settings`, and everything else not listed below |
 | **Public** (no auth required) | `/login`, `/register`, `/api/auth/*`, `/api/hooks/*`, `/_next/static`, `/_next/image`, `/favicon.ico` |
 
-Authenticated users hitting `/` are redirected to `/dashboard`.
+Authenticated users hitting `/` are redirected — admins to `/admin`, everyone else to `/notes` (not `/dashboard`).
+
+The middleware also enforces per-IP rate limits (see [Security → Rate Limiting](security.md#rate-limiting)) before the auth check runs.
 
 ---
 

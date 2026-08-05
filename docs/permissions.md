@@ -33,7 +33,8 @@ Keto APIs:
 | Delete notes | ✓ | ✓ | ✗ |
 | Switch to vault | ✓ | ✓ | ✓ |
 | LiveSync direct access | ✓ | ✓ | ✓ |
-| Manage members | — admin panel only — | | |
+| Manage members / invite links | ✓ | ✗ | ✗ |
+| Manage members (admin panel) | — any admin, regardless of role — | | |
 
 Write routes (`/create`, `/update`, `/delete`) return `403` when `canWrite === false` (viewer role).
 
@@ -62,7 +63,15 @@ const isViewer = !isEditor && await checkVaultAccess(vaultId, userId, 'viewer');
 
 ## Membership Management
 
-All membership changes go through the admin panel and are persisted in two places:
+Membership changes have two entry points — a dashboard self-service page for vault owners, and an admin panel for admins:
+
+1. **Dashboard self-service** — `app/app/dashboard/vaults/[vaultId]/page.tsx`, backed by `app/app/api/shared-vaults/[vaultId]/*`. The vault owner can:
+   - Add/change a member's role directly by email or user ID (`POST /api/shared-vaults/[vaultId]/members`)
+   - Generate a **single-use, 5-minute invite link** capped at editor/viewer (`POST /api/shared-vaults/[vaultId]/invite-link`) — the recipient previews it, then accepts at `/invite/[vaultId]/[token]`, which grants the role and consumes the token (`app/app/api/shared-vaults/[vaultId]/invite-link/[token]/route.ts`)
+   - Only owners can mutate the roster; any member can view it. The API blocks a sole owner from demoting themselves (would orphan the vault)
+2. **Admin panel** — `app/app/api/admin/vaults/[vaultId]/members/*` — an admin-side path to the same operations, independent of the dashboard flow
+
+Both paths write to the same two stores:
 
 1. **Keto** — the authoritative permission store
 2. **CouchDB `_security`** — kept in sync for LiveSync direct access
@@ -70,6 +79,8 @@ All membership changes go through the admin panel and are persisted in two place
 Every Keto mutation calls `syncVaultSecurity(vaultId)` immediately after, so both stores stay in sync.
 
 **Duplicate tuple prevention:** Before granting a role, the API routes revoke any existing role for the same user on the same vault. This prevents a user from appearing with two roles in Keto.
+
+**Not real-time collaboration:** shared-vault access is role-based read/write, synchronized via CouchDB replication (LiveSync-style, eventually consistent). There is no live multiplayer editing — no CRDT/OT merge, no presence indicators, no cursors. Two editors saving the same note concurrently can still conflict at the CouchDB document-revision level.
 
 ---
 
@@ -108,6 +119,7 @@ If they drift out of sync:
 | `grantVaultAccess(vaultId, userId, role)` | Write — port 4467 | Create a relation tuple |
 | `revokeVaultAccess(vaultId, userId, role)` | Write — port 4467 | Delete a relation tuple |
 | `checkVaultAccess(vaultId, userId, role)` | Read — port 4466 | Check if a specific tuple exists |
+| `getUserVaultRole(vaultId, userId)` | Read — port 4466 | Returns the caller's single role (`owner`\|`editor`\|`viewer`\|`null`) — checks owner→editor→viewer in order and short-circuits |
 | `getVaultMembers(vaultId)` | Read — port 4466 | List all tuples for a vault |
 | `getUserSharedVaults(userId)` | Read — port 4466 | List all vaults a user has any relation on |
 

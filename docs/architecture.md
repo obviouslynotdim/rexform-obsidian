@@ -74,6 +74,41 @@ sequenceDiagram
 
 ---
 
+## SSO Authentication Flow (central IAM)
+
+Alternative login path via the central REXFORM IAM (Ory Hydra behind the `rexform-ory-dev` gateway), wired in as an additional NextAuth OAuth provider (`rexform-sso`). Runs alongside the Kratos credentials flow above, not instead of it.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant NJ as Next.js (NextAuth)
+    participant HY as Central IAM (Hydra gateway)
+    participant KR as Kratos Admin API
+
+    U->>NJ: GET /login (or IdP-initiated ?sso=1 deep link)
+    NJ->>HY: Redirect to authorization endpoint (scope=openid, PKCE + state)
+    U->>HY: Authenticate at central IAM
+    HY-->>NJ: Redirect back with code
+    NJ->>HY: Exchange code → id_token, then GET /userinfo
+    HY-->>NJ: { sub, email, name }
+
+    NJ->>NJ: signIn() callback — account.provider === 'rexform-sso'
+    NJ->>KR: findKratosByEmail(email)
+    alt Local Kratos identity exists for this email
+        KR-->>NJ: existing identity
+        NJ->>NJ: user.id = existing Kratos identity id (dedup — linked account)
+    else No local identity
+        NJ->>NJ: user.id = Hydra `sub` (SSO-only user, no local Kratos identity)
+        NJ->>NJ: upsertSsoUser() → rexform-sso-users registry (CouchDB)
+    end
+    NJ->>NJ: ensureUserVault(user.id) — provision vault if missing (after-register webhook never fires for SSO)
+    NJ-->>U: Set-Cookie: next-auth.session-token (token.provider = 'rexform-sso')
+```
+
+Note: on stale OAuth state cookie, the client auto-retries the flow once rather than surfacing an error.
+
+---
+
 ## Vault Isolation
 
 How different users are routed to different CouchDB databases.
@@ -81,6 +116,7 @@ How different users are routed to different CouchDB databases.
 ```mermaid
 flowchart TD
     UA[User A\nid: abc-123] -->|getUserVaultName| VA[(vault-abc-123)]
+    UA -->|createPersonalVault| VE[(uvault-abc-123-notes)]
     UB[User B\nid: def-456] -->|getUserVaultName| VB[(vault-def-456)]
     ADM[Admin User\nADMIN_USER_ID match] -->|getAdminVaultName| VO[(obsidian)]
     UC[User C] -->|Keto: owner| VS[(vault-shared-xyz789)]
@@ -88,10 +124,13 @@ flowchart TD
     UE[User E] -->|Keto: viewer\ncanWrite=false| VS
 
     VA -->|_security.members=[abc-123]| CDB[(CouchDB)]
+    VE -->|_security.members=[abc-123]| CDB
     VB -->|_security.members=[def-456]| CDB
     VO -->|_security.admins=[admin]| CDB
     VS -->|_security.members=[userC,userD,userE]| CDB
 ```
+
+Extra personal vaults (`uvault-<userId>-<slug>`, up to `MAX_PERSONAL_VAULTS`) are owned the same way as the primary vault — ownership is a DB-name prefix check (`getPersonalVaultPrefix(userId)`), not a Keto tuple. Only `vault-shared-*` databases are Keto-governed.
 
 ---
 
@@ -146,7 +185,10 @@ flowchart TD
     VP -->|Yes| PV{isPersonalVault?}
     PV -->|Yes — matches vault-userId| RET2[return db=vaultParam, canWrite=true]
 
-    PV -->|No — vault-shared-*| KETO[checkVaultAccess × 3\nKeto GET /relation-tuples/check]
+    PV -->|No| UVP{starts with\nuvault-userId- prefix?}
+    UVP -->|Yes — owner by DB-name prefix, no Keto| RET2B[return db=vaultParam, canWrite=true]
+
+    UVP -->|No — vault-shared-*| KETO[checkVaultAccess × 3\nKeto GET /relation-tuples/check]
     KETO --> KR{Role found?}
     KR -->|owner| RET3[canWrite=true]
     KR -->|editor| RET4[canWrite=true]
@@ -155,6 +197,7 @@ flowchart TD
 
     RET1 --> EXEC[Execute CouchDB operation\nfetchFromVault admin creds]
     RET2 --> EXEC
+    RET2B --> EXEC
     RET3 --> EXEC
     RET4 --> EXEC
     RET5 --> CW{canWrite required?}
@@ -242,3 +285,5 @@ Obsidian LiveSync plugin connects:
 | `echo y \| keto migrate up` in Dockerfile | Keto v0.11 has no `--yes` flag; prompts interactively otherwise |
 | `syncVaultSecurity()` on every Keto change | LiveSync needs `_security.members.names` in sync with Keto tuples |
 | Admin credentials for all server-side CouchDB calls | Consistent, never expire; auth already enforced at Next.js API layer |
+| Extra personal vaults (`uvault-<userId>-*`) checked by DB-name prefix, not Keto | Personal ownership doesn't need a relation-tuple round trip; Keto is reserved for `vault-shared-*` |
+| SSO logins linked to an existing local Kratos identity by email | Prevents duplicate accounts/vaults for one person using both password login and central-IAM SSO |

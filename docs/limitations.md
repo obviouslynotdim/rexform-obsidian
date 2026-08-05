@@ -18,9 +18,9 @@
 
 ---
 
-## Shipped Since This List Was First Written (Phases 6–23)
+## Shipped Since This List Was First Written (Phases 6–29)
 
-Web workspace with tabs and resizable panels, sidebar file tree with folders/drag-and-drop/context menus, CodeMirror 6 Live Preview + Source editor modes, wikilinks with autocomplete + backlinks + D3 knowledge graph, Ctrl+K full-text quick switcher, YAML frontmatter round-trip + Properties panel, collapsible headings, Mermaid diagrams, onboarding flow, settings modal with i18n (en/kh), community plugin system, and native plugins: Kanban boards, Calendar, GitLab Work Items, LiveSync, PDF Export, Speech (read aloud + dictation).
+Web workspace with tabs and resizable panels, sidebar file tree with folders/drag-and-drop/context menus, CodeMirror 6 Live Preview + Source editor modes, wikilinks with autocomplete + backlinks + D3 knowledge graph (with an Analytics sidebar and resizable note-preview panel), a `/search` full-page route alongside the Ctrl+K quick switcher, YAML frontmatter round-trip + Properties panel, collapsible headings, Mermaid diagrams, onboarding flow, settings modal with i18n (en/kh, settings UI only), community plugin system with per-plugin settings pages, and native plugins: Kanban boards, Calendar, GitLab Work Items, LiveSync, PDF Export, Speech (read aloud + dictation). Also shipped: personal "My Vaults" + shared-vault collaboration with invite links, central-IAM SSO login alongside Kratos, a unified admin panel (local + SSO-only identities, shared-vaults table), and a Profile settings page (name/username edit, password change).
 
 ---
 

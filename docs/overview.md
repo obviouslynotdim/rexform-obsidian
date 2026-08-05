@@ -9,14 +9,16 @@ Users can connect the Obsidian desktop or mobile app directly to their vault via
 **Core capabilities:**
 
 - **Private vaults** — one isolated CouchDB database per user, provisioned automatically on registration
-- **Shared vaults** — collaborative workspaces with owner / editor / viewer roles enforced by Ory Keto
-- **Web workspace** — sidebar file tree (folders, drag-and-drop, context menus), tabs per vault, resizable panels, Ctrl+K quick switcher with full-text search
+- **Shared vaults** — collaborative workspaces with owner / editor / viewer roles enforced by Ory Keto; this is shared read/write access with LiveSync-style eventual consistency, not real-time co-editing
+- **Authentication** — Kratos email/password sessions plus an optional central-IAM SSO login (email-linked to an existing local identity, or tracked as an SSO-only account if none exists)
+- **Web workspace** — sidebar file tree (folders, drag-and-drop, context menus), tabs per vault, resizable panels, Ctrl+K quick switcher with full-text search, and a separate full-page `/search` route
 - **Editor** — Reading, Live Preview (CodeMirror 6 inline WYSIWYG), and Source modes; YAML frontmatter round-trip with a collapsible Properties panel; collapsible headings; Mermaid diagrams
-- **Wikilinks & graph** — `[[wikilinks]]` with autocomplete, backlinks panel, vault-wide and folder-scoped D3 graph
-- **Plugins** — Obsidian-style community plugin browser; native plugins: Kanban (markdown-backed boards, Obsidian Kanban-plugin compatible), Calendar, GitLab Work Items, Self-hosted LiveSync, PDF Export, Speech (read aloud + dictation)
+- **Wikilinks & graph** — `[[wikilinks]]` with autocomplete, backlinks panel, vault-wide and folder-scoped D3 graph with a collapsible Analytics sidebar (note/link/orphan counts, most-connected list) and a resizable note-preview panel
+- **Plugins** — Obsidian-style community plugin browser with per-plugin settings pages; native plugins: Kanban (markdown-backed boards, Obsidian Kanban-plugin compatible), Calendar, GitLab Work Items, Self-hosted LiveSync, PDF Export (renders Reading view through the browser's print dialog), Speech (Web Speech API read-aloud + dictation)
 - **LiveSync integration** — per-user CouchDB credentials for direct Obsidian app sync
-- **Admin panel** — user management, vault provisioning, suspension, shared vault administration
-- **Obsidian-remote** — browser-based Obsidian desktop for admin vault browsing
+- **Profile & settings** — per-user profile (name, username, password change with current-password re-verification; SSO-only accounts get a read-only name and no password section), settings modal (editor, sync, plugins, language — English/Khmer, scoped to the settings UI)
+- **Admin panel** — a single searchable/paginated table unifying local-Kratos and SSO-only user identities with stats, suspend/reactivate, per-user vault management, and a separate shared-vaults admin table
+- **Obsidian-remote** — browser-based Obsidian desktop (KasmVNC) for admin vault browsing
 
 See [Web App](web-app.md) for the frontend feature reference.
 

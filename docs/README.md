@@ -1,6 +1,6 @@
 # REXFORM Notes — Technical Documentation
 
-Multi-user, Obsidian-compatible note-taking platform with per-user CouchDB vaults, shared vault collaboration, direct LiveSync support, and a full web editor (live preview, wikilinks, graph, Kanban boards, calendar, community-style plugins).
+Multi-user, Obsidian-compatible note-taking platform with per-user CouchDB vaults, shared vault collaboration, direct LiveSync support, Kratos + central-IAM SSO authentication, and a full web editor (live preview, wikilinks, graph, Kanban boards, calendar, GitLab, PDF export, speech, and other native plugins).
 
 ---
 
@@ -21,6 +21,7 @@ Multi-user, Obsidian-compatible note-taking platform with per-user CouchDB vault
 | 11 | [Environment Variables](environment.md) | Complete env var reference per service |
 | 12 | [Deployment Guide](deployment.md) | Step-by-step Railway deployment |
 | 13 | [Limitations & Roadmap](limitations.md) | Known gaps, planned work |
+| 14 | [Setting Up Obsidian on Railway](setting-up.md) | Standalone `obsidian-remote` (KasmVNC) + `couch-db` test setup, outside the full app stack |
 
 ---
 

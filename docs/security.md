@@ -55,6 +55,22 @@ After rotation, update these Railway environment variables:
 
 ---
 
+## Rate Limiting
+
+File: `app/lib/rate-limit.ts`, enforced in `app/middleware.ts` before the auth check runs.
+
+In-memory, per-IP, fixed-window counters (`Map<key, { count, resetAt }>`) — no external store. Suitable for the current single-instance Railway deployment; a redeploy resets all counters, and a multi-instance deployment would need a shared store (e.g. Redis) since each instance keeps its own map.
+
+| Bucket | Limit | Window | Applies to |
+|---|---|---|---|
+| `auth-write:<ip>` | 10 | 60s | `POST`/`PUT`/`DELETE`/`PATCH` to `/api/auth/*` (login/registration attempts) |
+| `auth-read:<ip>` | 120 | 60s | Other methods to `/api/auth/*` (flow inits, session polling) |
+| `write:<ip>` | 600 | 60s | `POST`/`PUT`/`DELETE`/`PATCH` to any other `/api/*` route (note saves, moves, deletes) |
+
+Reads outside `/api/auth/*` are not rate-limited. IP is taken from `req.ip` or the first `X-Forwarded-For` entry — note this means users behind the same NAT/proxy (e.g. campus wifi) share a bucket, which is why the non-auth write limit is generous. A limited request gets `429` with a `Retry-After` header.
+
+---
+
 ## LiveSync End-to-End Encryption
 
 Not currently configured. The Obsidian Self-hosted LiveSync plugin supports E2E encryption where note content is encrypted in the browser before being sent to CouchDB. Enabling this:
@@ -72,7 +88,7 @@ Recommended only for deployments where note confidentiality from the server oper
 
 - [ ] Rotate all default secrets — `NEXTAUTH_SECRET`, `COUCHDB_ADMIN_PASSWORD`, `SECRETS_DEFAULT`, `SECRETS_COOKIE` — must be unique, randomly generated values
 - [ ] Configure a real SMTP provider in `kratos.yml` and enforce email verification before vault access
-- [ ] Add rate limiting on `/api/auth/*` and note write routes
+- [x] Rate limiting on `/api/auth/*` and note write routes — implemented in-memory (see [Rate Limiting](#rate-limiting) above); swap for a shared store before scaling to multiple instances
 - [ ] Verify Keto admin port (4467) and Kratos admin port (4434) are not publicly accessible
 - [ ] Decide whether `livesync_password` stored in plaintext is acceptable for your threat model
 - [ ] Consider enabling LiveSync E2E encryption if note confidentiality from the server is required

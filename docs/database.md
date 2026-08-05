@@ -154,7 +154,7 @@ Two per-user documents live in the user's personal vault (`vault-<userId>`), rea
 }
 ```
 
-Plugin IDs come from the static catalog in `lib/plugin-registry.ts` (`kanban`, `calendar`, `livesync`, `gitlab`). A legacy `{ "plugins": { "id": true } }` shape is auto-migrated on read.
+Plugin IDs come from the static catalog in `lib/plugin-registry.ts` (`kanban`, `calendar`, `gitlab`, `livesync`, `pdf`, `speech`). A legacy `{ "plugins": { "id": true } }` shape is auto-migrated on read.
 
 **`rexform-settings`** — user preferences:
 
@@ -206,18 +206,40 @@ kanban-plugin: basic
 
 ---
 
-## Shared Vault Metadata Document
+## Vault Metadata Document
 
-Each shared vault contains one metadata document:
+Every shared vault and every extra personal vault ("My Vaults") contains one metadata document (a user's *primary* `vault-<userId>` vault does not have one):
 
 ```json
 {
   "_id": "rexform-metadata",
   "vaultName": "Team Research",
   "createdBy": "957e5bcc-eb3f-442d-b5ec-0f47cac3282c",
+  "createdAt": 1748980000000,
+  "kind": "personal"
+}
+```
+
+`kind: "personal"` is set only for extra personal vaults (`createPersonalVault()` in `lib/vault.ts`); shared vaults omit it. `vaultName` is the display name — renaming a vault (`PATCH /api/vaults/[vaultId]` or `PATCH /api/shared-vaults/[vaultId]`) only rewrites this doc, never the (immutable) database name.
+
+---
+
+## Vault Invite Link Document
+
+Created by `POST /api/shared-vaults/[vaultId]/invite-link`, stored inside the shared vault itself:
+
+```json
+{
+  "_id": "rexform-invite-<48-char hex token>",
+  "token": "<same token>",
+  "role": "editor",
+  "expiresAt": 1748980300000,
+  "createdBy": "957e5bcc-eb3f-442d-b5ec-0f47cac3282c",
   "createdAt": 1748980000000
 }
 ```
+
+Single-use and short-lived: `expiresAt` is 5 minutes after creation, and the doc is deleted on accept (`consumeVaultInvite()`) or replaced whenever a new link is generated for the same vault (only one live invite link per vault). Not filtered explicitly by `isVaultNote()` — excluded implicitly because it has neither `type: 'plain'` nor a `.md` `path`.
 
 ---
 
@@ -225,9 +247,10 @@ Each shared vault contains one metadata document:
 
 | Pattern | Example | Owner |
 |---|---|---|
-| `obsidian` | `obsidian` | Admin user (`ADMIN_USER_ID`) |
-| `vault-<userId>` | `vault-957e5bcc-eb3f-442d-b5ec-0f47cac3282c` | Regular user |
-| `vault-shared-<16 hex>` | `vault-shared-a1b2c3d4e5f6a7b8` | Shared vault (Keto-governed) |
+| `obsidian` | `obsidian` | Legacy single-tenant admin vault (`ADMIN_USER_ID`). The only vault kind ever proxied through Oathkeeper, and only for reads — writes always bypass it (see `fetchFromVault()` in `lib/couchdb.ts`). |
+| `vault-<userId>` | `vault-957e5bcc-eb3f-442d-b5ec-0f47cac3282c` | Regular user's primary personal vault |
+| `uvault-<userId>-<slug>` | `uvault-957e5bcc...-research` | Extra personal vault ("My Vaults") — prefix-based ownership, no Keto involved; up to `MAX_PERSONAL_VAULTS` (5) per user |
+| `vault-shared-<16 hex>` | `vault-shared-a1b2c3d4e5f6a7b8` | Shared vault — Keto-governed (`owner`/`editor`/`viewer`), up to `MAX_SHARED_VAULTS_OWNED` (5) owned per user |
 | `_users` | `_users` | CouchDB system — stores LiveSync credentials |
 
 ---

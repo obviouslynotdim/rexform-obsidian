@@ -18,9 +18,9 @@ The primary web application. Serves all UI pages and implements every API route.
 
 **Responsibilities:**
 - Renders notes UI (dashboard, sidebar, editor, settings, admin panel)
-- Authenticates users via NextAuth → Kratos CredentialsProvider
+- Authenticates users via NextAuth → Kratos CredentialsProvider (password) and, optionally, a `rexform-sso` OAuth provider (central IAM)
 - Proxies all CouchDB reads and writes on behalf of the logged-in user
-- Provisions per-user CouchDB vaults and LiveSync credentials on registration
+- Provisions per-user CouchDB vaults and LiveSync credentials on registration (or on first SSO login)
 - Enforces shared vault permissions by querying Keto before every vault resolve
 
 **Required environment variables:**
@@ -31,6 +31,7 @@ COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD
 COUCHDB_PROXY_URL
 ADMIN_USER_ID
 KETO_READ_URL, KETO_WRITE_URL
+SSO_ISSUER_URL, SSO_CLIENT_ID, SSO_CLIENT_SECRET   (optional — all three enable the rexform-sso login button)
 ```
 
 ---
@@ -53,9 +54,11 @@ The sole persistence layer for all notes. Each user's notes live in an isolated 
 | Pattern | Example | Owner |
 |---|---|---|
 | `obsidian` | `obsidian` | Admin user |
-| `vault-<userId>` | `vault-957e5bcc-...` | Regular user |
+| `vault-<userId>` | `vault-957e5bcc-...` | Regular user (primary vault) |
+| `uvault-<userId>-<slug>` | `uvault-957e5bcc-...-notes` | Regular user (extra personal vault, up to `MAX_PERSONAL_VAULTS`; ownership is a DB-name prefix check, not Keto) |
 | `vault-shared-<16hex>` | `vault-shared-a1b2c3d4...` | Shared (Keto-governed) |
 | `_users` | `_users` | CouchDB system — LiveSync credentials |
+| `rexform-sso-users` | `rexform-sso-users` | Registry of SSO-only users with no local Kratos identity |
 
 **Important:** Railway's internal hostname (`couch-db.railway.internal`) silently drops HTTP Basic auth headers. All admin operations in `lib/vault.ts` and `lib/couchdb-credentials.ts` use `COUCHDB_URL` (the public HTTPS domain).
 
@@ -188,7 +191,7 @@ Exclusive data store for Ory Keto. `DATABASE_URL` is auto-exposed by Railway and
 
 | Field | Value |
 |---|---|
-| Technology | `lscr.io/linuxserver/obsidian:latest` |
+| Technology | Custom Dockerfile (`FROM lscr.io/linuxserver/obsidian:latest`) — root `Dockerfile` / `infra/Dockerfile` |
 | Railway Service ID | `433b5fb9-...` |
 | Port | 3001 (HTTPS, self-signed cert) |
 | Persistent volume | `/config` |

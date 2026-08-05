@@ -12,7 +12,7 @@ Services must be deployed in dependency order:
 5. rexform-keto       needs Postgres (DSN), runs migrate up on start
 6. oathkeeper         needs couch-db (upstream) + rexform-kratos (session check)
 7. rexform-notes      needs all of the above
-8. obsidian-remote    independent, deploy any time
+8. obsidian-remote    independent, deploy any time (admin-only KasmVNC vault-inspection tool; not required for core app)
 ```
 
 ---
@@ -99,7 +99,7 @@ curl https://oathkeeper-production-316a.up.railway.app/_up
 
 ### 7. `obsidian-remote`
 
-- Image: `lscr.io/linuxserver/obsidian:latest`
+- Uses the custom Dockerfile at repo root (`FROM lscr.io/linuxserver/obsidian:latest`) — runs the real Obsidian desktop app in-browser via KasmVNC, used as an admin-side vault-inspection / plugin-testing tool. Independent of the app's auth stack — not required for core `rexform-notes` functionality.
 - Add persistent volume at `/config`
 - Set port to `3001`
 - Set `PUID`, `PGID`, `CUSTOM_USER`, `PASSWORD`
@@ -126,7 +126,7 @@ curl https://oathkeeper-production-316a.up.railway.app/_up
 | CouchDB admin operations return 401 | Using `couch-db.railway.internal` for admin ops | Use `COUCHDB_URL` (public HTTPS domain) for all admin operations |
 | Keto `migrate up` hangs on deploy | v0.11 prompts interactively | Dockerfile must use `echo y \| keto migrate up` |
 | Keto `DSN` env var resolves to empty | Compound variable interpolation in Railway fails | Use `${{Postgres.DATABASE_URL}}` as a single standalone value |
-| Oathkeeper returns 401 on reads | Kratos session token expired | Expected for stale sessions — writes already bypass Oathkeeper |
+| Oathkeeper returns 401 on `obsidian`-vault reads | Kratos session token expired | Expected for stale sessions — writes and all other vault reads already bypass Oathkeeper entirely |
 | After-register webhook fails (502) | `rexform-notes` not deployed yet when Kratos fires the hook | Deploy `rexform-notes` before registering the first user |
 | `_users` database not found | CouchDB 3 does not auto-create it | `ensureUsersDb()` handles this automatically on first credential provision |
 | Shared vault member list empty | `getVaultMembers()` using Write URL | Use Read URL (port 4466) for all `GET /relation-tuples` calls |

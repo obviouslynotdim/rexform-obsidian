@@ -1,8 +1,10 @@
 # Vault Management
 
-## Personal Vault Creation
+There are three kinds of vault: the legacy single-tenant `obsidian` DB (admin-only, the only vault ever proxied through Oathkeeper — and only for reads), each user's primary `vault-<userId>` (personal, provisioned automatically), and two DB-name-prefixed opt-in kinds a user creates themselves: extra personal vaults (`uvault-<userId>-<slug>`, "My Vaults") and shared vaults (`vault-shared-<hex>`, Keto-governed). CouchDB LiveSync provides offline/multi-device sync on top of any of them.
 
-Triggered automatically by the Kratos after-registration webhook (`/api/hooks/kratos/after-register`). Can also be triggered manually by an admin via `POST /api/admin/users/[id]/provision`.
+## Personal Vault Creation (primary vault)
+
+Triggered automatically by the Kratos after-registration webhook (`/api/hooks/kratos/after-register`), or on first login for SSO-only users (`ensureUserVault()` in the NextAuth `signIn` callback, since the webhook never fires for them). Can also be triggered manually by an admin via `POST /api/admin/users/[id]/provision`.
 
 **Steps in `createUserVault(userId)` — `lib/vault.ts`:**
 
@@ -11,13 +13,36 @@ Triggered automatically by the Kratos after-registration webhook (`/api/hooks/kr
 3. Seed 3 starter notes (parent + chunk docs for each)
 4. `provisionUserCredentials(userId)` — create `_users` doc, update `_security.members.names = [userId]`
 
+`ensureUserVault(userId)` wraps this with a `HEAD` existence check first — used wherever the vault must exist but must NOT be unconditionally re-provisioned (re-running `createUserVault` rotates the user's LiveSync password every time).
+
+---
+
+## Extra Personal Vault Creation ("My Vaults")
+
+User-facing, via `POST /api/vaults/create`. Reuses the shared-vault machinery (isolated CouchDB DB + Keto owner tuple) but with nobody else invited.
+
+**Steps in `createPersonalVault(userId, name, template)` — `lib/vault.ts`:**
+
+1. DB name is `uvault-<userId>-<slug(name)>`; on a slug collision (412), retries up to 3 times with a random 6-char suffix appended
+2. `PUT /<vaultId>/_security` — lock to admin only initially
+3. `PUT /rexform-metadata` — store `{ vaultName, kind: 'personal', createdBy, createdAt }`
+4. If `template === 'starter'` (the default; `'blank'` skips this): seed 3 starter notes
+5. `grantVaultAccess(vaultId, userId, 'owner')` — Keto write, then `syncVaultSecurity(vaultId)`
+
+Capped at `MAX_PERSONAL_VAULTS` (5) extra vaults per user, enforced in the route via `countPersonalVaults(userId)` (counts CouchDB DBs by prefix, not a stored counter).
+
+Rename (`PATCH /api/vaults/[vaultId]`) only rewrites the `rexform-metadata` doc's `vaultName` — the DB name never changes. Both rename and delete require `vaultId` to start with the caller's own `uvault-<userId>-` prefix.
+
 ---
 
 ## Shared Vault Creation
 
-Admin-only via `POST /api/admin/vaults`.
+Two entry points share the same `createSharedVault(name, creatorUserId)` in `lib/vault.ts`:
 
-**Steps in `createSharedVault(name, creatorUserId)` — `lib/vault.ts`:**
+- `POST /api/admin/vaults` — admin-only
+- `POST /api/shared-vaults` — user-facing; any authenticated user may create one (capped at `MAX_SHARED_VAULTS_OWNED` (5) vaults owned per user). After creation it additionally verifies the owner tuple actually landed in Keto (`checkVaultAccess`) and rolls back — deletes the just-created vault — if it didn't, since `createSharedVault` itself only warns on a failed Keto grant and an ungranted vault would otherwise be an invisible, ownerless orphan.
+
+**Steps in `createSharedVault(name, creatorUserId)`:**
 
 1. Generate `vaultId = "vault-shared-" + 16 random hex chars`
 2. `PUT /vault-shared-<hex>` — create CouchDB database
@@ -26,6 +51,29 @@ Admin-only via `POST /api/admin/vaults`.
 5. Seed 3 starter notes
 6. `grantVaultAccess(vaultId, creatorUserId, 'owner')` — Keto write
 7. `syncVaultSecurity(vaultId)` — update CouchDB `_security.members.names` from Keto
+
+---
+
+## Shared Vault Membership (user-facing)
+
+Managed via `/api/shared-vaults/[vaultId]/members*`, gated by the caller's own Keto role rather than `isAdminUser()` (parallel to, but separate from, the admin routes under `/api/admin/vaults/[vaultId]/members*`).
+
+- **List** (`GET .../members`) — any member (any role) can view the roster + emails.
+- **Invite / change role** (`POST .../members`) — owner only; resolves an email or user id via `resolveUserIdentifier()`, revokes any existing tuple for that user first (one role per user), then grants the new role and syncs `_security`. Blocks a sole owner from demoting themselves.
+- **Remove / leave** (`DELETE .../members/[userId]`) — owners can remove anyone; non-owners can only remove themselves ("leave vault"). Cannot remove the last remaining owner. Clears the `rexform-active-vault` cookie if the caller left the vault they were viewing.
+
+### Invite links
+
+`POST /api/shared-vaults/[vaultId]/invite-link` (owner only) generates a single-use link instead of requiring a known identifier:
+
+1. `createVaultInviteLink(vaultId, role, createdBy)` — role restricted to `editor`/`viewer` (link invites cannot grant ownership)
+2. Deletes any invite doc still active for the vault first — only one live link per vault at a time
+3. Stores a `rexform-invite-<token>` doc with a 5-minute `expiresAt` (`INVITE_TTL_MS`)
+
+Acceptance is a separate preview/accept pair at `/api/shared-vaults/[vaultId]/invite-link/[token]`:
+
+- `GET` — preview (vault name, role, expiry, whether the caller is already a member) without consuming the token
+- `POST` — accept: grants the invite's role via Keto, syncs `_security`, then deletes the invite doc (`consumeVaultInvite`). If the caller is already a member, the existing (possibly higher) role is left untouched but the token is still consumed so it can't be reused.
 
 ---
 
@@ -82,12 +130,15 @@ If `KETO_READ_URL` is not set, `syncVaultSecurity` is a no-op (exits silently).
 
 `resolveVault(session, vaultParam?)` in `lib/active-vault.ts` is called by every note API route:
 
-1. If `vaultParam` is absent: read `rexform-active-vault` cookie → return `{ db: cookieValue, canWrite: true }`
-2. If `vaultParam` matches the user's personal vault: return `{ db, canWrite: true }`
-3. If `vaultParam` is `vault-shared-*`: query Keto for the user's role
+1. If `vaultParam` is absent: falls back to `getActiveVault(session)` (reads the `rexform-active-vault` cookie, validating it first — see below) → `{ db, canWrite: true }`
+2. If `vaultParam` matches the user's primary personal vault: return `{ db, canWrite: true }`
+3. If `vaultParam` starts with the user's extra-personal-vault prefix (`uvault-<userId>-`): return `{ db, canWrite: true }` — ownership is encoded in the DB name, no Keto lookup needed
+4. If `vaultParam` is `vault-shared-*`: query Keto for the user's role
    - `owner` or `editor` → `canWrite: true`
    - `viewer` → `canWrite: false`
-   - No role / Keto error → fallback to `rexform-active-vault` cookie
+   - No role / Keto error / `KETO_READ_URL` unset → fallback to `getActiveVault(session)`
+
+`getActiveVault(session)` itself only trusts the `rexform-active-vault` cookie if it names the user's personal vault, an owned `uvault-` vault, or a shared vault the user has any Keto role on (`isVaultAccessible()`); otherwise it defaults to the user's primary vault.
 
 ---
 
@@ -124,12 +175,23 @@ The user account remains in Kratos; an admin can re-provision the vault without 
 
 ---
 
+### Extra Personal / User-Facing Shared Vault Delete — `deletePersonalVault(vaultId)`
+
+A single generic helper in `lib/vault.ts` backs three routes: `DELETE /api/vaults/[vaultId]` (extra personal vault, owner-only via prefix check), `DELETE /api/shared-vaults/[vaultId]` (shared vault, owner-only via Keto role check), and the admin shared-vault delete above reimplements the same two steps inline.
+
+1. `getVaultMembers(vaultId)` + revoke all Keto tuples for it (no-op/warns if Keto is unreachable — does not block deletion)
+2. `DELETE /<vaultId>` in CouchDB (404 treated as success)
+
+Both user-facing routes also clear the `rexform-active-vault` cookie if it pointed at the vault just deleted.
+
+---
+
 ## Vault Switching (User-Facing)
 
 Users switch vaults via the vault switcher in the sidebar. The active vault is stored in an httpOnly cookie `rexform-active-vault`. On switch:
 
 1. `POST /api/vaults` with `{ vault: vaultName }`
-2. Server validates the vault is accessible (personal vault or Keto-confirmed shared vault)
+2. Server validates the vault is accessible (primary vault, an owned `uvault-` extra personal vault, or a Keto-confirmed shared vault) via `getAccessibleVaults()`
 3. Sets `rexform-active-vault` cookie
 4. UI re-fetches the notes list for the new vault
 

@@ -9,6 +9,7 @@
 | `NEXT_PUBLIC_KRATOS_PUBLIC_URL` | ✓ | Kratos public API URL — accessible from the browser | `https://rexform-kratos-production.up.railway.app` |
 | `KRATOS_ADMIN_URL` | ✓ | Kratos admin API URL — server-side only | `http://kratos.railway.internal:4434` |
 | `COUCHDB_URL` | ✓ | CouchDB **public** URL — used for admin operations (internal URL drops auth headers) | `https://couch-db-production.up.railway.app` |
+| `COUCHDB_INTERNAL_URL` | Optional | Fallback used only if `COUCHDB_URL` is unset (local dev) | `http://localhost:5984` |
 | `COUCHDB_USERNAME` | ✓ | CouchDB admin username | `admin` |
 | `COUCHDB_PASSWORD` | ✓ | CouchDB admin password | `<secret>` |
 | `COUCHDB_DATABASE` | Optional | Default database name | `obsidian` |

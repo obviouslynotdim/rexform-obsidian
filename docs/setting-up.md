@@ -2,6 +2,8 @@
 
 > Self-hosted Obsidian using `lscr.io/linuxserver/obsidian:latest` on Railway with CouchDB LiveSync
 
+> **Scope note:** this walks through the standalone `obsidian-remote` + `couch-db` pair in isolation — useful for testing the raw LinuxServer/Obsidian image against CouchDB LiveSync. In the full REXFORM platform, `obsidian-remote` is one of 8 Railway services (see [Services](services.md#obsidian-remote) / [Deployment Guide](deployment.md)): a KasmVNC-based, admin-only vault-inspection tool, not required for the core app. Regular users don't connect to the shared `admin` / `obsidian123` database below — they sync with per-user CouchDB credentials provisioned automatically per vault (see [Vault Management](vaults.md#per-user-couchdb-credential-provisioning)).
+
 ---
 
 ## Services overview
@@ -29,7 +31,7 @@ lscr.io/linuxserver/obsidian:latest
 | Port | Use |
 |------|-----|
 | `3000` | HTTP |
-| `3001` | HTTPS (recommended) |
+| `3001` | HTTPS (recommended) — served via KasmVNC, the in-browser remote-desktop layer that renders the actual Obsidian desktop app |
 
 ### Environment variables
 ```
@@ -103,6 +105,8 @@ After Obsidian is running and CouchDB is initialized:
 5. Click **Test and Save** → **Replicate now**
 
 Repeat on every device (phone, laptop, desktop) to keep all vaults in sync.
+
+> The credentials above (`admin` / `obsidian123`, database `obsidian`) are for this standalone test setup only. In production, each user gets their own database and non-admin CouchDB user (`vault-<userId>` and matching credentials), issued from Settings → Sync in the web app — see [Vault Management](vaults.md).
 
 ---
 
