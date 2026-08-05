@@ -72,7 +72,7 @@ export default function Navbar() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {session.user?.email}
+              {session.user?.username || session.user?.email}
             </span>
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}

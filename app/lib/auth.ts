@@ -95,6 +95,7 @@ export const authOptions: NextAuthOptions = {
             id: session.identity?.id ?? '',
             email: credentials.email,
             kratosSessionToken: session_token,
+            username: (session.identity?.metadata_public as any)?.username ?? null,
           };
         } catch (err: any) {
           const msg =
@@ -123,6 +124,7 @@ export const authOptions: NextAuthOptions = {
             const existing = await findKratosByEmail(user.email.toLowerCase());
             if (existing) {
               user.id = existing.userId;
+              user.username = existing.username ?? null;
               linkedToLocal = true;
             }
           } catch (e) {
@@ -144,7 +146,7 @@ export const authOptions: NextAuthOptions = {
         // identity and show up in the regular user list.
         if (!linkedToLocal) {
           try {
-            await upsertSsoUser(user.id, user.email ?? null, user.name ?? null);
+            user.username = await upsertSsoUser(user.id, user.email ?? null, user.name ?? null);
           } catch (e) {
             console.error('[auth] SSO user registry upsert failed:', e);
           }
@@ -152,18 +154,26 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
       if (user) {
         token.userId = user.id;
         token.kratosSessionToken = user.kratosSessionToken;
         token.isAdmin = isAdminUser(user.id);
         token.provider = account?.provider ?? 'credentials';
+        token.username = user.username ?? undefined;
+      }
+      // Profile settings calls useSession().update({ username }) right after
+      // a successful save so the navbar reflects it immediately, without
+      // waiting on the next full sign-in to re-derive it.
+      if (trigger === 'update' && session && 'username' in session) {
+        token.username = session.username || undefined;
       }
       return token;
     },
     async session({ session, token }) {
       session.user.id = token.userId ?? '';
       session.user.isAdmin = token.isAdmin ?? false;
+      session.user.username = token.username ?? null;
       session.kratosSessionToken = token.kratosSessionToken;
       session.provider = token.provider;
       return session;

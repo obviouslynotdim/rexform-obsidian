@@ -51,6 +51,7 @@ export default function RegisterPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState('');
@@ -81,7 +82,7 @@ export default function RegisterPage() {
       const res = await fetch('/api/auth/kratos/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flowId, email, password, firstName, lastName }),
+        body: JSON.stringify({ flowId, email, password, firstName, lastName, username }),
       });
       const data = await res.json();
 
@@ -191,6 +192,16 @@ export default function RegisterPage() {
             required
             placeholder="you@example.com"
             error={errors['traits.email']}
+          />
+
+          <Input
+            label="Username (optional)"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="your username..."
+            hint="Letters, numbers, dots, underscores or hyphens — 3 to 32 characters."
+            error={errors['username']}
           />
 
           <div>

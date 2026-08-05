@@ -39,7 +39,7 @@ export async function upsertSsoUser(
   userId: string,
   email: string | null,
   name: string | null
-): Promise<void> {
+): Promise<string | null> {
   await ensureRegistryDb();
   const auth = adminAuthHeader();
   const docUrl = `${COUCHDB_URL}/${REGISTRY_DB}/${encodeURIComponent(userId)}`;
@@ -69,6 +69,7 @@ export async function upsertSsoUser(
   if (!putRes.ok && putRes.status !== 409) {
     throw new Error(`Failed to upsert SSO user ${userId}: ${putRes.status}`);
   }
+  return doc.username;
 }
 
 /**

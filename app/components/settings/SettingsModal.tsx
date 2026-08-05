@@ -1409,7 +1409,7 @@ interface ProfileData {
 
 function ProfileCard() {
   const { t } = useI18n();
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const { toast, showToast } = useToast();
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -1468,6 +1468,7 @@ function ProfileCard() {
       setFirstName(data.firstName);
       setLastName(data.lastName);
       setUsername(data.username);
+      updateSession({ username: data.username || null });
       showToast(t('profile.saved'), 'success');
     } catch {
       showToast('Failed to save profile', 'error');

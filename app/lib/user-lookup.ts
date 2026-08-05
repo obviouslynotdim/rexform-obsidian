@@ -9,6 +9,7 @@ import { listSsoUsers } from './sso-users';
 export interface ResolvedUser {
   userId: string;
   email: string | null;
+  username?: string | null;
 }
 
 const COUCHDB_URL =
@@ -28,7 +29,13 @@ export async function findKratosByEmail(email: string): Promise<ResolvedUser | n
     const hit = data.find(
       (i) => String((i.traits as any)?.email ?? '').toLowerCase() === email
     );
-    return hit ? { userId: hit.id, email: (hit.traits as any).email } : null;
+    return hit
+      ? {
+          userId: hit.id,
+          email: (hit.traits as any).email,
+          username: (hit.metadata_public as any)?.username ?? null,
+        }
+      : null;
   } catch {
     return null; // Kratos admin unreachable (e.g. local dev) — fall through
   }

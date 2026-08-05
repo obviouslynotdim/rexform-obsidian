@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { kratosAdmin } from '@/lib/kratos';
 import { listSsoUsers, updateSsoUserProfile } from '@/lib/sso-users';
+import { USERNAME_RE, isUsernameTaken } from '@/lib/username';
 
 type AccountType = 'local' | 'sso-only';
 
@@ -14,8 +15,6 @@ interface ProfileResponse {
   username: string;
   hasPassword: boolean;
 }
-
-const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 
 // Kratos admin lives at a railway.internal hostname that only resolves inside
 // Railway's private network — unreachable is expected in local dev and must
@@ -118,14 +117,19 @@ export async function PATCH(req: NextRequest) {
   const lastName: string | undefined = typeof body.lastName === 'string' ? body.lastName.trim() : undefined;
   const username: string | undefined = typeof body.username === 'string' ? body.username.trim() : undefined;
 
-  if (username !== undefined && username !== '' && !USERNAME_RE.test(username)) {
-    return NextResponse.json(
-      { error: 'Username must be 3-32 characters: letters, numbers, dots, underscores or hyphens.' },
-      { status: 400 }
-    );
-  }
-
   const userId = session.user.id;
+
+  if (username !== undefined && username !== '') {
+    if (!USERNAME_RE.test(username)) {
+      return NextResponse.json(
+        { error: 'Username must be 3-32 characters: letters, numbers, dots, underscores or hyphens.' },
+        { status: 400 }
+      );
+    }
+    if (await isUsernameTaken(username, userId)) {
+      return NextResponse.json({ error: 'That username is already taken.' }, { status: 409 });
+    }
+  }
 
   let identity;
   try {
