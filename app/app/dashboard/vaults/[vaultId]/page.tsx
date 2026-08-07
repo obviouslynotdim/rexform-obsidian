@@ -51,6 +51,28 @@ function formatCountdown(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// A proper icon + label back control instead of a bare "← Dashboard" text
+// link — shown in both the loading and loaded states so there's no layout
+// jump between them. Sits below the fixed navbar with its own explicit
+// clearance rather than relying only on <main>'s pt-14, so it can't end up
+// tucked underneath it.
+function BackToDashboard() {
+  return (
+    <Link
+      href="/dashboard"
+      className="inline-flex items-center gap-1.5 text-sm transition-colors"
+      style={{ color: 'var(--text-secondary)' }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      Back to Dashboard
+    </Link>
+  );
+}
+
 export default function DashboardVaultDetailPage() {
   const { status, data: session } = useSession();
   const router = useRouter();
@@ -130,6 +152,15 @@ export default function DashboardVaultDetailPage() {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
     if (status === 'authenticated') { init(); }
   }, [status, init, router]);
+
+  // Reached via router.push from the dashboard's Vaults section, which is
+  // often scrolled down — the browser keeps that scroll offset across the
+  // navigation, and this page's content is short enough that the leftover
+  // offset lands past its bottom (the back link included). Force it to the
+  // top on mount instead of relying on the browser to reset it.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   // Live countdown tick while an invite link is showing.
   useEffect(() => {
@@ -263,8 +294,13 @@ export default function DashboardVaultDetailPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
-        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading…</div>
+      <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+        <div className="max-w-3xl mx-auto">
+          <div className="mb-8">
+            <BackToDashboard />
+          </div>
+          <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading…</div>
+        </div>
       </div>
     );
   }
@@ -276,9 +312,7 @@ export default function DashboardVaultDetailPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <Link href="/dashboard" className="text-sm hover:underline" style={{ color: 'var(--accent)' }}>
-            ← Dashboard
-          </Link>
+          <BackToDashboard />
           <div className="flex items-baseline gap-3 mt-3 mb-1 flex-wrap">
             {renaming ? (
               <div className="flex items-center gap-2">
