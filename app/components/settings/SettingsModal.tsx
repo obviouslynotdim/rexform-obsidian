@@ -670,6 +670,17 @@ function BrowseModal({
   const [installedOnly, setInstalledOnly] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Below md, the fixed 250px plugin list next to the detail pane doesn't
+  // fit — the list hides once a plugin is picked (the "← " button already
+  // there gets back to it) instead of squeezing both into a sliver each.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -720,7 +731,7 @@ function BrowseModal({
         style={{
           // Same footprint as the settings panel underneath, so opening
           // Browse reads as a view swap rather than a smaller popup.
-          width: 'min(1040px, calc(100vw - 48px))',
+          width: isMobile ? 'calc(100vw - 24px)' : 'min(1040px, calc(100vw - 48px))',
           height: 'min(720px, calc(100vh - 80px))',
           background: '#16213e',
           borderRadius: 12,
@@ -739,10 +750,27 @@ function BrowseModal({
             <div style={{
               padding: '18px 20px 14px',
               borderBottom: '1px solid rgba(255,255,255,0.08)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex', alignItems: 'center', gap: 10,
               flexShrink: 0,
             }}>
+              <button
+                onClick={onClose}
+                title="Back to Settings"
+                style={{
+                  width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: 'rgba(255,255,255,0.55)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, lineHeight: 1, padding: 0,
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#fff'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.55)'; }}
+              >
+                ←
+              </button>
               <span style={{
+                flex: 1, minWidth: 0,
                 fontSize: 16, fontWeight: 600, color: '#fff',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
@@ -783,12 +811,15 @@ function BrowseModal({
             the right) or the full-width plugin grid */}
         {detailPlugin ? (
           <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-            {/* Left pane — search + filter + plugin list */}
+            {/* Left pane — search + filter + plugin list. Hidden on mobile
+                once a plugin is picked; the detail pane's own "←" button
+                (below) is how you get back to it. */}
             <div
               style={{
                 width: 250, flexShrink: 0,
+                display: isMobile ? 'none' : 'flex',
                 borderRight: '1px solid rgba(255,255,255,0.08)',
-                display: 'flex', flexDirection: 'column', minHeight: 0,
+                flexDirection: 'column', minHeight: 0,
               }}
             >
               <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
@@ -948,7 +979,7 @@ function BrowseModal({
                 : <>No plugins match &ldquo;{search}&rdquo;</>}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
               {filtered.map(plugin => {
                 const isInstalled = installed.includes(plugin.id);
                 return (
@@ -1744,6 +1775,22 @@ export default function SettingsModal() {
   const { t, locale, setLocale } = useI18n();
 
   const [activeCategory, setActiveCategory] = useState('general');
+  // Below md, the fixed 200px nav + flex-1 content pane can't both fit —
+  // show one pane at a time (category list, then drill into its content
+  // with a back button), the same pattern as a phone Settings app.
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileShowList, setMobileShowList] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  function selectCategory(id: string) {
+    setActiveCategory(id);
+    setMobileShowList(false);
+  }
 
   const [creds, setCreds] = useState<Credentials | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1821,6 +1868,10 @@ export default function SettingsModal() {
   useEffect(() => {
     if (!open) return;
     setActiveCategory(initialCategory ?? 'general');
+    // A deep link into a specific category (e.g. "Manage in Settings" from
+    // the dashboard) should land straight on that category's content on
+    // mobile too, not the list it'd otherwise open on.
+    setMobileShowList(!initialCategory);
     if (status === 'authenticated') {
       const silent = hasLoadedOnceRef.current;
       hasLoadedOnceRef.current = true;
@@ -2080,7 +2131,7 @@ export default function SettingsModal() {
     >
       <div
         style={{
-          width: 'min(1040px, calc(100vw - 48px))',
+          width: isMobile ? 'calc(100vw - 24px)' : 'min(1040px, calc(100vw - 48px))',
           height: 'min(720px, calc(100vh - 80px))',
           background: '#16213e',
           borderRadius: 12,
@@ -2116,14 +2167,15 @@ export default function SettingsModal() {
           ×
         </button>
 
-        {/* ── Category sidebar ── */}
+        {/* ── Category sidebar — full-width list on mobile, hidden once a
+            category's content is showing (see the back button below). ── */}
         <nav
           style={{
-            width: 200,
+            width: isMobile ? '100%' : 200,
+            display: isMobile && !mobileShowList ? 'none' : 'flex',
             flexShrink: 0,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)',
             padding: '20px 12px',
-            display: 'flex',
             flexDirection: 'column',
             gap: 2,
             overflowY: 'auto',
@@ -2136,7 +2188,7 @@ export default function SettingsModal() {
             {t('settings.title')}
           </h1>
           {categories.map((cat) => (
-            <NavButton key={cat.id} active={cat.id === selected} onClick={() => setActiveCategory(cat.id)}>
+            <NavButton key={cat.id} active={cat.id === selected} onClick={() => selectCategory(cat.id)}>
               {cat.label}
             </NavButton>
           ))}
@@ -2152,7 +2204,7 @@ export default function SettingsModal() {
               {installedPluginDefs.map((p) => {
                 const catId = `plugin-${p.id}`;
                 return (
-                  <NavButton key={catId} active={catId === selected} onClick={() => setActiveCategory(catId)}>
+                  <NavButton key={catId} active={catId === selected} onClick={() => selectCategory(catId)}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                       <span style={{ display: 'flex', flexShrink: 0, opacity: 0.85 }}>
                         <PluginIcon id={p.id} size={13} />
@@ -2169,7 +2221,31 @@ export default function SettingsModal() {
         </nav>
 
         {/* ── Content panel ── */}
-        <div style={{ flex: 1, minWidth: 0, padding: 32, overflowY: 'auto' }}>
+        <div
+          style={{
+            flex: isMobile ? 'none' : 1,
+            width: isMobile ? '100%' : undefined,
+            minWidth: 0,
+            display: isMobile && mobileShowList ? 'none' : 'block',
+            padding: 32,
+            overflowY: 'auto',
+          }}
+        >
+          {isMobile && (
+            <button
+              onClick={() => setMobileShowList(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 18,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: 'var(--text-secondary)', fontSize: 13, padding: 0,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              {t('settings.title')}
+            </button>
+          )}
           {busy ? (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>
