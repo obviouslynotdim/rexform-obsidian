@@ -27,10 +27,11 @@ interface Props {
 
 // Split-screen shell for /login and /register: graph illustration filling
 // the left column at lg+ only, form column on the right (full width below
-// lg). The form gets a slightly wider share (55/45) since it needs breathing
-// room for inputs/buttons, while the graph tolerates a narrower canvas fine —
-// matches the Navbar.tsx sm:block / dashboard md:grid-cols breakpoint
-// convention already used elsewhere.
+// lg). The form gets a wider share (60/40) and a max-w-lg (not max-w-md)
+// inner container since it needs breathing room for inputs/buttons, while
+// the graph tolerates a narrower canvas fine — matches the Navbar.tsx
+// sm:block / dashboard md:grid-cols breakpoint convention already used
+// elsewhere.
 export default function AuthLayout({ children, scrollable = true }: Props) {
   return (
     <div
@@ -38,7 +39,7 @@ export default function AuthLayout({ children, scrollable = true }: Props) {
       style={{ background: 'var(--bg-base)' }}
     >
       <div
-        className="hidden lg:flex lg:w-[45%] items-center justify-center relative"
+        className="hidden lg:flex lg:w-[40%] items-center justify-center relative"
         style={{
           background: 'linear-gradient(160deg, var(--bg-base) 0%, var(--bg-surface) 100%)',
           borderRight: '1px solid var(--border)',
@@ -47,8 +48,8 @@ export default function AuthLayout({ children, scrollable = true }: Props) {
         <GraphIllustration />
       </div>
 
-      <div className="w-full lg:w-[55%] flex items-center justify-center px-4 py-10 overflow-y-auto">
-        <div className="w-full max-w-md">{children}</div>
+      <div className="w-full lg:w-[60%] flex items-center justify-center px-6 py-10 overflow-y-auto">
+        <div className="w-full max-w-lg">{children}</div>
       </div>
     </div>
   );
