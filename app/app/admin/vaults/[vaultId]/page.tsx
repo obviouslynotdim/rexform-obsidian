@@ -49,6 +49,25 @@ function Avatar({ email }: { email: string }) {
   );
 }
 
+// Icon + label back control instead of a bare "← Admin Panel" text link —
+// shown in both the loading and loaded states so there's no layout jump.
+function BackToAdmin() {
+  return (
+    <Link
+      href="/admin"
+      className="inline-flex items-center gap-1.5 text-sm transition-colors"
+      style={{ color: 'var(--text-secondary)' }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+    >
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      Back to Admin Panel
+    </Link>
+  );
+}
+
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
   return (
     <div
@@ -135,6 +154,12 @@ export default function VaultDetailPage() {
     if (status === 'authenticated') { loadMembers(); loadVaultName(); loadAllUsers(); }
   }, [status, loadMembers, loadVaultName, loadAllUsers, router]);
 
+  // Reached from the admin panel's Shared Vaults table, which may be
+  // scrolled down — start this page at its own top.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Users already in the vault shouldn't reappear in the add-member search.
   const memberIds = new Set(members.map((m) => m.userId));
   const candidates = allUsers.filter((u) => !memberIds.has(u.id));
@@ -211,8 +236,13 @@ export default function VaultDetailPage() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
-        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading…</div>
+      <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+        <div className="max-w-3xl mx-auto">
+          <div className="mb-8">
+            <BackToAdmin />
+          </div>
+          <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading…</div>
+        </div>
       </div>
     );
   }
@@ -220,15 +250,13 @@ export default function VaultDetailPage() {
   const owners = members.filter((m) => m.role === 'owner');
 
   return (
-    <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+    <div className="min-h-screen p-8 pb-16" style={{ background: 'var(--bg-base)' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
       <div className="max-w-3xl mx-auto">
 
         {/* Header */}
         <div className="mb-8">
-          <Link href="/admin" className="text-sm hover:underline" style={{ color: 'var(--accent)' }}>
-            ← Admin Panel
-          </Link>
+          <BackToAdmin />
           <div className="flex items-baseline gap-3 mt-3 mb-1 flex-wrap">
             <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
               {vaultName || 'Vault Members'}
@@ -249,7 +277,7 @@ export default function VaultDetailPage() {
         {/* Add member */}
         <Card className="p-5 mb-8">
           <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Add Member</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             {/* User search input */}
             <div className="flex-1 relative">
               <input

@@ -128,9 +128,56 @@ function CopyIdButton({ id }: { id: string }) {
 
 interface MenuItem {
   label: string;
+  icon?: React.ReactNode;
   danger?: boolean;
   disabled?: boolean;
   onClick: () => void;
+}
+
+// Every menu item gets one of these — text-only rows made the destructive
+// "Delete…" entry hard to spot at a glance in the dropdown.
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16Z" />
+    </svg>
+  );
+}
+function PauseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+function PlayIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4l14 8-14 8V4Z" />
+    </svg>
+  );
+}
+function PlusCircleIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+function FolderIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+    </svg>
+  );
+}
+function UsersIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
 }
 
 function RowMenu({ items }: { items: MenuItem[] }) {
@@ -197,7 +244,7 @@ function RowMenu({ items }: { items: MenuItem[] }) {
               key={`${item.label}-${i}`}
               disabled={item.disabled}
               onClick={() => { setOpen(false); item.onClick(); }}
-              className="block w-full text-left px-3.5 py-1.5 text-[13px] transition-colors disabled:opacity-40"
+              className="flex items-center gap-2.5 w-full text-left px-3.5 py-1.5 text-[13px] transition-colors disabled:opacity-40"
               style={{
                 background: 'transparent', border: 'none',
                 color: item.danger ? '#f87171' : 'rgba(255,255,255,0.82)',
@@ -206,6 +253,7 @@ function RowMenu({ items }: { items: MenuItem[] }) {
               onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
+              {item.icon && <span className="flex-shrink-0" style={{ opacity: 0.85 }}>{item.icon}</span>}
               {item.label}
             </button>
           ))}
@@ -300,6 +348,12 @@ export default function AdminPage() {
   useEffect(() => {
     if (status === 'authenticated') loadSharedVaults();
   }, [status, loadSharedVaults]);
+
+  // Reached from the navbar/dashboard, which may be scrolled down — start
+  // this page at its own top rather than wherever the browser left off.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const createSharedVault = async () => {
     if (!newVaultName.trim()) return;
@@ -410,8 +464,11 @@ export default function AdminPage() {
 
   if (status === 'loading' || (!initialLoaded && loading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
-        <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading admin panel…</div>
+      <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+        <div className="max-w-5xl mx-auto">
+          <h1 className="text-2xl font-bold mb-8" style={{ color: 'var(--text-primary)' }}>Admin Panel</h1>
+          <div className="text-sm animate-pulse" style={{ color: 'var(--text-secondary)' }}>Loading admin panel…</div>
+        </div>
       </div>
     );
   }
@@ -424,7 +481,7 @@ export default function AdminPage() {
   ];
 
   return (
-    <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
+    <div className="min-h-screen p-8 pb-16" style={{ background: 'var(--bg-base)' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} />}
       {/* Copy-id affordance appears on row hover only */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -436,7 +493,7 @@ export default function AdminPage() {
       <div className="max-w-5xl mx-auto">
 
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
               Admin Panel
@@ -458,7 +515,7 @@ export default function AdminPage() {
         )}
 
         {/* Stats row */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {statCards.map((stat) => (
             <Card key={stat.label} className="p-5">
               <p className="text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>{stat.label}</p>
@@ -472,7 +529,7 @@ export default function AdminPage() {
 
           {/* Filters — applied server-side across ALL users, not just this page */}
           <div
-            className="flex gap-3 p-3 border-b"
+            className="flex flex-col sm:flex-row gap-3 p-3 border-b"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
           >
             <input
@@ -505,7 +562,8 @@ export default function AdminPage() {
             </select>
           </div>
 
-          <table className="w-full text-sm" style={{ opacity: loading ? 0.55 : 1, transition: 'opacity 0.15s' }}>
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm" style={{ opacity: loading ? 0.55 : 1, transition: 'opacity 0.15s', minWidth: 640 }}>
             <thead>
               <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
                 {['User', 'Registered', 'Vault', 'Status', ''].map((h, i) => (
@@ -542,17 +600,18 @@ export default function AdminPage() {
                 if (!user.isAdmin && !isSelf && !isSso) {
                   menuItems.push({
                     label: user.state === 'active' ? 'Suspend user' : 'Reactivate user',
+                    icon: user.state === 'active' ? <PauseIcon /> : <PlayIcon />,
                     onClick: () => toggleState(user.id, user.state),
                   });
                 }
                 if (!user.isAdmin && !user.vault.exists) {
-                  menuItems.push({ label: 'Provision vault', onClick: () => provision(user.id) });
+                  menuItems.push({ label: 'Provision vault', icon: <PlusCircleIcon />, onClick: () => provision(user.id) });
                 }
                 if (!user.isAdmin && (user.vault.exists || extraVaults.length > 0)) {
-                  menuItems.push({ label: 'Manage vaults…', onClick: () => setManageVaultsUserId(user.id) });
+                  menuItems.push({ label: 'Manage vaults…', icon: <FolderIcon />, onClick: () => setManageVaultsUserId(user.id) });
                 }
                 if (!user.isAdmin) {
-                  menuItems.push({ label: 'Delete user…', danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length, isSso) });
+                  menuItems.push({ label: 'Delete user…', icon: <TrashIcon />, danger: true, onClick: () => deleteUser(user.id, user.email, extraVaults.length, isSso) });
                 }
 
                 return (
@@ -639,6 +698,7 @@ export default function AdminPage() {
               })}
             </tbody>
           </table>
+          </div>
 
           {users.length === 0 && !loading && !error && (
             <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -703,7 +763,8 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: 560 }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
                     {['Vault', 'Created', 'Docs', 'Size', ''].map((h, i) => (
@@ -753,8 +814,8 @@ export default function AdminPage() {
                           ) : (
                             <RowMenu
                               items={[
-                                { label: 'Manage members', onClick: () => router.push(`/admin/vaults/${sv.vaultId}`) },
-                                { label: 'Delete vault…', danger: true, onClick: () => deleteSharedVault(sv.vaultId, sv.vaultName) },
+                                { label: 'Manage members', icon: <UsersIcon />, onClick: () => router.push(`/admin/vaults/${sv.vaultId}`) },
+                                { label: 'Delete vault…', icon: <TrashIcon />, danger: true, onClick: () => deleteSharedVault(sv.vaultId, sv.vaultName) },
                               ]}
                             />
                           )}
@@ -764,6 +825,7 @@ export default function AdminPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
