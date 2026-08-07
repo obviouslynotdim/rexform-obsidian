@@ -12,6 +12,7 @@ import * as d3 from 'd3';
 interface DemoNode extends d3.SimulationNodeDatum {
   id: string;
   title: string;
+  group: string;
   linkCount: number;
 }
 
@@ -20,20 +21,30 @@ interface DemoEdge extends d3.SimulationLinkDatum<DemoNode> {
   target: string | DemoNode;
 }
 
-const RAW_NODES: { id: string; title: string }[] = [
-  { id: 'welcome', title: 'Welcome' },
-  { id: 'roadmap', title: 'Project Roadmap' },
-  { id: 'meeting', title: 'Meeting Notes' },
-  { id: 'research', title: 'Research' },
-  { id: 'ideas', title: 'Ideas' },
-  { id: 'journal', title: 'Daily Journal' },
-  { id: 'architecture', title: 'Architecture' },
-  { id: 'wiki', title: 'Team Wiki' },
-  { id: 'retro', title: 'Retrospective' },
-  { id: 'reading', title: 'Reading List' },
-  { id: 'sprint', title: 'Sprint Planning' },
-  { id: 'bugs', title: 'Bug Tracker' },
+// Grouped like folders in the real Graph View, so nodes pick up the same
+// per-folder color coding instead of one flat accent color (see
+// GraphView.tsx: FOLDER_PALETTE + folderPalette map keyed by top-level path).
+const RAW_NODES: { id: string; title: string; group: string }[] = [
+  { id: 'welcome', title: 'Welcome', group: 'core' },
+  { id: 'wiki', title: 'Team Wiki', group: 'core' },
+  { id: 'roadmap', title: 'Project Roadmap', group: 'planning' },
+  { id: 'sprint', title: 'Sprint Planning', group: 'planning' },
+  { id: 'meeting', title: 'Meeting Notes', group: 'planning' },
+  { id: 'retro', title: 'Retrospective', group: 'planning' },
+  { id: 'research', title: 'Research', group: 'knowledge' },
+  { id: 'ideas', title: 'Ideas', group: 'knowledge' },
+  { id: 'journal', title: 'Daily Journal', group: 'knowledge' },
+  { id: 'reading', title: 'Reading List', group: 'knowledge' },
+  { id: 'architecture', title: 'Architecture', group: 'dev' },
+  { id: 'bugs', title: 'Bug Tracker', group: 'dev' },
 ];
+
+const GROUP_PALETTE: Record<string, string> = {
+  core: '#9B7FFF',
+  planning: '#60a5fa',
+  knowledge: '#4ade80',
+  dev: '#fb923c',
+};
 
 const RAW_EDGES: [string, string][] = [
   ['welcome', 'wiki'],
@@ -68,6 +79,11 @@ export default function GraphIllustration() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 480, h: 520 });
   const [tooltip, setTooltip] = useState<{ x: number; y: number; title: string } | null>(null);
+  // Re-runs the build-up entrance below on demand — the same "magic wand"
+  // reheat as GraphView.tsx's animKey, just always replaying the pop-in
+  // instead of gating it behind a reheat-vs-normal-load branch (this panel
+  // has nothing to instantly settle to; every mount/click IS the animation).
+  const [animKey, setAnimKey] = useState(0);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -108,13 +124,15 @@ export default function GraphIllustration() {
       .force('center', d3.forceCenter(w / 2, h / 2))
       .force('collide', d3.forceCollide<DemoNode>(20));
 
+    const nodeFill = (d: DemoNode) => GROUP_PALETTE[d.group] ?? 'var(--accent)';
+
     const link = g
       .append('g')
       .selectAll<SVGLineElement, DemoEdge>('line')
       .data(edges)
       .join('line')
       .attr('stroke', 'rgba(255, 255, 255, 0.15)')
-      .attr('stroke-width', 1);
+      .attr('stroke-width', 0.8);
 
     const node = g
       .append('g')
@@ -122,8 +140,8 @@ export default function GraphIllustration() {
       .data(nodes)
       .join('circle')
       .attr('r', nodeR)
-      .attr('fill', 'var(--accent)')
-      .attr('opacity', 0.75)
+      .attr('fill', nodeFill)
+      .attr('stroke', 'none')
       .attr('cursor', 'grab')
       .call(
         d3
@@ -145,13 +163,13 @@ export default function GraphIllustration() {
       );
 
     node.on('mouseenter', function (event, d) {
-      d3.select(this).attr('fill', '#fff').attr('opacity', 1);
+      d3.select(this).attr('fill', '#fff').transition().duration(150).attr('r', nodeR(d) * 1.4);
       const rect = svgRef.current!.getBoundingClientRect();
       setTooltip({ x: event.clientX - rect.left + 10, y: event.clientY - rect.top - 8, title: d.title });
     });
 
-    node.on('mouseleave', function () {
-      d3.select(this).attr('fill', 'var(--accent)').attr('opacity', 0.75);
+    node.on('mouseleave', function (_event, d) {
+      d3.select(this).attr('fill', nodeFill(d)).transition().duration(150).attr('r', nodeR(d));
       setTooltip(null);
     });
 
@@ -161,8 +179,8 @@ export default function GraphIllustration() {
       .data(nodes)
       .join('text')
       .text((d) => d.title)
-      .attr('font-size', '10px')
-      .attr('fill', 'rgba(255, 255, 255, 0.45)')
+      .attr('font-size', '11px')
+      .attr('fill', 'rgba(255, 255, 255, 0.7)')
       .attr('text-anchor', 'middle')
       .attr('pointer-events', 'none');
 
@@ -217,10 +235,39 @@ export default function GraphIllustration() {
     return () => {
       simulation.stop();
     };
-  }, [dims]);
+  }, [dims, animKey]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative" style={{ padding: '32px 32px 0' }}>
+      <button
+        title="Replay animation"
+        onClick={() => setAnimKey((k) => k + 1)}
+        className="absolute flex items-center justify-center transition-colors"
+        style={{
+          top: 32,
+          left: 32,
+          width: 28,
+          height: 28,
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 5,
+          color: 'rgba(255,255,255,0.6)',
+          cursor: 'pointer',
+          zIndex: 10,
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" />
+          <path d="m14 7 3 3" />
+          <path d="M5 6v4" />
+          <path d="M19 14v4" />
+          <path d="M10 2v2" />
+          <path d="M7 8H3" />
+          <path d="M21 16h-4" />
+          <path d="M11 3H9" />
+        </svg>
+      </button>
+
       <svg ref={svgRef} width={dims.w} height={Math.max(dims.h - TAGLINE_H, 100)} style={{ display: 'block' }} />
 
       {tooltip && (
