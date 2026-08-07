@@ -200,6 +200,34 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const tabsCtx = useTabsContext();
 
+  // Below md, the icon strip + fixed-width sidebar + fixed-width right panel
+  // would squeeze the editor into a sliver — sidebar/right panel become
+  // overlay drawers instead of permanent flex columns (see the render below).
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  // Starts closed on mobile so the editor is visible on first load — flips
+  // once, right after mount, rather than in the initial state (which would
+  // have to guess before matchMedia has run and risk a hydration mismatch).
+  const mobileDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    if (mobileDefaultAppliedRef.current) return;
+    mobileDefaultAppliedRef.current = true;
+    if (window.matchMedia('(max-width: 767px)').matches) setSidebarVisible(false);
+  }, []);
+  // Navigating (opening a note, switching to Graph/Kanban/etc.) should close
+  // the mobile drawer so the destination is actually visible.
+  const prevPathnameRef = useRef(pathname);
+  useEffect(() => {
+    if (isMobile && pathname !== prevPathnameRef.current) setSidebarVisible(false);
+    prevPathnameRef.current = pathname;
+  }, [pathname, isMobile]);
+
   // Active vault id (same source/normalisation as TabsContext — SWR dedupes).
   const { data: vaultsData } = useSWR<{ vaults: any[]; activeVault: string }>(
     '/api/vaults',
@@ -377,20 +405,24 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      {/* Sidebar — width owned here so it can be dragged; NotesSidebar is w-full. */}
-      <div
-        style={{
-          display: sidebarVisible ? 'flex' : 'none',
-          flexDirection: 'column',
-          width: sidebarWidth,
-          flexShrink: 0,
-        }}
-      >
-        <NotesSidebar />
-      </div>
+      {/* Sidebar — width owned here so it can be dragged; NotesSidebar is w-full.
+          Desktop only: on mobile this would squeeze the editor into a sliver,
+          so it renders as an overlay drawer instead (below). */}
+      {!isMobile && (
+        <div
+          style={{
+            display: sidebarVisible ? 'flex' : 'none',
+            flexDirection: 'column',
+            width: sidebarWidth,
+            flexShrink: 0,
+          }}
+        >
+          <NotesSidebar />
+        </div>
+      )}
 
       {/* Drag handle between the sidebar and the note column */}
-      {sidebarVisible && (
+      {!isMobile && sidebarVisible && (
         <div
           onMouseDown={() => {
             resizingRef.current = true;
@@ -436,9 +468,10 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      {/* Right panel — a normal flex child with reserved width beside MAIN.
-          When closed, it (and its handle) unmounts so MAIN reclaims the width. */}
-      {rightOpen && (
+      {/* Right panel — a normal flex child with reserved width beside MAIN on
+          desktop. When closed, it (and its handle) unmounts so MAIN reclaims
+          the width. On mobile it's an overlay drawer instead (below). */}
+      {!isMobile && rightOpen && (
         <>
           {/* Drag handle — the left-split handle mirrored */}
           <div
@@ -460,6 +493,49 @@ function NotesShellInner({ children }: { children: React.ReactNode }) {
               display: 'flex',
               flexDirection: 'column',
               background: 'var(--bg-surface)',
+            }}
+          >
+            <RightSidebarContent calendarOn={installed.includes('calendar') && !!enabled['calendar']} />
+          </div>
+        </>
+      )}
+
+      {/* Mobile overlay drawers — fixed over the editor (below the 56px
+          navbar) with a dismiss backdrop, instead of taking a permanent slice
+          out of a screen too narrow to spare it. */}
+      {isMobile && sidebarVisible && (
+        <>
+          <div
+            onClick={() => setSidebarVisible(false)}
+            style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 39 }}
+          />
+          <div
+            style={{
+              position: 'fixed', top: 56, left: 40, bottom: 0,
+              width: 'min(85vw, 320px)', zIndex: 40,
+              display: 'flex', flexDirection: 'column',
+              background: 'var(--bg-surface)',
+              boxShadow: '4px 0 24px rgba(0,0,0,0.4)',
+            }}
+          >
+            <NotesSidebar />
+          </div>
+        </>
+      )}
+
+      {isMobile && rightOpen && (
+        <>
+          <div
+            onClick={() => setRightOpen(false)}
+            style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 39 }}
+          />
+          <div
+            style={{
+              position: 'fixed', top: 56, right: 0, bottom: 0,
+              width: 'min(85vw, 320px)', zIndex: 40,
+              display: 'flex', flexDirection: 'column',
+              background: 'var(--bg-surface)',
+              boxShadow: '-4px 0 24px rgba(0,0,0,0.4)',
             }}
           >
             <RightSidebarContent calendarOn={installed.includes('calendar') && !!enabled['calendar']} />
