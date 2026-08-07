@@ -26,7 +26,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen p-8" style={{ background: 'var(--bg-base)' }}>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-[1600px] mx-auto">
         <div className="mb-10">
           <h1 className="text-3xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
             Welcome to <span style={{ color: 'var(--accent)' }}>REXFORM Notes</span>
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
           <p style={{ color: 'var(--text-secondary)' }}>Your personal knowledge base</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-10">
           <Card className="p-6">
             <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Total Notes</p>
             <p className="text-4xl font-bold" style={{ color: 'var(--accent)' }}>{data.total}</p>
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
               View all →
             </Link>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {data.recentNotes.length === 0 ? (
               <p style={{ color: 'var(--text-secondary)' }}>No notes found.</p>
             ) : (
