@@ -78,6 +78,12 @@ export default function GraphIllustration() {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 480, h: 520 });
+  // Stays false until the ResizeObserver below reports the real container
+  // size. Rendering the <svg> at the guessed 480x520 default before that
+  // measurement lands is what made bubbles pop in outside the actual panel
+  // on refresh — this panel is often narrower/shorter than the guess, so the
+  // simulation centered on the wrong canvas. Nothing draws until we know.
+  const [measured, setMeasured] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; title: string } | null>(null);
   // Re-runs the build-up entrance below on demand — the same "magic wand"
   // reheat as GraphView.tsx's animKey, just always replaying the pop-in
@@ -90,14 +96,17 @@ export default function GraphIllustration() {
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) setDims({ w: width, h: height });
+      if (width > 0 && height > 0) {
+        setDims({ w: width, h: height });
+        setMeasured(true);
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
   useEffect(() => {
-    if (!svgRef.current) return;
+    if (!measured || !svgRef.current) return;
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
@@ -110,6 +119,11 @@ export default function GraphIllustration() {
     const g = svg.append('g');
 
     const nodeR = (d: DemoNode) => 4 + Math.min(d.linkCount * 1.6, 9);
+    // The label sits centered under the bubble, so give collision a radius
+    // wide enough to cover roughly half the label's width too — otherwise
+    // forceCollide only keeps the small circles apart and neighboring
+    // bubbles/labels overlap once the text is wider than the gap between them.
+    const collideR = (d: DemoNode) => nodeR(d) + Math.max(16, d.title.length * 2.6);
 
     const simulation = d3
       .forceSimulation<DemoNode>(nodes)
@@ -120,9 +134,16 @@ export default function GraphIllustration() {
           .id((d) => d.id)
           .distance(70)
       )
-      .force('charge', d3.forceManyBody<DemoNode>().strength(-160))
+      .force('charge', d3.forceManyBody<DemoNode>().strength(-220))
       .force('center', d3.forceCenter(w / 2, h / 2))
-      .force('collide', d3.forceCollide<DemoNode>(20));
+      .force('collide', d3.forceCollide<DemoNode>(collideR))
+      // Isotropic repulsion naturally settles into a round blob, which reads
+      // as "clumped in the middle" of this panel's tall, narrow box — keep
+      // a mild horizontal pull so nodes don't spill past the narrow width,
+      // but only a token vertical one so the (now stronger) charge and the
+      // clamp below do the work of spreading nodes toward the top and bottom.
+      .force('x', d3.forceX<DemoNode>(w / 2).strength(0.08))
+      .force('y', d3.forceY<DemoNode>(h / 2).strength(0.015));
 
     const nodeFill = (d: DemoNode) => GROUP_PALETTE[d.group] ?? 'var(--accent)';
 
@@ -184,7 +205,17 @@ export default function GraphIllustration() {
       .attr('text-anchor', 'middle')
       .attr('pointer-events', 'none');
 
+    // Hard-clamp to the padded box so a node can never render (or be
+    // dragged) outside the visible panel, regardless of what the force
+    // simulation computes.
+    function clamp(d: DemoNode) {
+      const r = nodeR(d);
+      d.x = Math.max(r, Math.min(w - r, d.x ?? w / 2));
+      d.y = Math.max(r, Math.min(h - r, d.y ?? h / 2));
+    }
+
     function applyPositions() {
+      nodes.forEach(clamp);
       link
         .attr('x1', (d) => (d.source as DemoNode).x ?? 0)
         .attr('y1', (d) => (d.source as DemoNode).y ?? 0)
@@ -235,7 +266,7 @@ export default function GraphIllustration() {
     return () => {
       simulation.stop();
     };
-  }, [dims, animKey]);
+  }, [measured, dims, animKey]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative" style={{ padding: '32px 32px 0' }}>
