@@ -205,17 +205,30 @@ export default function FolderItem({
           setContextMenu(buildContextMenu(e.clientX, e.clientY));
         }}
       >
-        <svg
-          className="mr-1 flex-shrink-0"
-          width="12" height="12" viewBox="0 0 12 12" fill="none"
+        {/* A round tap target around the chevron, not just the bare icon —
+            matches Obsidian mobile's disclosure button instead of a small
+            decorative arrow that's easy to miss on a touch screen. The row
+            itself still owns the click handler, so this stays a plain span. */}
+        <span
+          className="flex items-center justify-center flex-shrink-0 mr-0.5 rounded-full"
           style={{
-            color: 'rgba(255,255,255,0.55)',
-            transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 0.15s ease',
+            width: 22,
+            height: 22,
+            background: hovered ? 'rgba(255,255,255,0.08)' : 'transparent',
+            transition: 'background 0.15s ease',
           }}
         >
-          <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+          <svg
+            width="12" height="12" viewBox="0 0 12 12" fill="none"
+            style={{
+              color: 'rgba(255,255,255,0.6)',
+              transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s ease',
+            }}
+          >
+            <path d="M3.5 2.5 L7.5 6 L3.5 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
 
         {renaming ? (
           <input
