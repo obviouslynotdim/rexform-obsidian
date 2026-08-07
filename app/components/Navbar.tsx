@@ -45,9 +45,9 @@ export default function Navbar() {
   }, [mobileOpen]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
-  // Admin pages are about managing the system, not editing notes — the Notes
-  // link doesn't apply there, so it's dropped rather than shown pointlessly.
-  const inAdmin = pathname.startsWith('/admin');
+  // Admins manage the system, not their own notes — drop the Notes link for
+  // them everywhere rather than just on /admin pages.
+  const showNotes = !session?.user?.isAdmin;
 
   const desktopLink = (href: string, label: React.ReactNode) => (
     <Link
@@ -84,7 +84,7 @@ export default function Navbar() {
       {session && (
         <div className="hidden md:flex items-center gap-1">
           {desktopLink('/dashboard', 'Dashboard')}
-          {!inAdmin && desktopLink('/notes', 'Notes')}
+          {showNotes && desktopLink('/notes', 'Notes')}
           {session.user?.isAdmin && desktopLink('/admin', 'Admin')}
           <button
             onClick={() => settingsModal?.openSettings()}
@@ -165,7 +165,7 @@ export default function Navbar() {
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}
               >
                 {mobileLink('/dashboard', 'Dashboard')}
-                {!inAdmin && mobileLink('/notes', 'Notes')}
+                {showNotes && mobileLink('/notes', 'Notes')}
                 {session.user?.isAdmin && mobileLink('/admin', 'Admin')}
                 <button
                   onClick={() => {

@@ -10,7 +10,7 @@ export interface ToastState { msg: string; type: ToastType }
 export function Toast({ msg, type }: ToastState) {
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
+      className="fixed bottom-6 right-6 z-[100] px-4 py-3 rounded-xl text-sm font-medium shadow-lg"
       style={{
         background: type === 'success' ? '#14532d' : '#7f1d1d',
         color: '#fff',
